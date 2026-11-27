@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { markReactive } from '../propResolvers/reactive';
 import { referencedPaths, referencedRoots } from './ast';
 import { checkExpression, isCallTime } from './check';
 import { evaluateExpression, namespace } from './evaluate';
-import { listFunctions } from './functions';
+import { CORE_FUNCTIONS, defineFunction, getFunction, isCoreFunction, listFunctions } from './functions';
 import { ExpressionSyntaxError, parseExpression } from './parser';
 import { printExpression } from './printer';
+import { markReactive } from './reactive';
 
 const env = (roots: Record<string, unknown>, sources: Record<string, (options: unknown) => unknown> = {}) => ({
   root: (name: string) => ({ bound: name in roots, value: roots[name] }),
@@ -221,6 +221,20 @@ describe('evaluation', () => {
     expect(run('find(items, { tags: { exists: false } }).name', { items })).toBe('Bob');
     expect(run("find(items, { name: 'Zed' }).name", { items })).toBeUndefined();
   });
+  it('matches an absent value with no comparison but exists, as a $query does', () => {
+    const items = [
+      { name: 'Anna', role: 'admin' },
+      { name: 'Bob', role: 'member' },
+      { name: 'Cy' },
+      { name: 'Di', role: '' },
+    ];
+    expect(run("filter(items, { role: { not: 'admin' } }).map(i, i.name)", { items })).toEqual(['Bob']);
+    expect(run("filter(items, { role: { not: ['admin', 'owner'] } }).map(i, i.name)", { items })).toEqual(['Bob']);
+    expect(run("filter(items, { role: { contains: '' } }).map(i, i.name)", { items })).toEqual(['Anna', 'Bob']);
+    expect(run("filter(items, { role: '' }).map(i, i.name)", { items })).toEqual([]);
+    expect(run('filter(items, { role: { exists: false } }).map(i, i.name)', { items })).toEqual(['Cy', 'Di']);
+    expect(run("find(items, { role: { not: 'member' } }).name", { items })).toBe('Anna');
+  });
   it('takes range bounds in a where-object, with the same meaning a $query gives them', () => {
     const roots = {
       events: [
@@ -234,6 +248,208 @@ describe('evaluation', () => {
     ]);
     // A string stored where a number was meant matches no numeric bound, rather than being coerced.
     expect(run('filter(events, { seats: { gt: 5 } }).map(e, e.id)', roots)).toEqual(['c']);
+  });
+});
+
+describe('the functions a declared operation builds its writes with', () => {
+  const a = { id: 'a', n: 1 };
+  const aAgain = { id: 'a', n: 99 };
+  const b = { id: 'b', n: 2 };
+
+  it('slug: the rule the stores name types by, to the character', () => {
+    // The same steps as the app's slug derivation, so a converted store write stores the same slug.
+    const stores = (name: string) =>
+      name
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .trim()
+        .replace(/\s+/g, '-');
+    const names = [
+      'In Progress',
+      '  Needs   review ',
+      'Café au lait',
+      'a - b',
+      '-leading',
+      'snake_case/and.dots',
+      'Ünïcödé',
+      'ALL CAPS 2026',
+      'tab\tand\nnewline',
+      '',
+    ];
+    for (const name of names) expect(run('slug(t)', { t: name })).toBe(stores(name));
+    expect(run('slug(t)', { t: 'In Progress' })).toBe('in-progress');
+    expect(run('slug(t)', { t: 'Café au lait' })).toBe('caf-au-lait');
+    expect(run('slug(12)')).toBe('12');
+    expect(run('slug(t)', { t: { name: 'x' } })).toBe('');
+    expect(run('slug(t)', {})).toBe('');
+  });
+
+  it('concat: every list in order, repeats kept, non-lists contributing nothing', () => {
+    expect(run('concat([1, 2], [2, 3], missing, 4, [])', {})).toEqual([1, 2, 2, 3]);
+    expect(run('concat()', {})).toEqual([]);
+    const list = [1];
+    expect(run('concat(list, [2])', { list })).toEqual([1, 2]);
+    expect(list).toEqual([1]);
+  });
+
+  it('without: every equal entry out, records by id', () => {
+    expect(run('without([1, 2, 1, 3], 1, 3)', {})).toEqual([2]);
+    expect(run('without(items, other)', { items: [a, b], other: aAgain })).toEqual([b]);
+    // A record and its id name the same entry, as they do in distinct.
+    expect(run("without(items, 'b')", { items: [a, b] })).toEqual([a]);
+    expect(run("without(ids, 'a')", { ids: ['a', 'b', 'a'] })).toEqual(['b']);
+    expect(run('without(items)', { items: [a] })).toEqual([a]);
+    expect(run('without(missing, 1)', {})).toEqual([]);
+    expect(run("without('abc', 'a')", {})).toEqual([]);
+  });
+
+  it('indexOf: the first equal entry, -1 when absent or not a list', () => {
+    expect(run("indexOf(['x', 'y', 'y'], 'y')", {})).toBe(1);
+    expect(run('indexOf(items, other)', { items: [b, a], other: aAgain })).toBe(1);
+    expect(run("indexOf(items, 'z')", { items: [a, b] })).toBe(-1);
+    expect(run('indexOf(missing, 1)', {})).toBe(-1);
+    expect(run('indexOf([1, missing], missing)', {})).toBe(1);
+  });
+
+  it('insertAt: a new list, the index clamped', () => {
+    const list = ['a', 'b'];
+    expect(run("insertAt(list, 1, 'x')", { list })).toEqual(['a', 'x', 'b']);
+    expect(list).toEqual(['a', 'b']);
+    expect(run("insertAt(list, 0, 'x')", { list })).toEqual(['x', 'a', 'b']);
+    expect(run("insertAt(list, -4, 'x')", { list })).toEqual(['x', 'a', 'b']);
+    expect(run("insertAt(list, 99, 'x')", { list })).toEqual(['a', 'b', 'x']);
+    expect(run("insertAt(list, 1.7, 'x')", { list })).toEqual(['a', 'x', 'b']);
+    expect(run("insertAt(list, 'nope', 'x')", { list })).toEqual(['x', 'a', 'b']);
+    expect(run('insertAt(list, 1, missing)', { list })).toEqual(['a', 'b']);
+    // The record with no list yet is the first case of every one of these.
+    expect(run("insertAt(missing, 3, 'x')", {})).toEqual(['x']);
+  });
+
+  it('insertAfter: straight after the anchor, appended when the anchor is not there', () => {
+    const list = ['a', 'b', 'c'];
+    expect(run("insertAfter(list, 'a', 'x')", { list })).toEqual(['a', 'x', 'b', 'c']);
+    expect(run("insertAfter(list, 'c', 'x')", { list })).toEqual(['a', 'b', 'c', 'x']);
+    expect(run("insertAfter(list, 'z', 'x')", { list })).toEqual(['a', 'b', 'c', 'x']);
+    expect(run("insertAfter(list, missing, 'x')", { list })).toEqual(['a', 'b', 'c', 'x']);
+    expect(run("insertAfter(list, 'a', missing)", { list })).toEqual(list);
+    expect(list).toEqual(['a', 'b', 'c']);
+    expect(run('insertAfter(items, other, b)', { items: [a, { id: 'c' }], other: aAgain, b })).toEqual([
+      a,
+      b,
+      { id: 'c' },
+    ]);
+    expect(run("insertAfter(missing, 'a', 'x')", {})).toEqual(['x']);
+  });
+
+  it('slice: as JavaScript slices, negative positions from the end', () => {
+    const list = [1, 2, 3, 4, 5];
+    expect(run('slice(list, 1, 3)', { list })).toEqual([2, 3]);
+    expect(run('slice(list, -2)', { list })).toEqual([4, 5]);
+    expect(run('slice(list, 1, -1)', { list })).toEqual([2, 3, 4]);
+    expect(run('slice(list, 4, 2)', { list })).toEqual([]);
+    expect(run('slice(list, 0, 99)', { list })).toEqual(list);
+    expect(run("slice(list, 'x')", { list })).toEqual(list);
+    expect(run('slice(missing, 0, 2)', {})).toEqual([]);
+    expect(run("slice('abc', 0, 2)", {})).toEqual([]);
+  });
+
+  it('sortBy: stable, numbers as numbers, text by code point, absent last both ways', () => {
+    const rows = [
+      { id: 1, at: 10, name: 'b', meta: { rank: 2 } },
+      { id: 2, name: 'B', meta: { rank: 1 } },
+      { id: 3, at: 2, name: 'a', meta: {} },
+      { id: 4, at: 10, name: 'é' },
+      { id: 5, at: null, name: 'a' },
+    ];
+    const ids = (source: string) => (run(source, { rows }) as { id: number }[]).map((r) => r.id);
+    expect(ids("sortBy(rows, 'at')")).toEqual([3, 1, 4, 2, 5]);
+    expect(ids("sortBy(rows, 'at', 'asc')")).toEqual([3, 1, 4, 2, 5]);
+    // Equal keys keep their order in either direction; absent stays last.
+    expect(ids("sortBy(rows, 'at', 'desc')")).toEqual([1, 4, 3, 2, 5]);
+    // Code point order: 'B' (U+0042) before 'a' before 'b' before 'é', whatever the locale says.
+    expect(ids("sortBy(rows, 'name')")).toEqual([2, 3, 5, 1, 4]);
+    expect(ids("sortBy(rows, 'meta.rank')")).toEqual([2, 1, 3, 4, 5]);
+    expect(ids("sortBy(rows, 'meta.rank', 'desc')")).toEqual([1, 2, 3, 4, 5]);
+    // Past U+FFFF, by code point rather than by UTF-16 unit: U+1F600 sorts after U+FF5E.
+    expect(run("sortBy(rows, 'k').map(r, r.k)", { rows: [{ k: '\u{1F600}' }, { k: '～' }] })).toEqual([
+      '～',
+      '\u{1F600}',
+    ]);
+    // Numbers before text, so a mixed column has one order.
+    expect(run("sortBy(rows, 'v').map(r, r.v)", { rows: [{ v: 'x' }, { v: 3 }, { v: 1 }] })).toEqual([1, 3, 'x']);
+    expect(run("sortBy(rows, '').map(r, r.id)", { rows })).toEqual([1, 2, 3, 4, 5]);
+    expect(run("sortBy(missing, 'at')", {})).toEqual([]);
+    expect(rows.map((r) => r.id)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it('put: one key set or removed, on a new object', () => {
+    const settings = { feed: { open: true }, call: { open: false } };
+    expect(run("put(settings, 'call', { open: true })", { settings })).toEqual({
+      feed: { open: true },
+      call: { open: true },
+    });
+    expect(settings.call.open).toBe(false);
+    expect(run("put(settings, 'call', missing)", { settings })).toEqual({ feed: { open: true } });
+    expect(run("put(missing, 'x', 1)", {})).toEqual({ x: 1 });
+    expect(run('put(settings, 3, 1)', { settings: {} })).toEqual({ 3: 1 });
+    expect(run('put(settings, missing, 1)', { settings })).toEqual(settings);
+    // A key that would reach the prototype is refused, not written.
+    const polluted = run("put({}, '__proto__', { bad: true })", {}) as Record<string, unknown>;
+    expect(Object.getPrototypeOf(polluted)).toBe(Object.prototype);
+    expect(polluted).toEqual({});
+  });
+
+  it('merge: shallow, later wins, absent never overrides', () => {
+    expect(run('merge({ a: 1, b: { x: 1 } }, { b: { y: 2 }, c: 3 }, missing, [1])', {})).toEqual({
+      a: 1,
+      b: { y: 2 },
+      c: 3,
+    });
+    expect(run('merge({ a: 1 }, { a: missing })', {})).toEqual({ a: 1 });
+    expect(run('merge()', {})).toEqual({});
+  });
+
+  it('keys and values: in code point order, absent values left out', () => {
+    const object = { b: 1, a: 2, 10: 'ten', 9: 'nine', gone: undefined };
+    expect(run('keys(object)', { object })).toEqual(['10', '9', 'a', 'b']);
+    expect(run('values(object)', { object })).toEqual(['ten', 'nine', 2, 1]);
+    expect(run('keys(missing)', {})).toEqual([]);
+    expect(run('values([1, 2])', {})).toEqual([]);
+  });
+
+  it('are core, so a declared operation may call them', () => {
+    const scope = {
+      storeNames: new Set<string>(),
+      storeMembers: new Map<string, Set<string>>(),
+      locals: null,
+      contextNames: new Set(['input']),
+      strict: true,
+      functions: 'core' as const,
+    };
+    for (const name of [
+      'slug',
+      'concat',
+      'without',
+      'insertAt',
+      'insertAfter',
+      'slice',
+      'sortBy',
+      'put',
+      'merge',
+      'keys',
+      'values',
+      'indexOf',
+    ]) {
+      expect(isCoreFunction(name)).toBe(true);
+    }
+    expect(
+      checkExpression(
+        parseExpression(
+          "sortBy(concat(without(input.a, 'x'), slice(input.b, 1)), 'k').map(r, slug(r.name)).count() + indexOf(insertAfter(insertAt(input.a, 0, 1), 1, 2), 2) + count(keys(merge(put(input.o, 'k', 1), input.p))) + count(values(input.o))",
+        ),
+        scope,
+      ),
+    ).toEqual([]);
   });
 });
 
@@ -299,5 +515,69 @@ describe('checking', () => {
 
   it('is lenient about unknown roots in a fragment', () => {
     expect(checkExpression(parseExpression('anything.at.all'), { ...scope, strict: false, locals: null })).toEqual([]);
+  });
+});
+
+describe('the core subset', () => {
+  // A host's function, registered the way a host registers one: after the core library has loaded.
+  defineFunction({
+    name: 'hostGreeting',
+    category: 'text',
+    params: ['name', 'field?'],
+    namesLocal: true,
+    doc: 'A host function, for the test.',
+    example: "hostGreeting('search')",
+    impl: ([name]) => `hello ${String(name)}`,
+  });
+
+  const scope = {
+    storeNames: new Set<string>(),
+    storeMembers: new Map<string, Set<string>>(),
+    locals: new Set(['search']),
+    contextNames: new Set(['input']),
+    strict: true,
+    hostFunctions: new Set(['calendarMonth']),
+  };
+  const check = (source: string, functions?: 'all' | 'core') =>
+    checkExpression(parseExpression(source), { ...scope, functions });
+
+  it('is every function the language defines, and none a host adds', () => {
+    for (const name of ['count', 'filter', 'find', 'distinct', 'join', 'plural', 'round', 'pick']) {
+      expect(isCoreFunction(name)).toBe(true);
+    }
+    expect(CORE_FUNCTIONS.has('hostGreeting')).toBe(false);
+    expect(getFunction('hostGreeting')).toBeDefined();
+    expect([...CORE_FUNCTIONS].every((name) => getFunction(name) !== undefined)).toBe(true);
+  });
+
+  it('cannot be redefined by a host', () => {
+    expect(() =>
+      defineFunction({ name: 'count', category: 'list', params: ['items'], doc: '', example: '', impl: () => 0 }),
+    ).toThrow(/core expression function/);
+    expect(getFunction('count')?.impl([[1, 2]], { context: {}, stores: {} })).toBe(2);
+  });
+
+  it("refuses a host function under functions: 'core', however it was registered", () => {
+    expect(check("count(input.items) > 0 && join(input.tags, ', ') != ''", 'core')).toEqual([]);
+
+    const [registered] = check("hostGreeting('search')", 'core');
+    expect(registered.severity).toBe('error');
+    expect(registered.message).toMatch(/"hostGreeting" is not a core function/);
+
+    const [source] = check('calendarMonth({})', 'core');
+    expect(source.severity).toBe('error');
+    expect(source.message).toMatch(/"calendarMonth" is not a core function/);
+
+    // The nearest name offered is a core one.
+    expect(check('cont(input.items)', 'core')[0].message).toMatch(/did you mean count\(\)/);
+  });
+
+  it('admits host functions by default', () => {
+    expect(check("hostGreeting('search')")).toEqual([]);
+    expect(check('calendarMonth({})', 'all')).toEqual([]);
+  });
+
+  it('holds a namesLocal argument to the declared locals', () => {
+    expect(check("hostGreeting('serch')")[0].message).toMatch(/names a field \$localState does not declare.*'search'/);
   });
 });

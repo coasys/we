@@ -1,0 +1,808 @@
+[
+  {
+    "name": "no board record yet",
+    "input": {
+      "board": null,
+      "columns": [
+        {
+          "id": "c-todo",
+          "slug": "todo",
+          "arranges": ["t5", "t1"]
+        },
+        {
+          "id": "c-doing",
+          "slug": "doing",
+          "title": "In progress",
+          "arranges": []
+        },
+        {
+          "id": "c-lane",
+          "title": "Thursday",
+          "arranges": ["t3"]
+        }
+      ],
+      "records": [
+        {
+          "id": "t1",
+          "status": "todo"
+        }
+      ],
+      "states": [
+        {
+          "slug": "todo",
+          "name": "To do",
+          "semantic": "open"
+        },
+        {
+          "slug": "doing",
+          "name": "Doing",
+          "semantic": "active"
+        },
+        {
+          "slug": "done",
+          "name": "Done",
+          "semantic": "done"
+        },
+        {
+          "slug": "parked",
+          "name": "Parked",
+          "semantic": "cancelled",
+          "retired": true
+        }
+      ]
+    },
+    "output": {
+      "ready": false,
+      "gathers": false,
+      "columns": [],
+      "contents": {},
+      "unplaced": [],
+      "unplacedStates": [],
+      "available": [
+        {
+          "id": "t1",
+          "status": "todo"
+        }
+      ],
+      "choices": [],
+      "unboundStates": [
+        {
+          "slug": "todo",
+          "name": "To do"
+        },
+        {
+          "slug": "doing",
+          "name": "Doing"
+        },
+        {
+          "slug": "done",
+          "name": "Done"
+        }
+      ],
+      "total": 1
+    }
+  },
+  {
+    "name": "a gathering board: bound columns, a lane, unplaced work",
+    "input": {
+      "board": {
+        "id": "b",
+        "children": ["c-todo", "c-doing", "c-lane"],
+        "gathers": "space"
+      },
+      "columns": [
+        {
+          "id": "c-todo",
+          "slug": "todo",
+          "arranges": ["t5", "t1"]
+        },
+        {
+          "id": "c-doing",
+          "slug": "doing",
+          "title": "In progress",
+          "arranges": []
+        },
+        {
+          "id": "c-lane",
+          "title": "Thursday",
+          "arranges": ["t3"]
+        }
+      ],
+      "records": [
+        {
+          "id": "t1",
+          "status": "todo"
+        },
+        {
+          "id": "t2",
+          "status": "doing"
+        },
+        {
+          "id": "t3",
+          "status": "done"
+        },
+        {
+          "id": "t4",
+          "status": "archived"
+        },
+        {
+          "id": "t5",
+          "status": "todo"
+        }
+      ],
+      "states": [
+        {
+          "slug": "todo",
+          "name": "To do",
+          "semantic": "open"
+        },
+        {
+          "slug": "doing",
+          "name": "Doing",
+          "semantic": "active"
+        },
+        {
+          "slug": "done",
+          "name": "Done",
+          "semantic": "done"
+        },
+        {
+          "slug": "parked",
+          "name": "Parked",
+          "semantic": "cancelled",
+          "retired": true
+        }
+      ]
+    },
+    "output": {
+      "ready": true,
+      "gathers": true,
+      "columns": [
+        {
+          "id": "c-todo",
+          "slug": "todo",
+          "arranges": ["t5", "t1"]
+        },
+        {
+          "id": "c-doing",
+          "slug": "doing",
+          "title": "In progress",
+          "arranges": []
+        },
+        {
+          "id": "c-lane",
+          "title": "Thursday",
+          "arranges": ["t3"]
+        }
+      ],
+      "contents": {
+        "c-todo": {
+          "id": "c-todo",
+          "slug": "todo",
+          "lane": false,
+          "label": "To do",
+          "semantic": "open",
+          "arranged": [
+            {
+              "id": "t5",
+              "status": "todo"
+            },
+            {
+              "id": "t1",
+              "status": "todo"
+            }
+          ],
+          "unarranged": [],
+          "count": 2,
+          "order": ["t5", "t1"]
+        },
+        "c-doing": {
+          "id": "c-doing",
+          "slug": "doing",
+          "lane": false,
+          "label": "In progress",
+          "semantic": "active",
+          "arranged": [],
+          "unarranged": [
+            {
+              "id": "t2",
+              "status": "doing"
+            }
+          ],
+          "count": 1,
+          "order": ["t2"]
+        },
+        "c-lane": {
+          "id": "c-lane",
+          "slug": "",
+          "lane": true,
+          "label": "Thursday",
+          "semantic": "",
+          "arranged": [
+            {
+              "id": "t3",
+              "status": "done"
+            }
+          ],
+          "unarranged": [],
+          "count": 1,
+          "order": ["t3"]
+        }
+      },
+      "unplaced": [
+        {
+          "id": "t4",
+          "status": "archived"
+        }
+      ],
+      "unplacedStates": [
+        {
+          "slug": "archived",
+          "name": "archived"
+        }
+      ],
+      "available": [],
+      "choices": [
+        {
+          "id": "c-todo",
+          "label": "To do"
+        },
+        {
+          "id": "c-doing",
+          "label": "In progress"
+        },
+        {
+          "id": "c-lane",
+          "label": "Thursday"
+        }
+      ],
+      "unboundStates": [
+        {
+          "slug": "done",
+          "name": "Done"
+        }
+      ],
+      "total": 5
+    }
+  },
+  {
+    "name": "a made board draws only what it arranges, itself included",
+    "input": {
+      "board": {
+        "id": "b",
+        "children": ["c-todo", "c-doing"],
+        "arranges": ["t4"]
+      },
+      "columns": [
+        {
+          "id": "c-todo",
+          "slug": "todo",
+          "arranges": ["t5", "t1"]
+        },
+        {
+          "id": "c-doing",
+          "slug": "doing",
+          "title": "In progress",
+          "arranges": []
+        },
+        {
+          "id": "c-lane",
+          "title": "Thursday",
+          "arranges": ["t3"]
+        }
+      ],
+      "records": [
+        {
+          "id": "t1",
+          "status": "todo"
+        },
+        {
+          "id": "t2",
+          "status": "doing"
+        },
+        {
+          "id": "t3",
+          "status": "done"
+        },
+        {
+          "id": "t4",
+          "status": "archived"
+        },
+        {
+          "id": "t5",
+          "status": "todo"
+        }
+      ],
+      "states": [
+        {
+          "slug": "todo",
+          "name": "To do",
+          "semantic": "open"
+        },
+        {
+          "slug": "doing",
+          "name": "Doing",
+          "semantic": "active"
+        },
+        {
+          "slug": "done",
+          "name": "Done",
+          "semantic": "done"
+        },
+        {
+          "slug": "parked",
+          "name": "Parked",
+          "semantic": "cancelled",
+          "retired": true
+        }
+      ]
+    },
+    "output": {
+      "ready": true,
+      "gathers": false,
+      "columns": [
+        {
+          "id": "c-todo",
+          "slug": "todo",
+          "arranges": ["t5", "t1"]
+        },
+        {
+          "id": "c-doing",
+          "slug": "doing",
+          "title": "In progress",
+          "arranges": []
+        }
+      ],
+      "contents": {
+        "c-todo": {
+          "id": "c-todo",
+          "slug": "todo",
+          "lane": false,
+          "label": "To do",
+          "semantic": "open",
+          "arranged": [
+            {
+              "id": "t5",
+              "status": "todo"
+            },
+            {
+              "id": "t1",
+              "status": "todo"
+            }
+          ],
+          "unarranged": [],
+          "count": 2,
+          "order": ["t5", "t1"]
+        },
+        "c-doing": {
+          "id": "c-doing",
+          "slug": "doing",
+          "lane": false,
+          "label": "In progress",
+          "semantic": "active",
+          "arranged": [],
+          "unarranged": [],
+          "count": 0,
+          "order": []
+        }
+      },
+      "unplaced": [
+        {
+          "id": "t4",
+          "status": "archived"
+        }
+      ],
+      "unplacedStates": [
+        {
+          "slug": "archived",
+          "name": "archived"
+        }
+      ],
+      "available": [
+        {
+          "id": "t2",
+          "status": "doing"
+        },
+        {
+          "id": "t3",
+          "status": "done"
+        }
+      ],
+      "choices": [
+        {
+          "id": "c-todo",
+          "label": "To do"
+        },
+        {
+          "id": "c-doing",
+          "label": "In progress"
+        }
+      ],
+      "unboundStates": [
+        {
+          "slug": "done",
+          "name": "Done"
+        }
+      ],
+      "total": 5
+    }
+  },
+  {
+    "name": "a stale hint falls back to the column the state names",
+    "input": {
+      "board": {
+        "id": "b",
+        "children": ["c-todo", "c-doing"],
+        "gathers": "space"
+      },
+      "columns": [
+        {
+          "id": "c-todo",
+          "slug": "todo",
+          "arranges": ["t2"]
+        },
+        {
+          "id": "c-doing",
+          "slug": "doing",
+          "arranges": []
+        }
+      ],
+      "records": [
+        {
+          "id": "t2",
+          "status": "doing"
+        }
+      ],
+      "states": [
+        {
+          "slug": "todo",
+          "name": "To do",
+          "semantic": "open"
+        },
+        {
+          "slug": "doing",
+          "name": "Doing",
+          "semantic": "active"
+        },
+        {
+          "slug": "done",
+          "name": "Done",
+          "semantic": "done"
+        },
+        {
+          "slug": "parked",
+          "name": "Parked",
+          "semantic": "cancelled",
+          "retired": true
+        }
+      ]
+    },
+    "output": {
+      "ready": true,
+      "gathers": true,
+      "columns": [
+        {
+          "id": "c-todo",
+          "slug": "todo",
+          "arranges": ["t2"]
+        },
+        {
+          "id": "c-doing",
+          "slug": "doing",
+          "arranges": []
+        }
+      ],
+      "contents": {
+        "c-todo": {
+          "id": "c-todo",
+          "slug": "todo",
+          "lane": false,
+          "label": "To do",
+          "semantic": "open",
+          "arranged": [],
+          "unarranged": [],
+          "count": 0,
+          "order": []
+        },
+        "c-doing": {
+          "id": "c-doing",
+          "slug": "doing",
+          "lane": false,
+          "label": "Doing",
+          "semantic": "active",
+          "arranged": [],
+          "unarranged": [
+            {
+              "id": "t2",
+              "status": "doing"
+            }
+          ],
+          "count": 1,
+          "order": ["t2"]
+        }
+      },
+      "unplaced": [],
+      "unplacedStates": [],
+      "available": [],
+      "choices": [
+        {
+          "id": "c-todo",
+          "label": "To do"
+        },
+        {
+          "id": "c-doing",
+          "label": "Doing"
+        }
+      ],
+      "unboundStates": [
+        {
+          "slug": "done",
+          "name": "Done"
+        }
+      ],
+      "total": 1
+    }
+  },
+  {
+    "name": "a dangling child and hydrated children",
+    "input": {
+      "board": {
+        "id": "b",
+        "children": [
+          {
+            "id": "c-todo"
+          },
+          "gone"
+        ],
+        "gathers": "space"
+      },
+      "columns": [
+        {
+          "id": "c-todo",
+          "slug": "todo",
+          "arranges": ["t5", "t1"]
+        },
+        {
+          "id": "c-doing",
+          "slug": "doing",
+          "title": "In progress",
+          "arranges": []
+        },
+        {
+          "id": "c-lane",
+          "title": "Thursday",
+          "arranges": ["t3"]
+        }
+      ],
+      "records": [
+        {
+          "id": "t1",
+          "status": "todo"
+        }
+      ],
+      "states": [
+        {
+          "slug": "todo",
+          "name": "To do",
+          "semantic": "open"
+        },
+        {
+          "slug": "doing",
+          "name": "Doing",
+          "semantic": "active"
+        },
+        {
+          "slug": "done",
+          "name": "Done",
+          "semantic": "done"
+        },
+        {
+          "slug": "parked",
+          "name": "Parked",
+          "semantic": "cancelled",
+          "retired": true
+        }
+      ]
+    },
+    "output": {
+      "ready": true,
+      "gathers": true,
+      "columns": [
+        {
+          "id": "c-todo",
+          "slug": "todo",
+          "arranges": ["t5", "t1"]
+        }
+      ],
+      "contents": {
+        "c-todo": {
+          "id": "c-todo",
+          "slug": "todo",
+          "lane": false,
+          "label": "To do",
+          "semantic": "open",
+          "arranged": [
+            {
+              "id": "t1",
+              "status": "todo"
+            }
+          ],
+          "unarranged": [],
+          "count": 1,
+          "order": ["t1"]
+        }
+      },
+      "unplaced": [],
+      "unplacedStates": [],
+      "available": [],
+      "choices": [
+        {
+          "id": "c-todo",
+          "label": "To do"
+        }
+      ],
+      "unboundStates": [
+        {
+          "slug": "doing",
+          "name": "Doing"
+        },
+        {
+          "slug": "done",
+          "name": "Done"
+        }
+      ],
+      "total": 1
+    }
+  },
+  {
+    "name": "statuses and orders substitute for what is stored",
+    "input": {
+      "board": {
+        "id": "b",
+        "children": ["c-todo", "c-doing"],
+        "gathers": "space"
+      },
+      "columns": [
+        {
+          "id": "c-todo",
+          "slug": "todo",
+          "arranges": ["t5", "t1"]
+        },
+        {
+          "id": "c-doing",
+          "slug": "doing",
+          "title": "In progress",
+          "arranges": []
+        },
+        {
+          "id": "c-lane",
+          "title": "Thursday",
+          "arranges": ["t3"]
+        }
+      ],
+      "records": [
+        {
+          "id": "t1",
+          "status": "todo"
+        },
+        {
+          "id": "t2",
+          "status": "doing"
+        },
+        {
+          "id": "t5",
+          "status": "todo"
+        }
+      ],
+      "states": [
+        {
+          "slug": "todo",
+          "name": "To do",
+          "semantic": "open"
+        },
+        {
+          "slug": "doing",
+          "name": "Doing",
+          "semantic": "active"
+        },
+        {
+          "slug": "done",
+          "name": "Done",
+          "semantic": "done"
+        },
+        {
+          "slug": "parked",
+          "name": "Parked",
+          "semantic": "cancelled",
+          "retired": true
+        }
+      ],
+      "statuses": {
+        "t1": "doing"
+      },
+      "orders": {
+        "b": {
+          "children": ["c-doing", "c-todo"]
+        },
+        "c-doing": {
+          "arranges": ["t1", "t2"]
+        }
+      }
+    },
+    "output": {
+      "ready": true,
+      "gathers": true,
+      "columns": [
+        {
+          "id": "c-doing",
+          "slug": "doing",
+          "title": "In progress",
+          "arranges": []
+        },
+        {
+          "id": "c-todo",
+          "slug": "todo",
+          "arranges": ["t5", "t1"]
+        }
+      ],
+      "contents": {
+        "c-doing": {
+          "id": "c-doing",
+          "slug": "doing",
+          "lane": false,
+          "label": "In progress",
+          "semantic": "active",
+          "arranged": [
+            {
+              "id": "t1",
+              "status": "todo"
+            },
+            {
+              "id": "t2",
+              "status": "doing"
+            }
+          ],
+          "unarranged": [],
+          "count": 2,
+          "order": ["t1", "t2"]
+        },
+        "c-todo": {
+          "id": "c-todo",
+          "slug": "todo",
+          "lane": false,
+          "label": "To do",
+          "semantic": "open",
+          "arranged": [
+            {
+              "id": "t5",
+              "status": "todo"
+            }
+          ],
+          "unarranged": [],
+          "count": 1,
+          "order": ["t5"]
+        }
+      },
+      "unplaced": [],
+      "unplacedStates": [],
+      "available": [],
+      "choices": [
+        {
+          "id": "c-doing",
+          "label": "In progress"
+        },
+        {
+          "id": "c-todo",
+          "label": "To do"
+        }
+      ],
+      "unboundStates": [
+        {
+          "slug": "done",
+          "name": "Done"
+        }
+      ],
+      "total": 3
+    }
+  }
+]

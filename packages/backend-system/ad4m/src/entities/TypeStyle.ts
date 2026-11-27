@@ -63,13 +63,13 @@ export class TypeStyle extends Ad4mModel {
   color: string = '';
 
   @Property({ through: 'we://type_display' })
-  display: string = '';
+  display?: unknown;
 
-  /** The form control a field uses here, by field name — JSON. Empty is unset. */
+  /** The form control a field uses here, as an object by field name. Absent is unset. */
   @Property({ through: 'we://type_controls' })
-  controls: string = '';
+  controls?: unknown;
 
-  /** The fields a form for this type asks for, in order — JSON list. Empty is unset. */
+  /** The fields a form for this type asks for, as a list in order. Absent is unset. */
   @Property({ through: 'we://type_authoring' })
-  authoring: string = '';
+  authoring?: unknown;
 }

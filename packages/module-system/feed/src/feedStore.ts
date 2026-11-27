@@ -79,7 +79,7 @@ export interface FeedDeps {
    * Write a message under `holder` — the store's own, so typed lines and feed messages are written
    * one way. Resolves with the new record's id, or `null` when there was nowhere to write it.
    */
-  write: (holder: FeedHolder, text: string, marks?: string) => Promise<string | null>;
+  write: (holder: FeedHolder, text: string, marks?: unknown) => Promise<string | null>;
 }
 
 /** What a message is written under: the collection it is a child of, or the line it answers. */
@@ -318,7 +318,7 @@ export function createFeed(deps: FeedDeps) {
    * resolves, so a read matches it by that id and never before: one that lands first leaves it be. A
    * failed write takes it down and says so to whoever sent it.
    */
-  async function post(holder: FeedHolder, text: string, marks?: string, replyTo: FeedLine['replyTo'] = null) {
+  async function post(holder: FeedHolder, text: string, marks?: unknown, replyTo: FeedLine['replyTo'] = null) {
     const words = text.trim();
     // Strictly later than the last, so two sends in one millisecond keep the order they were made in.
     lastSentAt = Math.max(Date.now(), lastSentAt + 1);
@@ -332,7 +332,7 @@ export function createFeed(deps: FeedDeps) {
       updatedAt: at,
       author: deps.selfId?.() ?? '',
       text: words,
-      marks: marks ?? '',
+      marks: Array.isArray(marks) ? marks : [],
       source: TYPED,
       call: '',
       callTitle: '',
@@ -566,7 +566,7 @@ export function createFeed(deps: FeedDeps) {
       'Re-anchors the Feed at the newest message.',
       { ambient: true },
     ),
-    sendToFeed: action(async (text: string, marks?: string) => {
+    sendToFeed: action(async (text: string, marks?: unknown) => {
       const space = root();
       if (!space || !text?.trim()) return;
       await post({ id: space, relation: 'children', entity: 'CollectionBlock' }, text, marks);

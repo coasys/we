@@ -10,13 +10,13 @@ import { pollOptions, tally } from './functions';
 import { createModule, pollsModule } from './index';
 
 describe('the polls module', () => {
-  it('is backend- and framework-agnostic, and asks for one kernel', () => {
+  it('is backend- and framework-agnostic, and asks for no kernel', () => {
     expect(pollsModule.manifest.requires?.backends).toBeUndefined();
     expect(pollsModule.manifest.requires?.frameworks).toBeUndefined();
-    expect(pollsModule.manifest.requires?.kernels).toEqual(['records']);
+    expect(pollsModule.manifest.requires?.kernels).toBeUndefined();
     expect(checkModuleCompatibility(pollsModule, { backend: 'inmemory', framework: 'react' }).compatible).toBe(true);
     expect(checkModuleCompatibility(pollsModule, { backend: 'ad4m', framework: 'solid', kernels: [] }).compatible).toBe(
-      false,
+      true,
     );
   });
 
@@ -38,7 +38,7 @@ describe('the polls module', () => {
   });
 
   it('is described to a person as storage in the space and nothing else alarming', () => {
-    expect(moduleCapabilities(pollsModule)).toEqual(['kernel:records', 'storage:space']);
+    expect(moduleCapabilities(pollsModule)).toEqual(['storage:space']);
   });
 
   it('publishes what its card reads and keeps nothing hidden it does not need to', () => {

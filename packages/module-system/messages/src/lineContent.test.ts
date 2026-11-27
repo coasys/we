@@ -29,11 +29,11 @@ describe('lineContent', () => {
       { start: 0, end: 5, type: 'mention', did: 'did:data' },
       { start: 10, end: 23, type: 'link', href: 'https://elsewhere.org' },
     ];
-    expect(block({ text, marks: JSON.stringify(marks) })!.marks).toEqual(marks);
+    expect(block({ text, marks })!.marks).toEqual(marks);
   });
 
-  it('draws a line whose marks do not parse, without them', () => {
-    expect(block({ text: 'hello', marks: '{not json' })!.marks).toEqual([]);
+  it('draws a line whose marks are not marks, without them', () => {
+    expect(block({ text: 'hello', marks: [{ start: 0 }] })!.marks).toEqual([]);
   });
 });
 
@@ -41,7 +41,7 @@ describe('lineContent reads a typed line as markdown', () => {
   it('draws the markdown, keeping the writer’s mention and linking bare URLs', () => {
     const text = '## Nightly\n\n- `sfu`: real, see https://x.org/1944.\n\n@Data the log is attached';
     const at = text.indexOf('@Data');
-    const marks = JSON.stringify([{ start: at, end: at + 5, type: 'mention', did: 'did:data' }]);
+    const marks = [{ start: at, end: at + 5, type: 'mention', did: 'did:data' }];
     const out = lineContent({ text, marks, source: 'typed' }) as Block[];
     expect(out.map((b) => b.text)).toEqual([
       'Nightly',

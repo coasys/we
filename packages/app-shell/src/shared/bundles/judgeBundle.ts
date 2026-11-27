@@ -12,9 +12,11 @@
  *
  * Pure apart from what is passed in, so the decisions are testable without an app.
  */
-import { validateManifest } from '@we/backend-shared';
+import { type EntitySchema, validateManifest } from '@we/backend-shared';
+import { effectSummary, getOperation, validateOperations } from '@we/entities';
 import { type Bundle, bundleThemes, type SchemaNode, type TemplateSchema } from '@we/schema-shared';
 
+import { operationSurface } from '../registries/operationGroups';
 import { type CapabilityGroup, CHROME_TIER, SPACE_TIER } from '../registries/templateSurface';
 import { acceptTemplate, describeCapabilities } from '../templateAcceptance';
 
@@ -29,11 +31,12 @@ export interface BundleJudgeDeps {
   /** What a module is called, for the screen. */
   moduleName(id: string): string;
   /**
-   * The names a bundle's record types may refer to and must not take: WE's own vocabulary. Not a
-   * space's — an install writes to a person's library, and whether a record type fits a space is
-   * asked of each space as it is set up (`shapeStore.addRecordTypes`).
+   * WE's own vocabulary: the names a bundle's record types may refer to and must not take, and the
+   * entities its operations may read and write besides its own. Not a space's — an install writes to
+   * a person's library, and whether a record type fits a space is asked of each space as it is set
+   * up (`shapeStore.addRecordTypes`).
    */
-  knownEntities: readonly string[];
+  vocabulary: Readonly<Record<string, EntitySchema>>;
 }
 
 export interface BundleJudgement {
@@ -49,6 +52,8 @@ export interface BundleJudgement {
     pages: string[];
     themes: string[];
     recordTypes: string[];
+    /** Its declared operations, by the name they install under (`<bundle id>.<name>`). */
+    operations: string[];
     /** The workflows its records move through, by name. */
     workflows: string[];
     /** The name it goes by, when it brings its own brand. */
@@ -100,8 +105,25 @@ export function judgeBundle(bundle: Bundle, deps: BundleJudgeDeps): BundleJudgem
   const blocked = new Set<string>();
   const modules = new Set<string>();
 
+  /*
+    Its own operations are not registered until it is installed, so a template of its invoking one
+    is classified here, from the same effect summary the registry would read.
+  */
+  const ownOperations = bundle.operations ?? {};
+  const ownLookup = (name: string) =>
+    name.startsWith(`${bundle.id}.`) ? ownOperations[name.slice(bundle.id.length + 1)] : getOperation(name);
+  const ownSurface = (name: string) => {
+    if (!name.startsWith(`${bundle.id}.`)) return undefined;
+    const definition = ownLookup(name);
+    return definition ? operationSurface(effectSummary(definition, { operations: ownLookup })) : undefined;
+  };
+
   const judge = (template: TemplateSchema, grants: readonly CapabilityGroup[], label: string) => {
-    const accepted = acceptTemplate(template, { origin: `the bundle "${bundle.name}"`, grants });
+    const accepted = acceptTemplate(template, {
+      origin: `the bundle "${bundle.name}"`,
+      grants,
+      operation: ownSurface,
+    });
     if (!accepted.schema) {
       refusals.push(
         `${label} is not a template this app can draw — ${accepted.refusals.slice(1, 2).join('') || 'its structure is invalid'}`,
@@ -137,20 +159,44 @@ export function judgeBundle(bundle: Bundle, deps: BundleJudgeDeps): BundleJudgem
 
   // A record type is validated against the core vocabulary and the bundle's other record types — so
   // a sighting may point at a species the same bundle brings.
+  const known = Object.keys(deps.vocabulary);
   const recordNames = (bundle.recordTypes ?? []).map((type) => type.name);
   for (const type of bundle.recordTypes ?? []) {
-    const clash = deps.knownEntities.includes(type.name);
+    const clash = known.includes(type.name);
     if (clash) {
       refusals.push(`Its record type "${type.name}" has the name of one WE already has`);
       continue;
     }
     const gate = validateManifest(type.manifest, {
-      externalEntities: [...deps.knownEntities, ...recordNames.filter((name) => name !== type.name)],
+      externalEntities: [...known, ...recordNames.filter((name) => name !== type.name)],
     });
     if (!gate.valid)
       refusals.push(
         `Its record type "${type.name}" is not a valid definition — ${gate.errors[0]?.path}: ${gate.errors[0]?.message}`,
       );
+  }
+
+  /*
+    Its operations, as one manifest over WE's vocabulary and its own record types, under the
+    namespace an install gives them — its id — so a call to a sibling resolves and one to another
+    app's is not there to be reached. What they write counts towards what the person agrees to: the
+    group their writes need, as a store action's would.
+  */
+  const operations = ownOperations;
+  if (Object.keys(operations).length) {
+    const own = Object.fromEntries(
+      (bundle.recordTypes ?? []).flatMap((type) => Object.entries(type.manifest.entities)),
+    );
+    const lookup = ownLookup;
+    const problems = validateOperations(
+      { version: bundle.version, entities: own, operations },
+      { namespace: bundle.id, external: deps.vocabulary, operations: lookup },
+    );
+    for (const problem of problems.slice(0, 3))
+      refusals.push(`Its operations are not valid — ${problem.path}: ${problem.message}`);
+    if (!problems.length)
+      for (const definition of Object.values(operations))
+        groups.add(operationSurface(effectSummary(definition, { operations: lookup })).group);
   }
 
   const needed = [...modules].sort();
@@ -164,6 +210,7 @@ export function judgeBundle(bundle: Bundle, deps: BundleJudgeDeps): BundleJudgem
       pages: (bundle.pages ?? []).map((t) => t.meta?.name ?? t.id),
       themes: bundleThemes(bundle).map((theme) => theme.name),
       recordTypes: recordNames,
+      operations: Object.keys(operations).map((name) => `${bundle.id}.${name}`),
       workflows: (bundle.workflows ?? []).map((workflow) => workflow.name),
       ...(bundle.brand ? { brand: bundle.brand.name } : {}),
       ...(bundle.bootScreen ? { bootScreen: true } : {}),

@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { ContentBlock, TextContentBlock } from '../src/content';
 import { collectKeys, fromPortableText, spansFromStandoff, standoffFromSpans, toPortableText } from '../src/content';
-import { cpLength, cpToUtf16, normalizeMarks, parseMarks, serializeMarks, shiftMarks, utf16ToCp } from '../src/marks';
+import { cpLength, cpToUtf16, marksField, marksOf, normalizeMarks, shiftMarks, utf16ToCp } from '../src/marks';
 import { decodeEditorState, encodeBase64Utf8 } from '../src/utils';
 
 describe('code point arithmetic', () => {
@@ -46,13 +46,13 @@ describe('marks', () => {
     ]);
   });
 
-  it('round-trips through the stored string and stores nothing for none', () => {
-    expect(serializeMarks([])).toBe('');
-    expect(serializeMarks(undefined)).toBe('');
+  it('writes the list as the field and no value for none, and reads back only marks', () => {
+    expect(marksField([])).toBe('');
+    expect(marksField(undefined)).toBe('');
     const marks = [{ start: 1, end: 2, type: 'link', href: 'https://x' }];
-    expect(parseMarks(serializeMarks(marks))).toEqual(marks);
-    expect(parseMarks('not json')).toEqual([]);
-    expect(parseMarks('')).toEqual([]);
+    expect(marksOf(marksField(marks))).toEqual(marks);
+    expect(marksOf([{ type: 'strong' }, ...marks, 'x'])).toEqual(marks);
+    expect(marksOf(undefined)).toEqual([]);
   });
 
   it('shifts marks around an insertion and a removal', () => {

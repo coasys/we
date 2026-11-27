@@ -6,7 +6,8 @@
   "scripts": {
     "build:steps": "tsup",
     "build": "we-build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "record:operations": "tsx scripts/recordOperationVectors.ts"
   },
   "types": "dist/index.d.ts",
   "exports": {

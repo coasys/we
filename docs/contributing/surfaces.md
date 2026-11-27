@@ -259,11 +259,11 @@ comprehensions — is closed and is not a contribution surface; what grows is th
 written, so removing one is breaking. Pure and total only: wrong-typed input answers with the empty
 value of its kind, never a throw. Three real uses before adding one, as for a component.
 
-- **Lives in** `packages/schema-system/shared/src/expressions/functions.ts`
+- **Lives in** `packages/schema-system/expressions/src/functions.ts`
 - **Conventions** [schema-system/CONVENTIONS.md](../../packages/schema-system/CONVENTIONS.md) — "Adding a function to the expression library"
 - **Copy** `plural` in `functions.ts`
 - **Register** `defineFunction({ name, category, params, doc, example, impl })` — the registry is the declaration; the validator, the evaluator and the generated context all read it
-- **Verify** `pnpm --filter @we/schema-shared test`, then `generate-context` (the library table in the schema reference comes from the registry)
+- **Verify** `pnpm --filter @we/expressions test`, then `generate-context` (the library table in the schema reference comes from the registry)
 
 A function this deployment alone needs is a **host source** instead — registered in
 `packages/app-shell/src/shared/sources/index.ts`, catalogued under "Host functions" in the generated

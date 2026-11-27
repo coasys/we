@@ -1,4 +1,4 @@
-import type { EntityStatic, RecordInstance } from '@we/backend-shared';
+import type { EntitySchema, EntityStatic, RecordInstance } from '@we/backend-shared';
 
 /** Generic component type — avoids coupling the registry to a specific framework. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -17,6 +17,11 @@ export interface BlockRegistration {
   model: BlockEntityStatic;
   /** The entity's manifest name — how the persistence layer looks up field facts (file storage, property sets). */
   entity: string;
+  /**
+   * The entity's declared schema, for one outside the core vocabulary — a module's block. The
+   * persistence layer reads which fields to write from it; a core block's comes from the core manifest.
+   */
+  schema?: EntitySchema;
   /** Pure display component — props only, no onChange. Used in read-only mode and schema views. */
   display?: BlockComponent;
   /** Pure input component — receives block props + onChange + isSelected. Used in edit mode. */

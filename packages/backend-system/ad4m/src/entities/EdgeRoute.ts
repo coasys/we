@@ -62,7 +62,7 @@ export class EdgeRoute extends Ad4mModel {
   targetAnchor: string = '';
 
   /**
-   * Points the line is bent through, as JSON: `[{ along, across }, …]`, in order.
+   * Points the line is bent through, as a list: `[{ along, across }, …]`, in order.
    *
    * **In the edge's own frame, not the world.** `along` runs from the source (0) to the target
    * (1) and `across` is perpendicular in the same units, so a bend keeps its proportions when
@@ -79,7 +79,7 @@ export class EdgeRoute extends Ad4mModel {
    * rather than a migration.
    */
   @Property({ through: 'we://route_points' })
-  points: string = '';
+  points?: unknown;
 
   /**
    * The connection this routes. Untyped, because what a board draws lines between is the

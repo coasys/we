@@ -24,7 +24,7 @@
  */
 import type { EntityManifestEntry, SchemaPort } from '@we/backend-shared';
 import { type BlockEntityStatic, registerBlock, unregisterBlock } from '@we/block-shared';
-import { unregisterEntity } from '@we/entities';
+import { registerOperations, unregisterEntity, unregisterOperations } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import {
   type Activity,
@@ -273,6 +273,7 @@ function registerModuleBlocks(definition: ModuleDefinition, compiled: Record<str
       nodeTypes: [moduleBlockNodeType(block)],
       model: model as BlockEntityStatic,
       entity: block.entity,
+      schema: definition.contributes?.entities?.manifest.entities[block.entity],
       ...(input ? { input: input as (props: unknown) => unknown } : {}),
     });
   }
@@ -593,6 +594,19 @@ export const moduleRegistry = {
     modules.set(id, { definition, store, disposers, panels });
     if (store) moduleStores[id] = store;
 
+    /*
+      Its declared operations, under its id — the namespace is the host's to give, so a module can
+      only bring operations under the name it registered as. `lintModule` ran the static checks above.
+      Its entities go in with them even when it declares no operations: a block type it brings is
+      then one any operation's `{ category: 'blockable' }` admits, so a post can hold it.
+    */
+    const declaredManifest = contributes?.entities?.manifest;
+    if (declaredManifest)
+      registerOperations(id, declaredManifest.operations, {
+        version: declaredManifest.version,
+        entities: declaredManifest.entities,
+      });
+
     const holds = contributes?.holds;
     for (const [index, slot] of (contributes?.slots ?? []).entries()) {
       slotRegistry.register({ ...slot, node: gateOnSpace(id, slot.node, holds), id: `${id}:${index}` });
@@ -705,6 +719,7 @@ export const moduleRegistry = {
     for (const entityName of Object.keys(contributes?.entities?.manifest.entities ?? {})) unregisterEntity(entityName);
     for (const block of contributes?.blocks ?? []) unregisterBlock(moduleBlockNodeType(block));
     compiledEntities.delete(id);
+    unregisterOperations(id);
     delete moduleStores[id];
     modules.delete(id);
 

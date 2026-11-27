@@ -16,7 +16,7 @@
  * same words (`rebaseMarks`), and the links follow: mend a line and leave "@Ann" alone, and Ann is
  * still mentioned; edit her name away, and she is not.
  */
-import { mentionChanges, mentionedDids, parseMarks, rebaseMarks, serializeMarks } from '@we/block-shared';
+import { marksField, marksOf, mentionChanges, mentionedDids, rebaseMarks } from '@we/block-shared';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 
 /** A line's text field, which is a string wherever it is set. */
@@ -44,7 +44,7 @@ export async function linkNewMentions(
   fields: Record<string, unknown>,
 ): Promise<void> {
   if (!id || !carriesMentions(entity)) return;
-  for (const did of mentionedDids(parseMarks(fields.marks))) {
+  for (const did of mentionedDids(marksOf(fields.marks))) {
     await Model.addRelation(dataset, id, 'mentions', did);
   }
 }
@@ -66,11 +66,10 @@ export async function prepareMentionUpdate(
   const current = await Model.findOne(dataset, { where: { id } }).catch(() => null);
   if (!current) return nothing;
 
-  const before = parseMarks(current.marks);
+  const before = marksOf(current.marks);
   const marks =
-    'marks' in fields ? parseMarks(fields.marks) : rebaseMarks(textOf(current.text), textOf(fields.text), before);
-  const next =
-    'marks' in fields || marks.length !== before.length ? { ...fields, marks: serializeMarks(marks) } : fields;
+    'marks' in fields ? marksOf(fields.marks) : rebaseMarks(textOf(current.text), textOf(fields.text), before);
+  const next = 'marks' in fields || marks.length !== before.length ? { ...fields, marks: marksField(marks) } : fields;
 
   const linked = Array.isArray(current.mentions) ? (current.mentions as unknown[]).map(String) : [];
   const { add, remove } = mentionChanges(linked, mentionedDids(marks));

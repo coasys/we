@@ -204,6 +204,13 @@ export interface RecordsKernel {
     target?: DatasetTarget,
   ) => () => void;
   /**
+   * The subject of the thread a response to this record joins, and its entity — the record itself,
+   * or, when it is itself a response, the subject of the thread it is in. Null when it cannot be
+   * read. For a module running `core.thread`, whose link needs the subject's entity, which only a
+   * read can say.
+   */
+  threadSubject: (id: string, target?: DatasetTarget) => Promise<{ id: string; entity: string } | null>;
+  /**
    * Hear about a post written into the space on screen from somewhere else — something dragged in
    * and copied or quoted. Returns the unsubscribe.
    *
@@ -262,6 +269,12 @@ export interface AgentDataKernel {
   update: (entity: string, id: string, fields: Record<string, unknown>) => Promise<void>;
   /** Delete one record. Irreversible, and only ever this agent's own. */
   remove: (entity: string, id: string) => Promise<void>;
+  /**
+   * Run a declared operation in the personal space — the module's own (`pocket.gather`) or WE's —
+   * as this agent, in one transaction, and answer with what it returns. Rejects with the runner's
+   * error (`class`, `code`, `message`). Like every write here, it cannot reach a space.
+   */
+  run: (name: string, args?: Record<string, unknown>) => Promise<unknown>;
   /**
    * Composed documents of this agent's own — a note is a post in the personal space. `ref` in what
    * `create` returns names the personal space, which means something only on this agent's machine:

@@ -122,23 +122,20 @@ export function normalizeMarks(marks: readonly StandoffMark[] | undefined, textL
 }
 
 /**
- * The stored form of a block's marks — a JSON array, or the empty string for none. Empty rather
- * than `'[]'` so an unmarked block writes no link at all, which is what "no marks" should cost.
+ * What a block's `marks` field is written as: the list, or `''` — no value — for none. No value
+ * rather than an empty list, so an unmarked block stores nothing, which is what "no marks" should
+ * cost, and an edit that removes the last mark clears the field.
  */
-export function serializeMarks(marks: readonly StandoffMark[] | undefined): string {
-  return marks && marks.length ? JSON.stringify(marks) : '';
+export function marksField(marks: readonly StandoffMark[] | undefined): StandoffMark[] | '' {
+  return marks && marks.length ? [...marks] : '';
 }
 
-/** The inverse of {@link serializeMarks}; tolerant of anything that is not a mark array. */
-export function parseMarks(stored: unknown): StandoffMark[] {
-  if (Array.isArray(stored)) return stored.filter(isMarkLike);
-  if (typeof stored !== 'string' || !stored.trim()) return [];
-  try {
-    const parsed: unknown = JSON.parse(stored);
-    return Array.isArray(parsed) ? parsed.filter(isMarkLike) : [];
-  } catch {
-    return [];
-  }
+/**
+ * The marks a record's `marks` field holds. The field is a value written by whoever wrote the
+ * record, so anything in it that is not a mark is left out rather than trusted.
+ */
+export function marksOf(value: unknown): StandoffMark[] {
+  return Array.isArray(value) ? value.filter(isMarkLike) : [];
 }
 
 function isMarkLike(value: unknown): value is StandoffMark {

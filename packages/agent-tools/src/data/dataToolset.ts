@@ -15,12 +15,28 @@
  *   record into a collection in the order it keeps. A backend's generic tools can make each link
  *   these make, but not know which links a reply needs.
  *
+ * - **Declared operations** — `list_operations` and `run_operation`: the writes WE (or a module, or
+ *   an installed app) has declared as one transaction, with what each may write worked out from its
+ *   definition. What a vote or a board takes is WE's convention, and the definition is where it is
+ *   written down, so an agent runs it rather than reassembling it from single records.
+ *
  * App configuration is left out on purpose: the person's settings, templates and themes (which have
  * tools of their own), and who may do what in the space.
  */
 import { type EntityManifestEntry, type EntityManifestProperty, manifestEntries } from '@we/backend-shared';
-import { createBlocks, markdownToBlocks } from '@we/block-shared';
-import { completeResponse, getEntityForDataset, withInterpretationDefaults } from '@we/entities';
+import { markdownToBlocks, writePost as writePostAs } from '@we/block-shared';
+import {
+  completeResponse,
+  describeEffects,
+  describeOperation,
+  getEntityForDataset,
+  getOperation,
+  isOperationError,
+  operationCatalog,
+  type OperationCatalogEntry,
+  runOperation,
+  withInterpretationDefaults,
+} from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 
 import type { SessionAnswer, SessionTool, SessionToolset } from '../core/conversation';
@@ -80,6 +96,68 @@ export interface DataToolsetOptions {
    * `Amendment` naming it, so a record a model wrote or changed says so. Absent: nothing is marked.
    */
   run?: string;
+  /**
+   * The agent the conversation acts as — the person, by their id. Declared operations run as them —
+   * `run_operation`, a post, and a record whose creation has rules — through the same runner a
+   * template's press reaches, so the space's write check judges every write as it would theirs.
+   */
+  invoker: string;
+}
+
+/**
+ * Entities whose creation has rules a bare create would skip, and the declared operation that holds
+ * them — so `create_record` for one of these runs the operation, and an agent's record meets the rules
+ * a person's press does (one reaction per person per type; a kind of involvement the space has, and
+ * an answer only its own agent gives). Each row says how the tool's `fields` and `on` become the
+ * operation's params, or what is missing.
+ *
+ * Add a row when an entity's creation gains an operation; an entity with none is created directly.
+ */
+const CREATED_THROUGH: Record<
+  string,
+  {
+    operation: string;
+    args: (fields: Record<string, unknown>, on: string | undefined) => Record<string, unknown> | string;
+  }
+> = {
+  Signal: {
+    operation: 'core.upsertSignal',
+    args: (fields, on) =>
+      on && str(fields.signalTypeId) && typeof fields.value === 'number'
+        ? { node: on, signalType: fields.signalTypeId, value: fields.value }
+        : 'Error: A Signal needs `on` (the record reacted to) and `fields` { signalTypeId, value }.',
+  },
+  Involvement: {
+    operation: 'core.setInvolvement',
+    args: (fields, on) =>
+      on && str(fields.agent) && str(fields.kind)
+        ? { node: on, agent: fields.agent, kind: fields.kind, on: true }
+        : 'Error: An Involvement needs `on` (the record they are on) and `fields` { agent, kind }.',
+  },
+  // The space's vocabularies: a slug derived from the name, and refused when the space holds it.
+  SignalType: named('core.createSignalType', 'A SignalType'),
+  TaskState: named('core.createTaskState', 'A TaskState'),
+  RelationshipType: named('core.createRelationshipType', 'A RelationshipType'),
+  InvolvementType: named('core.createInvolvementType', 'An InvolvementType'),
+};
+
+/**
+ * A record a community names, made by the operation that derives its slug: the fields it takes are
+ * the operation's params, and the rest are the operation's to set (a slug it derives, a range its
+ * mode fixes) or nobody's at creation (`retired`).
+ */
+function named(operation: string, what: string): (typeof CREATED_THROUGH)[string] {
+  return {
+    operation,
+    args: (fields) => {
+      if (!str(fields.name)) return `Error: ${what} needs \`fields.name\`.`;
+      const params = getOperation(operation)?.params ?? {};
+      const extra = Object.keys(fields).filter((key) => !(key in params));
+      if (extra.length)
+        return `Error: ${what} is made from ${Object.keys(params).join(', ')} — not ${extra.join(', ')}.`;
+      return fields;
+    },
+  };
 }
 
 const coreEntries = (() => {
@@ -288,6 +366,8 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
     const fields = isObject(args.fields) ? args.fields : {};
     const problem = fieldsProblem(entry, fields);
     if (problem) return { text: problem };
+    const through = CREATED_THROUGH[name];
+    if (through) return createThrough(name, through, fields, str(args.on));
     const placed = placement(args);
     if (placed.error) return { text: placed.error };
     // A new feed starts with its space's interpretation defaults, as the app's own `record.create` writes it.
@@ -304,6 +384,28 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
       text: `Made a ${name}: ${created.id}.`,
       wrote: [{ entity: name, id: created.id, change: 'created' }],
     };
+  };
+
+  /** A record whose creation has rules, made by the operation that holds them. */
+  const createThrough = async (
+    name: string,
+    through: (typeof CREATED_THROUGH)[string],
+    fields: Record<string, unknown>,
+    on: string | undefined,
+  ): Promise<SessionAnswer> => {
+    const params = through.args(fields, on);
+    if (typeof params === 'string') return { text: params };
+    try {
+      const made = await runOperation(through.operation, params, { dataset, invoker: options.invoker });
+      // An operation answers with the id of what it made, or with the record.
+      const id = typeof made === 'string' ? made : (made as { id?: unknown } | undefined)?.id;
+      return typeof id === 'string'
+        ? { text: `Made a ${name}: ${id}.`, wrote: [{ entity: name, id, change: 'created' }] }
+        : { text: `Made a ${name}.` };
+    } catch (error) {
+      if (isOperationError(error)) return { text: `Error: The ${name} was not made: ${error.message}` };
+      throw error;
+    }
   };
 
   const updateRecord = async (args: Record<string, unknown>): Promise<SessionAnswer> => {
@@ -343,23 +445,23 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
     const kind = str(args.kind) ?? (args.respondsTo ? 'reply' : 'post');
     const placed = placement(args);
     if (placed.error) return { text: placed.error };
+    const respondsTo = str(args.respondsTo);
     // With nowhere named, a post goes in the space's top-level collection, as the app's own does.
-    const anchor =
-      placed.parent ??
-      (await spaceRoot().then((root) =>
-        root.id ? { id: root.id, relation: 'children', entity: 'CollectionBlock' } : undefined,
-      ));
-    const root = await createBlocks(dataset, markdownToBlocks(text), {
-      kind,
-      ...(anchor ? { anchor: anchor as never } : {}),
-      ...(options.run ? { relations: { generatedBy: [options.run] } } : {}),
-    });
-    if (!root?.id) return { text: 'Error: The post could not be written.' };
-    if (anchor?.relation === 'responses') await completeResponse(dataset, root.id, String(anchor.id));
-    return {
-      text: `Wrote a ${kind}: ${root.id}.`,
-      wrote: [{ entity: 'CollectionBlock', id: root.id, change: 'created' }],
-    };
+    const container = respondsTo ? undefined : (str(args.in) ?? ((await spaceRoot()).id || undefined));
+    try {
+      // The composer's own write: `core.createPost`, a reply threaded in the same write.
+      const id = await writePostAs(dataset, markdownToBlocks(text), {
+        invoker: options.invoker,
+        kind,
+        ...(container ? { container } : {}),
+        ...(respondsTo ? { respondsTo } : {}),
+        ...(options.run ? { generatedBy: options.run } : {}),
+      });
+      return { text: `Wrote a ${kind}: ${id}.`, wrote: [{ entity: 'CollectionBlock', id, change: 'created' }] };
+    } catch (error) {
+      if (isOperationError(error)) return { text: `Error: The post could not be written: ${error.message}` };
+      throw error;
+    }
   };
 
   const defineModel = async (args: Record<string, unknown>): Promise<SessionAnswer> => {
@@ -377,6 +479,59 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
       return { text: 'Error: `properties` is a list of { name, type } with type string, number or boolean.' };
     const defined = await options.defineModel!({ name, description: str(args.description), properties: fields });
     return { text: `Defined ${defined}. Records of it can be made once the space has taken it in.` };
+  };
+
+  /** One operation as the model reads it: what it does, what it takes, what it may write. */
+  const operationLines = (entry: OperationCatalogEntry): string[] => {
+    const params = Object.entries(entry.params);
+    return [
+      `- ${entry.name} — ${entry.description}`,
+      `  params: ${
+        params.length
+          ? params
+              .map(
+                ([name, p]) =>
+                  `${name} (${p.type}${p.required ? ', required' : ''})${p.description ? ` ${p.description}` : ''}`,
+              )
+              .join('; ')
+          : 'none'
+      }`,
+      `  writes: ${describeEffects(entry.effects)}${entry.returns ? '; answers with a value' : ''}`,
+    ];
+  };
+
+  const listOperations = (): Promise<SessionAnswer> => {
+    const catalog = operationCatalog();
+    if (!catalog.length) return Promise.resolve({ text: 'No operations are declared here. Use the record tools.' });
+    return Promise.resolve({
+      text: [
+        'Declared operations: each runs as one write — all of it lands or none of it does. Prefer one to several record calls that do the same.',
+        ...catalog.flatMap(operationLines),
+      ].join('\n'),
+    });
+  };
+
+  const runDeclared = async (args: Record<string, unknown>): Promise<SessionAnswer> => {
+    const name = str(args.name) ?? '';
+    if (!describeOperation(name))
+      return {
+        text: `Error: There is no operation called "${name}". list_operations lists them, by their full name (namespace.name).`,
+      };
+    if (args.args !== undefined && !isObject(args.args))
+      return { text: 'Error: `args` is an object of the operation’s params.' };
+    try {
+      const returned = await runOperation(name, isObject(args.args) ? args.args : {}, {
+        dataset,
+        invoker: options.invoker,
+      });
+      return {
+        text: returned === undefined ? `Ran ${name}.` : `Ran ${name}. It answered: ${JSON.stringify(returned)}`,
+      };
+    } catch (error) {
+      if (isOperationError(error))
+        return { text: `Error: ${name} did not run (${error.class} ${error.code}): ${error.message}` };
+      throw error;
+    }
   };
 
   const entityParam = { type: 'string', description: 'The kind of record, e.g. "TaskBlock".' };
@@ -427,10 +582,15 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
     {
       name: 'create_record',
       description:
-        'Make a record. `fields` are its own fields (describe_space lists them). Put it in a collection with `in`, or make it a response with `respondsTo`. For a post or a reply, use write_post.',
+        'Make a record. `fields` are its own fields (describe_space lists them). Put it in a collection with `in`, or make it a response with `respondsTo`. A reaction (Signal) or an involvement names the record it is on with `on`, and keeps the space’s rules: one reaction per person per type, replaced rather than added. For a post or a reply, use write_post.',
       parameters: {
         type: 'object',
-        properties: { entity: entityParam, fields: { type: 'object' }, ...placeParams },
+        properties: {
+          entity: entityParam,
+          fields: { type: 'object' },
+          ...placeParams,
+          on: { type: 'string', description: 'For a Signal or an Involvement: the record it is on, by id.' },
+        },
         required: ['entity', 'fields'],
       },
       writes: true,
@@ -475,6 +635,36 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
       },
       writes: true,
       run: writePost,
+    },
+    {
+      name: 'list_operations',
+      description:
+        'The declared operations here — named writes of several records, run as one — with their params and what each may write.',
+      parameters: { type: 'object', properties: {} },
+      writes: false,
+      run: listOperations,
+    },
+    {
+      name: 'run_operation',
+      description:
+        'Run a declared operation by its full name, with its params in `args`. Everything it writes lands together, or nothing does. One that deletes asks the person first.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'namespace.name, as list_operations gives it.' },
+          args: { type: 'object', description: 'Its params.' },
+        },
+        required: ['name'],
+      },
+      writes: true,
+      // Worded from the definition's effects, never from the model's account of what it is doing.
+      confirm: (args: Record<string, unknown>) => {
+        const entry = describeOperation(typeof args.name === 'string' ? args.name : '');
+        return entry?.effects.destructive
+          ? `${entry.description.replace(/\.$/, '')}? It ${describeEffects(entry.effects)}.`
+          : undefined;
+      },
+      run: runDeclared,
     },
     ...(options.defineModel
       ? [

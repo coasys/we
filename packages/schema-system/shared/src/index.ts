@@ -56,6 +56,7 @@ export type {
   ModuleCatalogEntry,
   ForeignElementEntry,
   SourceEntry,
+  OperationEntry,
 } from './contextTypes';
 
 export {
@@ -64,6 +65,7 @@ export {
   validateSchema,
   validateSemantic,
   withEntities,
+  withOperations,
   controlShapedBoxes,
 } from './semanticValidation';
 export type { ValidationContext } from './semanticValidation';
@@ -78,15 +80,13 @@ export {
   scopeIsAnchored,
   resolveQueryProp,
   splitProps,
-  markReactive,
-  REACTIVE_ACCESSOR,
   deepUnwrap,
   noMemo,
   setLocalWarningSink,
 } from './propResolvers';
 export type { LocalFieldMeta, LocalMetaMap } from './propResolvers';
 export { DEFERRED_ARG, isDeferredArg, setExpressionWarningSink } from './propResolvers/expression';
-export * from './expressions';
+export * from '@we/expressions';
 export { hasToken } from './predicates';
 export { isTemplateElement, refusedProp, TEMPLATE_HTML_ELEMENTS } from './templateElements';
 export {
@@ -167,7 +167,10 @@ export {
   type BundleBrand,
   BUNDLE_FORMAT,
   BUNDLE_FORMAT_VERSION,
+  BUNDLE_FORMAT_VERSIONS,
   type BundleDisplay,
+  bundleFormatVersionFor,
+  type BundleFormatVersion,
   bundlePieceId,
   type BundleProblem,
   type BundleRecordType,

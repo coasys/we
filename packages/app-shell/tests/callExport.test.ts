@@ -87,7 +87,7 @@ describe('the interpretation log', () => {
             trigger: 'manual',
             outcome: 'done',
             recordCount: 1,
-            detail: '{"targets":["TaskBlock"]}',
+            detail: { targets: ['TaskBlock'] },
             prompt: 'first prompt',
             output: '{"records":[]}',
           },

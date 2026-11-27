@@ -28,8 +28,12 @@ export const Policy: CoreEntityDef = {
   entity: {
     flag: { predicate: 'we://flag', value: 'we://policy' },
     properties: {
-      /** The rules, as the policy format's JSON. Read leniently: a permission that does not parse is dropped. */
-      document: { type: 'string', predicate: 'we://policy_document', required: true, default: '' },
+      /**
+       * The rules, as an object in the policy format (`Policy` in the backend contract). Read
+       * leniently: a permission that does not parse is dropped. Versions are ordered by when they
+       * were written, never compared as text, so the document is a value like any other.
+       */
+      document: { type: 'json', predicate: 'we://policy_document', required: true },
     },
     relations: {},
   },

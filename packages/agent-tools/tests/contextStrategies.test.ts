@@ -121,7 +121,7 @@ describe('the lookup strategy', () => {
   it('can reach every section of the reference, one way or another', () => {
     const prepared = lookupContext(chatSystemPreamble, schemaContext, { request: 'x', schema });
     const everything = prepared.resolveTool!(
-      call('we_reference', { sections: ['patterns', 'plugins', 'panels', 'storePatterns', 'modules'] }),
+      call('we_reference', { sections: ['patterns', 'plugins', 'panels', 'storePatterns', 'modules', 'operations'] }),
     )!;
     for (const { title, text } of splitReference(schemaContext)) {
       if (!title || title === 'Component Registry' || title === 'Stores') continue;

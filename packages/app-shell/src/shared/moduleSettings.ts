@@ -26,8 +26,8 @@
  *
  * ## Absent is not off
  *
- * The same rule the module lists already follow, and the reason both are strings rather than
- * booleans on the wire: a level that has never been touched has **no opinion**, and reading that as
+ * The same rule the module lists already follow, and the reason a level is a map of what was
+ * said rather than a boolean per setting: a level that has never been touched has **no opinion**, and reading that as
  * `false` would mean every space that predates a setting silently adopting whatever `false` means
  * for it. Only a value somebody wrote counts as an answer.
  */
@@ -78,44 +78,41 @@ export interface ResolvedSetting {
 export type LevelValues = Partial<Record<SettingLevel, SettingValues>>;
 
 /**
- * Parse a stored settings blob.
+ * What one level's stored `moduleSettings` says.
  *
- * Empty, absent and malformed all mean the same thing — **no opinion** — because the alternative is
- * one bad write making a space unreadable. A malformed blob is reported rather than swallowed: it
- * is a bug somewhere upstream, and silence about it is how it survives.
+ * Absent and malformed mean the same thing — **no opinion** — because the alternative is one bad
+ * write making a space unreadable. A value that is not an object of groups is reported rather than
+ * swallowed: it is a bug somewhere upstream, and silence about it is how it survives. A group that
+ * is not an object is dropped the same way, without taking the others with it.
  */
-export function parseSettings(raw: string | null | undefined, describe = 'module settings'): SettingValues {
-  if (!raw) return {};
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
-    const out: SettingValues = {};
-    for (const [group, values] of Object.entries(parsed as Record<string, unknown>)) {
-      if (values && typeof values === 'object' && !Array.isArray(values)) out[group] = { ...values };
-    }
-    return out;
-  } catch {
-    console.warn(`${describe} is not valid JSON; reading it as no opinion`);
+export function settingsOf(stored: unknown, describe = 'module settings'): SettingValues {
+  if (stored === undefined || stored === null || stored === '') return {};
+  if (typeof stored !== 'object' || Array.isArray(stored)) {
+    console.warn(`${describe} is not an object of settings; reading it as no opinion`);
     return {};
   }
+  const out: SettingValues = {};
+  for (const [group, values] of Object.entries(stored as Record<string, unknown>)) {
+    if (values && typeof values === 'object' && !Array.isArray(values)) out[group] = { ...values };
+  }
+  return out;
 }
 
-/** Write one value into a settings blob, returning the JSON to store. */
-export function writeSetting(raw: string | null | undefined, group: string, key: string, value: SettingValue): string {
-  const parsed = parseSettings(raw);
-  const next: SettingValues = { ...parsed, [group]: { ...(parsed[group] ?? {}), [key]: value } };
-  return JSON.stringify(next);
+/** One level's settings with one value written into them — the whole value to store. */
+export function writeSetting(stored: unknown, group: string, key: string, value: SettingValue): SettingValues {
+  const current = settingsOf(stored);
+  return { ...current, [group]: { ...(current[group] ?? {}), [key]: value } };
 }
 
-/** Remove one value, so that level goes back to having no opinion. */
-export function clearSetting(raw: string | null | undefined, group: string, key: string): string {
-  const parsed = parseSettings(raw);
-  const values = { ...(parsed[group] ?? {}) };
+/** One level's settings with one value taken out, so that level goes back to having no opinion. */
+export function clearSetting(stored: unknown, group: string, key: string): SettingValues {
+  const current = settingsOf(stored);
+  const values = { ...(current[group] ?? {}) };
   delete values[key];
-  const next: SettingValues = { ...parsed };
+  const next: SettingValues = { ...current };
   if (Object.keys(values).length) next[group] = values;
   else delete next[group];
-  return JSON.stringify(next);
+  return next;
 }
 
 /** The last entry, or undefined. Written out because the app hosts target a library without `at`. */

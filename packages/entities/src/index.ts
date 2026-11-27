@@ -129,14 +129,14 @@ export { createJsonShapeStore } from './shapeStore';
 export { decodeTemplateFile, encodeTemplateFile, type StoredSchema, TEMPLATE_FILE_NAME } from './utils/templateFile';
 export {
   collectionInterpretationDefaults,
+  entityListOf,
   LEGACY_INTERPRETATION_TARGETS,
-  parseEntityList,
   resolveCollectionAutoInterpret,
   resolveCollectionInterpretationTargets,
   resolveSpaceInterpretationTargets,
   withInterpretationDefaults,
 } from './utils/collectionInterpretation';
-export { completeResponse, respondsThrough } from './utils/responses';
+export { completeResponse, respondsThrough, threadSubject } from './utils/responses';
 
 /**
  * The dataset handle model statics accept — opaque on purpose. Which kind of handle "a dataset"
@@ -157,3 +157,8 @@ export * from './entityRegistry';
  * — it is how an implementation shipped refusing every board write with a green suite.
  */
 export { defineEntity } from './entityProxy';
+
+export * from './operations';
+export { COMPOSE_CARD_POST } from './manifest/operations/canvas';
+export { inlineRecordId } from './manifest/operations/records';
+export { postBlockId, THREAD_SUBJECTS } from './manifest/operations/content';

@@ -89,13 +89,13 @@ export class ModelRun extends Ad4mModel {
   recordCount: number = 0;
 
   /**
-   * What only this kind of run carries, as JSON read whole: an extraction's `targets` (the
+   * What only this kind of run carries, as an object read whole: an extraction's `targets` (the
    * entity names it looked for), a chat reply's `steps`. A blob because it is never filtered
    * on, and because a relation per entry would be a handful of links per run for a list
    * nobody queries across.
    */
   @Property({ through: 'we://model_run_detail' })
-  detail: string = '';
+  detail?: unknown;
 
   /** What the model was asked, verbatim, where the writer keeps it. See the note above. */
   @Property({ through: 'we://prompt' })

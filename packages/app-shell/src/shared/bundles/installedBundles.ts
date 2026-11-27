@@ -1,5 +1,5 @@
 /**
- * What each installed bundle wrote — `AgentSettings.installedBundles`, as JSON.
+ * What each installed bundle wrote — `AgentSettings.installedBundles`, a list.
  *
  * One entry per bundle, keyed by its id, replaced whole by a later install of the same bundle. It
  * names every piece the install wrote under the ids they were written under, so the bundle can be
@@ -7,7 +7,7 @@
  * display policy, so how an app shows spaces is a property of the app in use rather than a setting;
  * and the record types it brings, so a space can be set up for it later.
  */
-import type { WorkflowDefinition } from '@we/backend-shared';
+import type { OperationDefinition, WorkflowDefinition } from '@we/backend-shared';
 import type { BundleBrand, BundleRecordType, SchemaNode } from '@we/schema-shared';
 
 import type { BundlePieces } from './bundlePieces';
@@ -35,6 +35,8 @@ export interface InstalledBundle {
   recordTypes: BundleRecordType[];
   /** Kept whole for the same reason. Absent on an install from before a bundle could bring them. */
   workflows?: WorkflowDefinition[];
+  /** Its declared operations, kept whole as judged at install, registered under its id while it is here. */
+  operations?: Record<string, OperationDefinition>;
   display?: { spaces: 'ours' | 'theirs'; template?: string };
   /** What the person agreed to when installing it — what a later version is compared against. */
   granted?: BundleGrant;
@@ -51,20 +53,13 @@ export function installedThemes(entry: Pick<InstalledBundle, 'themes' | 'theme'>
   return entry.themes ?? (entry.theme ? [entry.theme] : []);
 }
 
-export function readInstalledBundles(raw: string | undefined | null): InstalledBundle[] {
-  if (!raw) return [];
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    // Written by the installer, so an entry with an id is an InstalledBundle.
-    return Array.isArray(parsed)
-      ? (parsed.filter(
-          (entry: unknown) =>
-            !!entry && typeof entry === 'object' && typeof (entry as { id?: unknown }).id === 'string',
-        ) as InstalledBundle[])
-      : [];
-  } catch {
-    return [];
-  }
+/** The installed bundles, from the stored value: none when it is absent or not a list. */
+export function readInstalledBundles(stored: unknown): InstalledBundle[] {
+  if (!Array.isArray(stored)) return [];
+  // Written by the installer, so an entry with an id is an InstalledBundle.
+  return stored.filter(
+    (entry: unknown) => !!entry && typeof entry === 'object' && typeof (entry as { id?: unknown }).id === 'string',
+  ) as InstalledBundle[];
 }
 
 /** The list with this bundle's entry put in, replacing any for the same bundle. */
@@ -94,6 +89,7 @@ export function installedEntry(
     sections: pieces.sections.map((section) => section.id),
     recordTypes: pieces.recordTypes,
     ...(pieces.workflows.length ? { workflows: pieces.workflows } : {}),
+    ...(Object.keys(pieces.operations).length ? { operations: pieces.operations } : {}),
     ...(pieces.display ? { display: pieces.display } : {}),
     ...(meta.granted ? { granted: meta.granted } : {}),
     ...(meta.digest ? { digest: meta.digest } : {}),

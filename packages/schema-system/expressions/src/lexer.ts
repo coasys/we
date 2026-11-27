@@ -58,7 +58,9 @@ const PUNCTUATION = [
   '.',
 ];
 
-const KEYWORDS = new Set(['true', 'false', 'null', 'in']);
+/** Words the grammar reads as itself — literals and the `in` operator — so no name can be one. */
+export const EXPRESSION_KEYWORDS: ReadonlySet<string> = new Set(['true', 'false', 'null', 'in']);
+const KEYWORDS = EXPRESSION_KEYWORDS;
 
 const isIdentStart = (c: string): boolean => /[A-Za-z_$]/.test(c);
 const isIdentPart = (c: string): boolean => /[A-Za-z0-9_$]/.test(c);

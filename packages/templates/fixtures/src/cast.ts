@@ -5,7 +5,7 @@
  * different names and different faces in each would read as a difference in design.
  *
  * Note the accent in Sorensen. Profile fields are ordinary model properties, so they carry non-ASCII
- * safely; a message *body* does not, because `createBlocks` encodes editor state as UTF-8 and
+ * safely; a message *body* does not, because writing a post encodes editor state as UTF-8 and
  * `decodeEditorState` reads it back with a bare `atob`. That mismatch is a real bug in the app (see
  * the round-trip test), and until it is fixed a fixture's `body` strings have to stay ASCII while
  * its names need not.

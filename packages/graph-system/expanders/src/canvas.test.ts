@@ -1044,21 +1044,20 @@ describe('canvas connection waypoints', () => {
     ],
   };
 
-  it('carries the stored blob through untouched', async () => {
-    // Passed on as the string it was stored as rather than parsed here: a data bag holds scalars, and
-    // parsing at the seed only to re-serialise for the router would be the same work done twice.
-    const points = '[{"along":0.5,"across":0.3}]';
+  it('carries the stored list into the data bag as the JSON the router reads', async () => {
+    // A data bag holds scalars, so the list travels in it as text.
+    const points = [{ along: 0.5, across: 0.3 }];
     const { context: ctx } = context({ ...twoCards, EdgeRoute: [{ id: 'e1', connection: 'r1', points }] });
 
     const { edges } = await canvasSeed().seed({ canvas: 'b1', connections: 'Relationship', routes: 'EdgeRoute' }, ctx);
 
-    expect(edges[0].data?.waypoints).toBe(points);
+    expect(edges[0].data?.waypoints).toBe(JSON.stringify(points));
   });
 
   it('leaves a route carrying only anchors without a waypoints field', async () => {
     const { context: ctx } = context({
       ...twoCards,
-      EdgeRoute: [{ id: 'e1', connection: 'r1', sourceAnchor: 'n', points: '' }],
+      EdgeRoute: [{ id: 'e1', connection: 'r1', sourceAnchor: 'n', points: [] }],
     });
 
     const { edges } = await canvasSeed().seed({ canvas: 'b1', connections: 'Relationship', routes: 'EdgeRoute' }, ctx);

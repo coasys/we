@@ -41,8 +41,9 @@ for (const id of ids) {
     console.error(`${seedFile.seedLabel()} names the bundle "${id}", and ${file} could not be read: ${error.message}`);
     process.exit(1);
   }
-  if (bundle.format !== 'we-bundle' || bundle.formatVersion !== 1) {
-    console.error(`bundles/${id}.bundle.json is not a bundle of format we-bundle 1`);
+  // The formats this build reads: 2 is 1 plus declared operations. See `BUNDLE_FORMAT_VERSIONS`.
+  if (bundle.format !== 'we-bundle' || ![1, 2].includes(bundle.formatVersion)) {
+    console.error(`bundles/${id}.bundle.json is not a bundle of format we-bundle 1 or 2`);
     process.exit(1);
   }
   if (bundle.id !== id) {

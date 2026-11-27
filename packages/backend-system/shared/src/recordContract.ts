@@ -32,13 +32,29 @@ export interface RecordInstance {
   createdAt: unknown;
   updatedAt: unknown;
   /**
-   * `batch` is an opaque write-group token from {@link runEntityTransaction}-style runners: writes
+   * `batch` is an opaque write-group token from `runEntityTransaction` in `@we/entities`: writes
    * carrying the same token commit together where the backend supports atomicity, and a backend
    * without it ignores the token. Opaque here because its shape is the backend's own.
+   *
+   * A write in a group is staged, not made: no read sees it until the group commits, the group's
+   * own reads included. A read inside a transaction answers with committed state, so a later
+   * write that needs an earlier one's record names it by the id the earlier write returned (or the
+   * id the caller chose for it) rather than finding it.
    */
   save(batch?: string): Promise<unknown>;
   delete(batch?: string): Promise<unknown>;
 }
+
+/**
+ * The fields of {@link RecordInstance} every record carries, by name. A backend may hold any of them
+ * as an accessor rather than an own property — AD4M's `id` is a getter on its model's prototype — so
+ * code copying a record's fields reads these by name rather than trusting `Object.entries` to find
+ * them.
+ */
+export const RECORD_BASE_FIELDS = ['id', 'author', 'createdAt', 'updatedAt'] as const satisfies readonly Exclude<
+  keyof RecordInstance,
+  'save' | 'delete'
+>[];
 
 /**
  * The key a record read through a polymorphic relation carries its concrete entity name under.
@@ -244,11 +260,63 @@ export interface ParentRef {
   entity?: string;
 }
 
-/** What a write may say besides its fields: where it goes, and the batch it belongs to. */
+/**
+ * A read's parent: the records held under one through a relation, as {@link ParentRef} names it — and,
+ * with `levels` or `transitive`, the records held under those too, the way `$query`'s scope walks.
+ *
+ * `levels: [10, 5]` keeps ten under the parent and five under each of those; `transitive` follows
+ * the relation to the bottom. Either answers flat: every record reached, at whatever depth, and
+ * nothing about where it sits. Only a read takes them — a create joins one parent.
+ */
+export interface ParentScope extends ParentRef {
+  levels?: number[];
+  transitive?: boolean;
+}
+
+/** What a write may say besides its fields: where it goes, the batch it belongs to, and its id. */
 export interface CreateOptions {
   parent?: ParentRef;
+  /**
+   * The write group this create belongs to — see {@link RecordInstance.save} for the token, and
+   * `runEntityTransaction` in `@we/entities` for what a group promises.
+   */
   batchId?: string;
+  /**
+   * The id the new record is to have, chosen by the caller rather than minted by the backend.
+   *
+   * For an id the caller derived deterministically — from an invocation and the step that writes,
+   * say — so that running the same write twice names the same record, and a later step can address
+   * a record an earlier one is about to create without reading it back. A URI is safe on every
+   * backend; a backend may refuse a form it cannot store.
+   *
+   * A create onto an id some record already holds is refused with {@link RecordExistsError}, never
+   * an overwrite: two writers deriving the same id is the case the check exists for, and the second
+   * silently replacing the first is the failure it prevents. Where the backend judges that against
+   * is its own to say, and where it is weaker than "every write that has landed, including earlier
+   * ones in this batch" the backend's implementation says so.
+   *
+   * `id` is never a field in the create's properties: a record's id is not one of its values.
+   */
+  id?: string;
   [option: string]: unknown;
+}
+
+/**
+ * A create was refused because a record already holds the id it asked for.
+ *
+ * A type of its own because what follows differs from any other refusal: the caller asked for this
+ * exact record, and somebody — perhaps an earlier run of the same write — has made it already.
+ */
+export class RecordExistsError extends Error {
+  constructor(readonly id: string) {
+    super(`A record with the id "${id}" already exists; a create never overwrites one`);
+    this.name = 'RecordExistsError';
+  }
+}
+
+/** By name as well as by class, so a second copy of this package in a bundle still matches. */
+export function isRecordExists(err: unknown): err is RecordExistsError {
+  return err instanceof RecordExistsError || (err instanceof Error && err.name === 'RecordExistsError');
 }
 
 // ── Query and statics ──────────────────────────────────────────────────────────────────────────
@@ -266,8 +334,8 @@ export interface TypedEntityQuery<T extends RecordInstance> {
   limit?: number;
   offset?: number;
   count?: boolean;
-  /** Only records held under this one, through this relation — see {@link ParentRef}. */
-  parent?: ParentRef;
+  /** Only records held under this one, through this relation — see {@link ParentScope}. */
+  parent?: ParentScope;
   deepQuery?: boolean;
 }
 
@@ -277,6 +345,25 @@ export type IncludeOf<Q> = Q extends { include?: infer I } ? I : undefined;
  * Values a write accepts for one field. Looser than the read type on purpose: relations are
  * written as ids/URIs however the instance types them, and backends may accept their own
  * representations — the field *names* stay checked, which is where typos live.
+ *
+ * ## `json` properties
+ *
+ * A property declared `type: 'json'` holds a structured value — a list, an object, a number or a
+ * boolean — and reads back as that value, on every backend. Nobody parses or serialises it on the
+ * way in or out: how it is stored is the backend's business. Its interface type is `unknown`,
+ * because a value written by another agent is whatever they wrote, so a reader narrows it.
+ *
+ * - **Absent stays absent.** A write of `''`, `null` or nothing clears it, as for any scalar, and
+ *   an unwritten one reads as absent: a `json` property has no declared default. An empty list or
+ *   object is a value, not an absence — `[]` and unset can mean different things.
+ * - **Text is JSON.** A string written to one is parsed, and refused when it does not parse. A value
+ *   that is itself a string is refused too, since read back it could not be told from text that
+ *   still needs parsing. See `writtenJsonValue`.
+ * - **A stored value that does not parse reads as absent**, reported once per property and never
+ *   thrown, so one bad value does not take its record out of every list. See `readJsonValue`.
+ * - **The whole value is the unit.** A write replaces it, so two writers at once keep the later
+ *   one. Something that needs concurrent edits to merge, or a part of it to be queried, is a record
+ *   or a relation instead.
  */
 export type WriteValue<V> =
   NonNullable<V> extends RecordInstance

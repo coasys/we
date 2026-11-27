@@ -68,7 +68,7 @@ const STARTER: SpaceStarter = {
     { $id: 'post', entity: 'CollectionBlock', fields: { kind: 'post' }, in: '$root' },
     {
       entity: 'TextBlock',
-      fields: { text: 'Welcome to {{space.name}}, $5 well spent', marks: '[{"type":"strong","start":0,"end":7}]' },
+      fields: { text: 'Welcome to {{space.name}}, $5 well spent', marks: [{ type: 'strong', start: 0, end: 7 }] },
       in: '$post',
     },
   ],
@@ -77,10 +77,10 @@ const STARTER: SpaceStarter = {
 };
 
 describe('starter settings', () => {
-  it('sets the space’s settings, stores lists as the fields hold them, and never its identity', () => {
+  it('sets the space’s settings, lists as lists, and never its identity', () => {
     expect(starterSettings(STARTER)).toEqual({
       defaultTemplateId: 'workshop',
-      enabledModules: '["call"]',
+      enabledModules: ['call'],
     });
   });
 
@@ -114,9 +114,9 @@ describe('applying a starter', () => {
     const { created, writer } = recorder();
     await applyStarterRecords(STARTER, TARGET, writer);
     expect(created[4].fields.gathers).toEqual(['root-1']);
-    // `$5` is not a whole-string reference, and a reference inside a JSON value is text.
+    // `$5` is not a whole-string reference, and a structured value is written as it is.
     expect(created[7].fields.text).toBe('Welcome to Acme, $5 well spent');
-    expect(created[7].fields.marks).toBe('[{"type":"strong","start":0,"end":7}]');
+    expect(created[7].fields.marks).toEqual([{ type: 'strong', start: 0, end: 7 }]);
   });
 
   it('writes the space’s relations once the records exist, in order', async () => {

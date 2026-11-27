@@ -58,7 +58,7 @@ const passFields = (pass: PassRecord) => ({
   kind: 'extraction',
   outcome: pass.outcome,
   recordCount: pass.recordCount,
-  detail: JSON.stringify({ targets: pass.targets }),
+  detail: { targets: pass.targets },
   error: pass.error ?? '',
   trigger: pass.trigger ?? 'manual',
   prompt: pass.prompt ?? '',

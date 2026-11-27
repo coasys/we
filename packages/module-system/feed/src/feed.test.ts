@@ -522,13 +522,15 @@ describe('grouping and naming', () => {
   });
 
   it('draws every line from one block, marked or not', () => {
-    const marks = '[{"start":0,"end":4,"type":"mention","did":"did:ann"}]';
+    const marks = [{ start: 0, end: 4, type: 'mention', did: 'did:ann' }];
     expect(lineContent({ text: '@Ann can you?', marks })).toEqual([
       { _type: 'block', text: '@Ann can you?', marks: [{ start: 0, end: 4, type: 'mention', did: 'did:ann' }] },
     ]);
-    // Plain text is a block too, so its line breaks are kept; marks that do not parse are dropped.
+    // Plain text is a block too, so its line breaks are kept; what is not a mark is left out.
     expect(lineContent({ text: 'plain\nlines' })).toEqual([{ _type: 'block', text: 'plain\nlines', marks: [] }]);
-    expect(lineContent({ text: 'broken', marks: '[{' })).toEqual([{ _type: 'block', text: 'broken', marks: [] }]);
+    expect(lineContent({ text: 'broken', marks: [{ start: 0 }] })).toEqual([
+      { _type: 'block', text: 'broken', marks: [] },
+    ]);
   });
 });
 

@@ -26,10 +26,10 @@ import { reportModuleRefusal } from '@shared/moduleSchemaRefusal';
 import {
   clearSetting,
   type LevelValues,
-  parseSettings,
   resolveGroup,
   type SettingRow,
   settingRows,
+  settingsOf,
   type SettingValue,
   writeSetting,
 } from '@shared/moduleSettings';
@@ -96,7 +96,7 @@ import {
   createTaskWorkflowActions,
   needsAgreement,
   openMoveOf,
-  parseTaskStateEvidence,
+  readTaskStateEvidence,
   storeTaskStateEvidence,
   TASK_WORKFLOW,
   type TaskStateRule,
@@ -115,7 +115,7 @@ import { copyText, deriveSlug } from '@shared/utils';
 import type { ViewSetting } from '@shared/viewResolution';
 import {
   activeSections,
-  parseIdList,
+  idListOf,
   preserveUnknownViews,
   resolveEnabledViews,
   routableSections,
@@ -134,23 +134,24 @@ import { isPolicyRefusal, parseServerUrl, SELF_PERSONS, trace, validatePolicy } 
 import type { ContentInput } from '@we/block-shared';
 import {
   contentHash,
-  createBlocks,
   decodeEditorState,
   deleteBlocks,
   isContentDocument,
   reconcileBlocks,
   refreshComposition,
+  writePost,
 } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
 import {
   collectionInterpretationDefaults,
+  entityListOf,
+  isOperationError,
   LEGACY_INTERPRETATION_TARGETS,
-  parseEntityList,
   resolveCollectionAutoInterpret,
   resolveCollectionInterpretationTargets,
   resolveSpaceInterpretationTargets,
+  runOperation,
 } from '@we/entities';
-import { completeResponse } from '@we/entities';
 import {
   AGENT_DEFAULT,
   CollectionBlock,
@@ -170,7 +171,6 @@ import {
   RelationshipType,
   Role,
   RoleGrant,
-  Signal,
   SignalType,
   Space,
   SpaceLandmark,
@@ -180,13 +180,7 @@ import {
 } from '@we/entities';
 import { type Latest, latest } from '@we/module-shared';
 import type { ResolvedView, TemplateSchema } from '@we/schema-shared';
-import {
-  applyStarterRecords,
-  linkSpaceRelations,
-  SPACE_COLLECTION_KIND,
-  type SpaceStarter,
-  starterSettings,
-} from '@we/schema-shared';
+import { applyStarterRecords, linkSpaceRelations, type SpaceStarter, starterSettings } from '@we/schema-shared';
 import { hasViewsMarker, templateThemeId } from '@we/schema-shared';
 import {
   Accessor,
@@ -242,6 +236,44 @@ import type {
 } from './space/types';
 import { useTemplateStore } from './TemplateStore';
 import { useThemeStore } from './ThemeStore';
+/** What a reaction type is made from — the params of `core.createSignalType` beside its name. */
+const SIGNAL_TYPE_PARAMS = [
+  'slug',
+  'description',
+  'icon',
+  'iconSecondary',
+  'mode',
+  'rangeMin',
+  'rangeMax',
+  'step',
+  'aggregate',
+  'semantic',
+  'allowChange',
+] as const;
+
+/** What a kind of connection is made from — the params of `core.createRelationshipType` beside its name. */
+const RELATIONSHIP_TYPE_PARAMS = ['slug', 'description', 'icon', 'color', 'inverseName', 'directed'] as const;
+
+/**
+ * Records with what an operation wrote to one of them laid over it, or that one added — held without
+ * reading every record of the kind again. A record laid over is a new object of its own class, so a
+ * reader keyed on identity sees the change.
+ */
+function withRow<T extends { id: string }>(rows: readonly T[], written: Partial<T> | undefined): T[] {
+  const id = written?.id;
+  if (!id) return [...rows];
+  if (!rows.some((r) => r.id === id)) return [...rows, written as T];
+  return rows.map((r) =>
+    r.id === id ? (Object.assign(Object.create(Object.getPrototypeOf(r) as object | null), r, written) as T) : r,
+  );
+}
+
+/** The named keys of an object that hold a value. */
+function pick<T extends object, K extends keyof T>(from: T, keys: readonly K[]): Partial<Pick<T, K>> {
+  const out: Partial<Pick<T, K>> = {};
+  for (const key of keys) if (from[key] !== undefined && from[key] !== null) out[key] = from[key];
+  return out;
+}
 
 export type {
   CreatePostOptions,
@@ -253,7 +285,7 @@ export type {
 } from './space/types';
 
 /*
-  The extraction-settings resolution — `LEGACY_INTERPRETATION_TARGETS`, `parseEntityList` and the
+  The extraction-settings resolution — `LEGACY_INTERPRETATION_TARGETS`, `entityListOf` and the
   per-collection resolvers below — lives in `collectionInterpretation` in `@we/entities` so it can be tested
   without mounting this provider. See that module for why a collection holds a copy.
 */
@@ -484,16 +516,11 @@ export interface SpaceStore {
    *
    * The id is what makes "and then do something with it" possible from a schema — placing a new card
    * where somebody double-clicked, scrolling to it, selecting it — since `$invoke`'s `onSuccess`
-   * reads the resolved value as `$result`. `createBlocks` has always returned the model; this simply
-   * stopped throwing the id away.
+   * reads the resolved value as `$result`. Written by `core.createPost`, which answers with the post's
+   * id; a reply is threaded in the same write.
    */
   createPost: (json: unknown, options?: CreatePostOptions) => Promise<string | undefined>;
   updatePost: (postId: string, json: unknown) => Promise<void>;
-  /**
-   * Move a child between two collections — a card between kanban columns. A relink of the two
-   * `we://child` edges; the child itself is untouched.
-   */
-  moveChild: (childId: string, fromId: string, toId: string) => Promise<void>;
   /** Make a board — a collection whose ordered children are its columns, seeded from the vocabulary. */
   createBoard: (title: string, parentId?: string, options?: CreateBoardOptions) => Promise<string>;
   /** The board for a container, or the space's own, making it if nobody has yet. Returns its id. */
@@ -890,15 +917,6 @@ const SpaceContext = createContext<SpaceStore>();
  */
 const SPACE_AVATAR_PX = 512;
 
-/**
- * What a state may say it counts as — the closed set `TaskState.semantic` declares.
- *
- * Checked rather than trusted on the way in: the value reaches `updateTaskState` from a picker in a
- * template, and a word nothing recognises would read as "still to do" everywhere downstream while
- * being stored as itself. Refusing it keeps the misfiling where it can be seen.
- */
-const TASK_STATE_SEMANTICS: TaskStateView['semantic'][] = ['open', 'active', 'blocked', 'done', 'cancelled'];
-
 /** What a collection's extraction settings are read from — see `autoInterpretFor`. */
 const COLLECTION_SETTINGS_FIELDS = ['autoExtract', 'extractionTargets'] as const;
 
@@ -1106,16 +1124,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   const preferenceFor = (spaceUuid: string | undefined): SpacePreference | undefined =>
     spaceUuid ? spacePreferences().find((p) => p.spaceUuid === spaceUuid) : undefined;
 
-  const mutedModulesFor = (spaceUuid: string | undefined): string[] => {
-    const raw = preferenceFor(spaceUuid)?.mutedModules;
-    if (!raw) return [];
-    try {
-      const parsed: unknown = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
-    } catch {
-      return [];
-    }
-  };
+  const mutedModulesFor = (spaceUuid: string | undefined): string[] => idListOf(preferenceFor(spaceUuid)?.mutedModules);
 
   /**
    * Sections this agent has hidden in one space — the private half of the section list.
@@ -1123,8 +1132,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    * Exclusions, like `mutedModulesFor`: a section the community adds later shows up, because silence
    * about a view is "no opinion" rather than "no".
    */
-  const hiddenViewsFor = (spaceUuid: string | undefined): string[] =>
-    parseIdList(preferenceFor(spaceUuid)?.hiddenViews);
+  const hiddenViewsFor = (spaceUuid: string | undefined): string[] => idListOf(preferenceFor(spaceUuid)?.hiddenViews);
 
   /**
    * This agent's template/theme override for a space, normalised to one of the three values a
@@ -1271,12 +1279,12 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   const viewSettingsFor = (
     spaceUuid: string | undefined,
-    raw: string | undefined,
+    enabled: unknown,
     modulesOn: readonly string[],
   ): ViewSetting[] => {
     const off = viewsOffFor(modulesOn);
     return viewSettings({
-      enabledRaw: raw,
+      enabled,
       hidden: hiddenViewsFor(spaceUuid),
       available: new Map([...availableViews()].filter(([id]) => !off.has(id))),
       fallbackOrder: defaultViewOrder(),
@@ -1724,19 +1732,17 @@ export function SpaceStoreProvider(props: ParentProps) {
       otherwise about the messages typed outside calls (`input`).
     */
     const defaults = collectionInterpretationDefaults(space);
-    const root = await CollectionBlock.create(dataset, {
-      kind: SPACE_COLLECTION_KIND,
-      // A feed: every member adds to it, so no one member's editor may ever reconcile it, and a
-      // response to anything that lives in it lives in it too.
-      mode: 'feed',
-      title: '',
-      ...defaults,
-      ...(starter?.input !== undefined && { autoExtract: starter.input }),
-    });
-    await space.setRoot({ id: root.id });
+    const rootId = await runCore<string>(
+      'makeSpaceCollection',
+      { space: space.id, ...defaults, ...(starter?.input !== undefined && { autoExtract: starter.input }) },
+      dataset,
+    );
+    // The record in hand goes into the spaces list as it is, and the list is where a space's
+    // collection is read from on the way in — so it carries what was just written.
+    Object.assign(space, { root: rootId });
 
     const target = {
-      rootId: root.id,
+      rootId,
       spaceId: space.id,
       space: { name: space.name ?? '', description: space.description ?? '' },
     };
@@ -2222,7 +2228,8 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   async function createPost(json: unknown, options: CreatePostOptions = {}): Promise<string | undefined> {
     const p = datasetStore.currentDataset()?.handle;
-    if (!p) return;
+    const me = session.me()?.did;
+    if (!p || !me) return;
 
     // The anchor is what makes one action serve every composed artifact. A post has none — it sits
     // in the space. A message names its channel through `children`; a reply names whatever it
@@ -2234,18 +2241,13 @@ export function SpaceStoreProvider(props: ParentProps) {
     const { kind = 'post', relation = 'children' } = options;
     const parentId = options.parentId ?? (spaceRoot() || undefined);
 
-    // The action arrives from a schema as unknown; the composer produced it, so it is a content document.
-    const root = await createBlocks(p, json as ContentInput, {
+    // The action arrives from a schema as unknown; the composer produced it, so it is a content
+    // document. The writes, threading a reply included, are `core.createPost`'s, as an agent's are.
+    return writePost(p, json as ContentInput, {
+      invoker: me,
       kind,
-      // A message's parent is a collection; a reply's may be any record, and `responses` is the
-      // same relation on every one of them, so it needs no entity to say which.
-      ...(parentId && {
-        anchor: { id: parentId, relation, ...(relation === 'children' && { entity: 'CollectionBlock' }) },
-      }),
+      ...(parentId && (relation === 'responses' ? { respondsTo: parentId } : { container: parentId })),
     });
-    // A reply is linked into its thread, and is a child of nothing — see `completeResponse` in `@we/entities`.
-    if (root?.id && parentId && relation === 'responses') void completeResponse(p, root.id, parentId);
-    return root?.id;
   }
 
   async function updatePost(postId: string, json: unknown): Promise<void> {
@@ -2272,39 +2274,6 @@ export function SpaceStoreProvider(props: ParentProps) {
         'This post was changed by someone else while you were editing. Your version of anything you both changed was kept.',
         8000,
       );
-    }
-  }
-
-  /**
-   * Move a child from one collection to another — a kanban card between columns, a post between
-   * channels.
-   *
-   * A relink, not an edit: the child is untouched and only the two `we://child` edges change.
-   * That is what makes containment a usable way to express status (see the `kanbanBoard`
-   * fragment) — the card carries no column field that could disagree with where it actually is.
-   *
-   * Add before remove, deliberately. Both writes are separate round trips, so a failure between
-   * them leaves the card in **two** columns rather than in none — visible and fixable by moving it
-   * again, where the other order loses it somewhere no view lists. Not atomic: `Ad4mModel`'s batch
-   * covers a transaction on one model's own writes, and this touches two.
-   *
-   * A no-op when the source and target are the same, so a menu listing every column including the
-   * current one cannot remove a card by "moving" it where it already is.
-   */
-  async function moveChild(childId: string, fromId: string, toId: string): Promise<void> {
-    const p = datasetStore.currentDataset()?.handle;
-    if (!p || !childId || !fromId || !toId || fromId === toId) return;
-    try {
-      const [from, to] = await Promise.all([
-        CollectionBlock.findOne(p, { where: { id: fromId } }),
-        CollectionBlock.findOne(p, { where: { id: toId } }),
-      ]);
-      if (!from || !to) return;
-      await to.addChildren(childId);
-      await from.removeChildren(childId);
-    } catch (error) {
-      console.error('SpaceStore: could not move child between collections', error);
-      toastService.error('Could not move that item');
     }
   }
 
@@ -2338,6 +2307,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   */
   const boards = createBoardActions({
     dataset: datasetFor,
+    invoker: () => session.me()?.did,
     // An arrangement is drawn before it is stored; `boardOptimism` holds it, and whatever draws the
     // board reports when the data has overtaken it. See that module for why nothing releases on
     // success.
@@ -2629,6 +2599,33 @@ export function SpaceStoreProvider(props: ParentProps) {
   };
 
   /**
+   * Run one of WE's own declared operations as this agent — in the dataset given, else the space on
+   * screen. What the write means lives in the operation; the action around it keeps what only the
+   * host does (what is drawn first, what is said, what is read again).
+   */
+  function runCore<T = unknown>(name: string, args: Record<string, unknown>, dataset?: DatasetProxy): Promise<T> {
+    const p = dataset ?? datasetStore.currentDataset()?.handle;
+    const invoker = session.me()?.did;
+    if (!p || !invoker) return Promise.reject(new Error('No space is open'));
+    return runOperation(`core.${name}`, args, { dataset: p, invoker }) as Promise<T>;
+  }
+
+  /**
+   * Say why an operation did nothing: its own words for a precondition it refused on (a name the
+   * space already has), the given words for anything else. A policy refusal is already said by the
+   * write check, once, for every write.
+   */
+  function reportOperation(what: string, fallback: string, error: unknown): void {
+    if (isOperationError(error) && error.code === 'refused') return;
+    if (isOperationError(error) && error.class === 'precondition') {
+      toastService.error(error.message);
+      return;
+    }
+    console.error(`SpaceStore: could not ${what}`, error);
+    toastService.error(fallback);
+  }
+
+  /**
    * Persist fields on a space's own record, then publish them — unless `shouldPublish` says a newer
    * save has since taken over what is shown.
    */
@@ -2645,6 +2642,28 @@ export function SpaceStoreProvider(props: ParentProps) {
       throw error;
     }
     if (shouldPublish()) publishSpaceFields(ds, fields);
+  }
+
+  /**
+   * Change one setting on a space's own record through the operation that holds its rule — worked
+   * out from what the record holds when the write is made, not from the copy this screen has — then
+   * publish the value it wrote.
+   */
+  async function writeSpaceSetting<K extends keyof Space>(
+    ds: AppDataset,
+    space: Space,
+    operation: string,
+    field: K,
+    args: Record<string, unknown>,
+  ): Promise<void> {
+    let written: Space[K];
+    try {
+      written = await runCore<Space[K]>(operation, { space: space.id, ...args }, ds.handle);
+    } catch (error) {
+      reportSpaceSave(String(field), error);
+      throw error;
+    }
+    publishSpaceFields(ds, { [field]: written });
   }
 
   async function updateSpaceImage(field: 'avatar' | 'coverImage', imageFile: File, spaceUuid?: string): Promise<void> {
@@ -2684,51 +2703,34 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!spaceRecord) return;
 
     const previousDiscovery = spaceRecord.discovery;
-
-    if (updates.name !== undefined) spaceRecord.name = updates.name;
-    if (updates.description !== undefined) spaceRecord.description = updates.description;
-    if (updates.discovery !== undefined) spaceRecord.discovery = updates.discovery;
-    await spaceRecord.save();
+    const { location, ...scalars } = updates;
+    if (location) await session.backendPorts()!.schemas.ensure(currentDataset, LocationBlock);
+    /*
+      One write: the fields, and the space's own place replaced — deleted and made again, so the
+      space's location relation itself changes and the subscription on it reads the new place.
+    */
+    await runCore(
+      'updateSpaceMeta',
+      {
+        space: spaceRecord.id,
+        name: updates.name,
+        description: updates.description,
+        discovery: updates.discovery,
+        location: location ?? undefined,
+        clearLocation: location === null || undefined,
+      },
+      currentDataset,
+    );
+    // The record read above goes to the discovery space below, so it carries what was just written.
+    Object.assign(spaceRecord, scalars);
     // See updateSpaceImage — only the current space is refreshed by a live subscription.
-    const { location: _location, ...scalars } = updates;
     updateSpaceInCache(ds, scalars);
-
-    if (updates.location !== undefined) {
-      if (updates.location === null) {
-        const [existingLoc] = await LocationBlock.findAll(currentDataset);
-        if (existingLoc) {
-          try {
-            await existingLoc.delete();
-          } catch (err) {
-            console.error('[SpaceStore] location delete failed:', err);
-          }
-        }
-      } else {
-        const loc = updates.location;
-        // Always delete + recreate so setLocation updates the Space's we://location triple,
-        // which triggers the reactive currentSpace subscription to re-query with fresh data.
-        // LocationBlock.update only changes nested triples and doesn't trigger the Space query.
-        const [existingLoc] = await LocationBlock.findAll(currentDataset);
-        if (existingLoc) await existingLoc.delete();
-        await session.backendPorts()!.schemas.ensure(currentDataset, LocationBlock);
-        const newLoc = await LocationBlock.create(currentDataset, {
-          latitude: loc.latitude,
-          longitude: loc.longitude,
-          ...(loc.name && { name: loc.name }),
-          ...(loc.city && { city: loc.city }),
-          ...(loc.country && { country: loc.country }),
-          ...(loc.countryCode && { countryCode: loc.countryCode }),
-        });
-        await spaceRecord.setLocation(newLoc);
-      }
-      /*
-        The cached row carries the location now, and the write above deliberately excluded it from
-        `updateSpaceInCache` (a relation is not a scalar). Only the space *on screen* is refreshed by
-        the live subscription, so without this the settings page would show the old place — or "Not
-        set" — immediately after saving a space the agent is not standing in.
-      */
-      updateSpaceInCache(ds, { location: updates.location } as never);
-    }
+    /*
+      The cached row carries the location too: only the space *on screen* is refreshed by the live
+      subscription, so without this the settings page would show the old place — or "Not set" —
+      immediately after saving a space the agent is not standing in.
+    */
+    if (location !== undefined) updateSpaceInCache(ds, { location } as never);
 
     const globalDs = datasetStore.globalDataset();
     if (!globalDs) return;
@@ -2749,40 +2751,19 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   /**
-   * How a mode's signals are read as one number, where the caller names nothing.
-   *
-   * The manifest's default is `count`, which is right for exactly one of the four modes and silently
-   * wrong for the rest: a rating aggregated by count is a number of voters where the stars say a
-   * score, and a vote by count is three for and three against reported as six. Nothing has ever
-   * asked a person for this field, so every type made so far carries that default — which is why
-   * `SignalControl` ignores an aggregate its mode cannot express, and why a type made from here now
-   * carries one that matches what its control actually draws.
+   * Name a kind of reaction — `core.createSignalType`, which derives the slug, refuses one the space
+   * has, fixes a toggle's and a vote's range, and reads each mode as one number its own way. Only
+   * the fields a reaction type is made from are passed: a form may hold more.
    */
-  const AGGREGATE_FOR_MODE: Record<string, SignalType['aggregate']> = {
-    toggle: 'count',
-    vote: 'sum',
-    rating: 'mean',
-    slider: 'mean',
-  };
-
   async function createSignalType(config: Partial<SignalType>): Promise<void> {
-    const p = datasetStore.currentDataset()?.handle;
-    if (!p) return;
-    // Fixed ranges for modes where the user doesn't configure them
-    const rangeOverrides: Record<string, { rangeMin: number; rangeMax: number }> = {
-      toggle: { rangeMin: 0, rangeMax: 1 },
-      vote: { rangeMin: -1, rangeMax: 1 },
-    };
-    const slugFromName = config.name ? deriveSlug(config.name) : '';
-    const effectiveSlug = config.slug ? config.slug : slugFromName;
-    const withSlug = {
-      ...config,
-      slug: effectiveSlug,
-      ...(config.aggregate || !config.mode ? {} : { aggregate: AGGREGATE_FOR_MODE[config.mode] }),
-    };
-    const normalised =
-      withSlug.mode && rangeOverrides[withSlug.mode] ? { ...withSlug, ...rangeOverrides[withSlug.mode] } : withSlug;
-    await SignalType.create(p, normalised);
+    const name = config?.name?.trim() || config?.slug?.trim();
+    if (!name) return;
+    try {
+      await runCore('createSignalType', { ...pick(config, SIGNAL_TYPE_PARAMS), name });
+    } catch (error) {
+      reportOperation('create a signal type', 'Could not add that reaction', error);
+      throw error;
+    }
   }
 
   /**
@@ -2830,17 +2811,21 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   /**
-   * Name a kind of connection, deriving its slug the way a signal type derives one.
+   * Name a kind of connection — `core.createRelationshipType`, deriving and checking its slug the
+   * way a signal type's is.
    *
    * The slug is what a template refers to when it cares about a specific kind — "draw
    * contradictions in red" — because the display name belongs to the community and may change,
    * where an identifier does not.
    */
   async function createRelationshipType(config: Partial<RelationshipType>): Promise<void> {
-    const p = datasetStore.currentDataset()?.handle;
-    if (!p) return;
-    const slug = config.slug || (config.name ? deriveSlug(config.name) : '');
-    await RelationshipType.create(p, { ...config, slug });
+    if (!config?.name?.trim()) return;
+    try {
+      await runCore('createRelationshipType', { ...pick(config, RELATIONSHIP_TYPE_PARAMS), name: config.name });
+    } catch (error) {
+      reportOperation('create a kind of connection', 'Could not add that kind of connection', error);
+      throw error;
+    }
   }
 
   /**
@@ -2887,42 +2872,16 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     await queueSignalWrite(`${nodeId}|${signalTypeId}`, async () => {
       /*
-        EVERY reaction of mine on this type, not the first one.
-
-        `findOne` was the obvious spelling and it is the one that cannot recover: where two records
-        already exist, it reaches one of them, leaves the other, and no amount of changing the
-        reaction afterwards will ever remove it — a person listed twice under one type for good.
-        At most one reaction per person per type is what "upsert" means here, so the write enforces
-        it rather than assuming it.
-      */
-      const mine = await Signal.findAll(p, {
-        parent: { id: nodeId, relation: 'signals' },
-        where: { signalTypeId, author: myDid },
-      });
-
-      /*
-        Withdrawing a reaction removes the record; changing one edits it in place.
-
-        In place, so it keeps the record's id and `createdAt` for what is plainly the same person's
-        same reaction differently weighted, and in one write: a subscription follows what its query includes, so the edit is heard
-        without a remove-and-add flicker through "nobody has rated this".
-
-        Any further reactions of mine on this type are removed, so a pair that was written twice
-        heals on the next change rather than staying doubled for good.
-
-        A withdrawal — `null` — removes the record rather than storing anything, which is what keeps a
-        withdrawn reaction absent everywhere instead of being a row every count has to remember to
-        exclude. A zero is an ordinary value and is stored like any other.
+        The writes are `core.upsertSignal` and `core.withdrawSignal`: every reaction of mine on this
+        type is found, one is kept and edited in place, and the rest are removed, so a pair written
+        twice heals on the next change. A withdrawal — `null` — removes the record rather than storing
+        anything, which keeps a withdrawn reaction absent everywhere instead of being a row every count
+        has to remember to exclude. A zero is an ordinary value and is stored like any other.
       */
       try {
-        const kept = value === null ? undefined : mine[0];
-        for (const signal of mine) if (signal !== kept) await signal.delete();
-        if (kept) {
-          kept.value = value as number;
-          await kept.save();
-        } else if (value !== null) {
-          await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, relation: 'signals' } });
-        }
+        const args = { node: nodeId, signalType: signalTypeId };
+        if (value === null) await runOperation('core.withdrawSignal', args, { dataset: p, invoker: myDid });
+        else await runOperation('core.upsertSignal', { ...args, value }, { dataset: p, invoker: myDid });
         // The write is back. Not a release — what retires a hold is the data moving — but it ends
         // the hold's exemption from what the next draw says. See `@we/optimism`.
         signalOptimism.done(nodeId, signalTypeId);
@@ -3178,7 +3137,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         // A record written before these existed has neither: one approval, from anybody.
         approvals: approvalsOf({ slug: '', approvals: r.approvals }),
         approverKind: r.approverKind || '',
-        evidence: parseTaskStateEvidence(r.evidence).map((g) => ({
+        evidence: readTaskStateEvidence(r.evidence).map((g) => ({
           entity: g.entity,
           ...(g.where ? { where: g.where } : {}),
           via: g.via && 'relation' in g.via ? g.via.relation : '',
@@ -3395,7 +3354,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         slug: s.slug,
         approvals: s.approvals,
         approverKind: s.approverKind,
-        evidence: parseTaskStateEvidence(storeTaskStateEvidence(s.evidence)),
+        evidence: readTaskStateEvidence(storeTaskStateEvidence(s.evidence)),
       })),
     [],
     { equals: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
@@ -3538,46 +3497,37 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   }
 
-  const archivedWorkflows = createMemo<string[]>(() => parseIdList(currentSpace()?.archivedWorkflows), [], {
+  const archivedWorkflows = createMemo<string[]>(() => idListOf(currentSpace()?.archivedWorkflows), [], {
     equals: (a, b) => a.join('\u0000') === b.join('\u0000'),
   });
 
   /**
-   * Put a workflow away or bring it back — persisted on the space, cached, and republished the way
-   * `writeEnabledViews` does it, for the reason it gives.
+   * Put a workflow away or bring it back — `core.setWorkflowArchived`, cached and republished the
+   * way every setting on the space is.
    */
   async function setWorkflowArchived(name: string, archived: boolean): Promise<void> {
     const ds = datasetStore.currentDataset();
     const space = currentSpace();
     if (!ds || !space) return;
     if (!canAdministerCurrentSpace()) throw new Error('Only whoever administers this space can archive its workflows');
-    const current = parseIdList(space.archivedWorkflows);
-    const next = archived ? [...new Set([...current, name])] : current.filter((n) => n !== name);
-    if (next.join('\u0000') === current.join('\u0000')) return;
-    await writeSpaceFields(ds, space, { archivedWorkflows: next.length ? JSON.stringify(next) : '' });
+    if (!name || idListOf(space.archivedWorkflows).includes(name) === archived) return;
+    await writeSpaceSetting(ds, space, 'setWorkflowArchived', 'archivedWorkflows', { workflow: name, archived });
   }
-
-  /** The state's evidence requirements as stored, for an edit that adds or takes one away. */
-  const guardsOfState = (slug: string) =>
-    (taskStates().find((t) => t.slug === slug)?.evidence ?? []).map(({ entity, where, via, min }) => ({
-      entity,
-      ...(where ? { where } : {}),
-      via,
-      min,
-    }));
 
   async function addTaskStateEvidence(
     slug: string,
     requirement: { entity: string; via?: string; min?: number },
   ): Promise<void> {
-    if (!requirement?.entity) return;
+    if (!slug || !requirement?.entity) return;
     // `entity` is what the requirement form picked — a key such as "comment" — or an entity name.
-    const what = evidenceSubjectOf(requirement.entity);
-    await updateTaskState(slug, { evidence: [...guardsOfState(slug), { ...requirement, ...what }] });
+    const [stored] = storeTaskStateEvidence([{ ...requirement, ...evidenceSubjectOf(requirement.entity) }]) ?? [];
+    if (!stored) return;
+    await changeTaskState('addTaskStateEvidence', { slug, requirement: stored }, 'Could not save that change');
   }
 
   async function removeTaskStateEvidence(slug: string, index: number): Promise<void> {
-    await updateTaskState(slug, { evidence: guardsOfState(slug).filter((_, i) => i !== index) });
+    if (!slug || !Number.isInteger(index) || index < 0) return;
+    await changeTaskState('removeTaskStateEvidence', { slug, index }, 'Could not save that change');
   }
 
   /** See the interface. Persisted on the space the way `setWorkflowArchived` is. */
@@ -3691,24 +3641,29 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   }
 
-  /** The record behind a state, by the slug a task and a screen both hold — or null when there is none. */
-  async function taskStateRecord(p: DatasetProxy, slug: string): Promise<TaskState | null> {
-    const existing = await TaskState.findAll(p, { where: { slug } }).catch(() => [] as TaskState[]);
-    return dedupeBySlug(existing)[0] ?? null;
+  /**
+   * A change to the space's states, then the two things only the host does after one: read them
+   * again for what follows on this screen (the board and the interpretation hint read the list), and
+   * tell interpretation which states there are. The watch would bring the same rows a moment later.
+   */
+  async function changeTaskState(operation: string, args: Record<string, unknown>, failure: string): Promise<void> {
+    try {
+      await runCore(operation, args);
+    } catch (error) {
+      reportOperation('change a task state', failure, error);
+      return;
+    }
+    await loadTaskStates(true);
+    await syncTaskStateHint();
   }
 
   /**
-   * Name a state this community's work moves through.
-   *
-   * A slug matching a state the community already has is refused, since two records with one slug
-   * are one state to every task holding it.
+   * Name a state this community's work moves through — `core.createTaskState`, which derives the
+   * slug and refuses one the space already has.
    *
    * The space's own board — Everything, the catch-all — gains a column for the new state in the same
    * act, so the one board whose job is to show all the work never lags the vocabulary. Boards people
    * made are left alone; theirs offer the column from Unplaced when work in the state shows up.
-   *
-   * Slug derived from the name when none is given, as a signal type's is. It is what tasks store,
-   * so it is not offered for editing afterwards — renaming is what `name` is for.
    */
   async function createTaskState(config: {
     name: string;
@@ -3716,51 +3671,32 @@ export function SpaceStoreProvider(props: ParentProps) {
     color?: string;
     icon?: string;
   }): Promise<void> {
-    const p = datasetStore.currentDataset()?.handle;
-    if (!p || !config.name?.trim()) return;
+    if (!config?.name?.trim()) return;
+    let slug: string;
     try {
-      const slug = deriveSlug(config.name);
-      if (ownTaskStates().some((state) => state.slug === slug)) {
-        toastService.error(`A state with the name "${config.name}" already exists`);
-        return;
-      }
-      await TaskState.create(p, {
-        name: config.name.trim(),
-        slug,
-        semantic: config.semantic ?? 'open',
-        color: config.color ?? '',
-        icon: config.icon ?? '',
-      });
-      await loadTaskStates();
-      await Promise.all([syncTaskStateHint(), boards.addStateToSpaceBoard(slug, config.name.trim())]);
+      ({ slug } = await runCore<{ slug: string }>('createTaskState', {
+        name: config.name,
+        semantic: config.semantic,
+        color: config.color,
+        icon: config.icon,
+      }));
     } catch (error) {
-      console.error('SpaceStore: could not create task state', error);
-      toastService.error('Could not add that state');
+      reportOperation('create a task state', 'Could not add that state', error);
+      return;
     }
+    await loadTaskStates(true);
+    await Promise.all([syncTaskStateHint(), boards.addStateToSpaceBoard(slug, config.name.trim())]);
   }
 
   /**
-   * Change a state the community already has — its name, its colour, its glyph, or what it counts as.
+   * Change a state the community already has — its name, its colour, its glyph, what it counts as,
+   * and what agreement moving into it asks for. `core.updateTaskState` holds the rules: the slug is
+   * not in the update (it is what every task stores; renaming is what `name` is for), `semantic` is
+   * (the field most likely chosen wrongly at creation, and otherwise unfixable), and an empty string
+   * clears where an absent key leaves a field alone.
    *
-   * The counterpart `createTaskState` had no pair for: a state could be named and withdrawn and
-   * nothing else, so a colour was settable exactly once, at creation. Everything a key or a board draws a state with was
-   * therefore whichever fallback the rendering surface happened to hold.
-   *
-   * **The slug is not in the update.** It is what every task stores, so changing it would leave the
-   * work holding a word nothing defines — the same reason a state is retired rather than deleted.
-   * Renaming is what `name` is for, and a rename carries: a task in `todo` follows "To do" to
-   * "Backlog" without being touched.
-   *
-   * **`semantic` is.** It is the one field that means anything outside this space, so changing it
-   * re-answers "what work is outstanding here" for every peer, every board and every agent. It is
-   * also the field most likely to have been chosen wrongly at creation, and a mis-filed state was
-   * otherwise unfixable — withdraw it and make another, losing every task sitting in it. Offered
-   * with the same framing the create form uses, which is what makes the consequence visible.
-   *
-   * **An empty string clears**, rather than being skipped — the SDK clears a property set to `''` or `null`.
-   * That is what makes a reset back to the template's default possible without deleting the state.
-   *
-   * By slug, like its two neighbours: it is what a task and a screen both hold.
+   * Normalised here: the approvals into their range, and the evidence form's keys ("comment") into
+   * requirements as the state stores them.
    */
   async function updateTaskState(
     slug: string,
@@ -3774,37 +3710,26 @@ export function SpaceStoreProvider(props: ParentProps) {
       evidence?: { entity: string; where?: Record<string, string | number | boolean>; via?: string; min?: number }[];
     },
   ): Promise<void> {
-    const p = datasetStore.currentDataset()?.handle;
-    if (!p || !slug || !updates) return;
-    try {
-      const record = await taskStateRecord(p, slug);
-      if (!record) return;
-      // Only what was passed: an absent key leaves the field alone, where `''` is a deliberate clear.
-      if (updates.name !== undefined && updates.name.trim()) record.name = updates.name.trim();
-      if (updates.icon !== undefined) record.icon = updates.icon;
-      if (updates.color !== undefined) record.color = updates.color;
-      if (updates.semantic !== undefined && TASK_STATE_SEMANTICS.includes(updates.semantic)) {
-        record.semantic = updates.semantic;
-      }
-      /*
-        What agreement a state asks for. Changing either is what turns the space's states into a workflow
-        or back — nothing else has to be switched — and the workflow's definition follows from the states
-        on the next read, installed by whoever administers the space.
-      */
-      if (updates.approvals !== undefined) record.approvals = approvalsOf({ slug, approvals: updates.approvals });
-      if (updates.approverKind !== undefined) record.approverKind = updates.approverKind;
-      // A form's list may hold keys ("comment") beside evidence requirements read back off the record; both store as records.
-      if (Array.isArray(updates.evidence))
-        record.evidence = storeTaskStateEvidence(
-          updates.evidence.map((requirement) => ({ ...requirement, ...evidenceSubjectOf(requirement.entity) })),
-        );
-      await record.save();
-      await loadTaskStates();
-      await syncTaskStateHint();
-    } catch (error) {
-      console.error('SpaceStore: could not update task state', error);
-      toastService.error('Could not save that change');
-    }
+    if (!slug || !updates) return;
+    await changeTaskState(
+      'updateTaskState',
+      {
+        slug,
+        name: updates.name,
+        icon: updates.icon,
+        color: updates.color,
+        semantic: updates.semantic,
+        approverKind: updates.approverKind,
+        approvals: updates.approvals === undefined ? undefined : approvalsOf({ slug, approvals: updates.approvals }),
+        // None at all is stored as nothing, which is a clear.
+        evidence: Array.isArray(updates.evidence)
+          ? (storeTaskStateEvidence(
+              updates.evidence.map((requirement) => ({ ...requirement, ...evidenceSubjectOf(requirement.entity) })),
+            ) ?? '')
+          : undefined,
+      },
+      'Could not save that change',
+    );
   }
 
   /**
@@ -3812,34 +3737,24 @@ export function SpaceStoreProvider(props: ParentProps) {
    *
    * An ordered relation rather than a number on each state, which is the difference between a
    * reorder that survives two people doing it at once and one where the second write silently
-   * discards the first. It is the same reason a card's position lives on the board rather than on
-   * the task, and the capability the model layer gained for exactly this.
-   *
-   * Takes slugs, which is what a screen holds; the relation is written over the records' ids.
+   * discards the first. Takes slugs, which is what a screen holds; `core.reorderTaskStates` writes
+   * the relation over the records' ids.
    */
   async function reorderTaskStates(orderedSlugs: string[]): Promise<void> {
-    const p = datasetStore.currentDataset()?.handle;
     const space = currentSpace();
-    if (!p || !space?.id || !Array.isArray(orderedSlugs)) return;
-    const known = new Set(taskStates().map((state) => state.slug));
-    const slugs = orderedSlugs.filter((slug) => known.has(slug));
-    if (!slugs.length) return;
+    if (!space?.id || !Array.isArray(orderedSlugs)) return;
+    const ids = new Map(taskStates().map((state) => [state.slug, state.id]));
+    const shown = orderedSlugs.map((slug) => ids.get(slug)).filter((id): id is string => Boolean(id));
+    if (!shown.length) return;
+    const before = untrack(taskStateOrder);
+    // Shown before it is written, and kept until the space record's next push carries the order the
+    // backend holds — this one, or a peer's concurrent one that beat it.
+    setTaskStateOrder(shown);
     try {
-      const ids: string[] = [];
-      for (const slug of slugs) {
-        const record = await taskStateRecord(p, slug);
-        if (record?.id) ids.push(record.id);
-      }
-      const record = await Space.findOne(p, { where: { id: space.id } });
-      if (!record) return;
-      // Shown before it is written, and kept until the space record's next push re-reads the order
-      // the executor holds — which is this one, or a peer's concurrent one that beat it.
-      setTaskStateOrder(ids);
-      await record.setTaskStates(ids);
-      await loadTaskStates();
+      setTaskStateOrder(await runCore<string[]>('reorderTaskStates', { space: space.id, slugs: orderedSlugs }));
     } catch (error) {
-      console.error('SpaceStore: could not reorder task states', error);
-      toastService.error('Could not save that order');
+      setTaskStateOrder(before);
+      reportOperation('reorder task states', 'Could not save that order', error);
     }
   }
 
@@ -3848,25 +3763,11 @@ export function SpaceStoreProvider(props: ParentProps) {
    *
    * The same decision `setSignalTypeRetired` makes, for the same reason one layer along: a task
    * names its state by slug, so deleting the state leaves every task holding a word nothing
-   * defines. Retiring stops it being offered and leaves everything readable, and un-retiring puts
-   * it back exactly as it was.
-   *
-   * Takes a slug rather than an id, which is what a task and a screen both hold.
+   * defines. Retiring stops it being offered and leaves everything readable.
    */
   async function setTaskStateRetired(slug: string, retired: boolean): Promise<void> {
-    const p = datasetStore.currentDataset()?.handle;
-    if (!p || !slug) return;
-    try {
-      const record = await taskStateRecord(p, slug);
-      if (!record) return;
-      record.retired = retired;
-      await record.save();
-      await loadTaskStates();
-      await syncTaskStateHint();
-    } catch (error) {
-      console.error('SpaceStore: could not update task state', error);
-      toastService.error('Could not update that state');
-    }
+    if (!slug) return;
+    await changeTaskState('setTaskStateRetired', { slug, retired }, 'Could not update that state');
   }
 
   /*
@@ -4083,14 +3984,20 @@ export function SpaceStoreProvider(props: ParentProps) {
     return p;
   }
 
+  /*
+    Roles are written here rather than by a declared operation, and that is the format's rule, not a
+    gap: what decides who may write is never written by an operation, so a template cannot reach it
+    through one. They follow the operations' slug rule all the same — derived from the name, refused
+    when the space holds it, an edit by slug reaching every record that holds it.
+  */
   async function createRole(config: { name: string; description?: string }): Promise<void> {
     const name = config?.name?.trim();
     if (!name) return;
     const p = administeredDataset('name its roles');
     const slug = deriveSlug(name);
     if (!slug) return;
-    if (roleViews().some((role) => role.slug === slug && role.id)) {
-      toastService.error(`A role called "${name}" already exists`);
+    if (((await Role.findAll(p, { where: { slug } }).catch(() => [])) as Role[]).length) {
+      toastService.error('This space already has one called that.');
       return;
     }
     await Role.create(p, { slug, name, description: config.description?.trim() ?? '' });
@@ -4099,11 +4006,14 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   async function updateRole(slug: string, updates: { name?: string; description?: string }): Promise<void> {
     const p = administeredDataset('change its roles');
-    const record = ((await Role.findAll(p, { where: { slug } }).catch(() => [])) as Role[])[0];
-    if (!record) return;
-    if (updates?.name !== undefined && updates.name.trim()) record.name = updates.name.trim();
-    if (updates?.description !== undefined) record.description = updates.description.trim();
-    await record.save();
+    const fields = {
+      ...(updates?.name?.trim() ? { name: updates.name.trim() } : {}),
+      ...(updates?.description !== undefined ? { description: updates.description.trim() } : {}),
+    };
+    if (!Object.keys(fields).length) return;
+    for (const record of (await Role.findAll(p, { where: { slug } }).catch(() => [])) as Role[]) {
+      await Role.update(p, record.id, fields);
+    }
     await reloadRoles();
   }
 
@@ -4386,7 +4296,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   async function writeStartingPolicy(dataset: DatasetProxy, starter: SpaceStarter | undefined): Promise<void> {
     const preset = starter?.policy;
     if (!preset) return;
-    await Policy.create(dataset, { document: JSON.stringify(POLICY_PRESETS[preset].policy) });
+    await Policy.create(dataset, { document: POLICY_PRESETS[preset].policy });
   }
 
   async function setPolicyPreset(preset: PolicyPreset): Promise<void> {
@@ -4398,23 +4308,29 @@ export function SpaceStoreProvider(props: ParentProps) {
     const problems = validatePolicy(chosen.policy);
     if (problems.length) throw new Error(problems.join(' '));
     // Judged by the write check like any other write: `Policy.edit` under the version in force.
-    await Policy.create(p, { document: JSON.stringify(chosen.policy) });
+    await Policy.create(p, { document: chosen.policy });
     await reloadPolicy();
   }
 
-  /** The record behind a kind, by slug — or null when there is none. See `taskStateRecord`. */
-  async function involvementTypeRecord(p: DatasetProxy, slug: string): Promise<InvolvementType | null> {
-    const existing = (await InvolvementType.findAll(p, { where: { slug } }).catch(() => [])) as InvolvementType[];
-    return existing[0] ?? null;
+  /**
+   * A change to the space's kinds of involvement, then the one read the screen has of them — they
+   * are read on entering a space rather than followed.
+   */
+  async function changeInvolvementType(operation: string, args: Record<string, unknown>, failure: string) {
+    try {
+      await runCore(operation, args);
+    } catch (error) {
+      reportOperation('change a kind of involvement', failure, error);
+      return;
+    }
+    await loadInvolvementTypes();
   }
 
   /**
-   * Name a kind of part — "Shepherd", "Second pair of eyes".
-   *
-   * Refused for a slug the community already wrote, since two records with one slug are one kind to
-   * everybody holding it. `reflexive` is fixed at creation and not offered for editing: turning an
-   * assignment into an answer would leave every existing one claiming somebody said something they
-   * never said.
+   * Name a kind of part — "Shepherd", "Second pair of eyes" — through `core.createInvolvementType`,
+   * which refuses a slug the community already has. `reflexive` is fixed at creation and not offered
+   * for editing: turning an assignment into an answer would leave every existing one claiming
+   * somebody said something they never said.
    */
   async function createInvolvementType(config: {
     name: string;
@@ -4424,30 +4340,19 @@ export function SpaceStoreProvider(props: ParentProps) {
     icon?: string;
     color?: string;
   }): Promise<void> {
-    const p = datasetStore.currentDataset()?.handle;
-    if (!p || !config?.name?.trim()) return;
-    try {
-      const slug = deriveSlug(config.name);
-      if (ownInvolvementTypes().some((kind) => kind.slug === slug)) {
-        toastService.error(`A kind called "${config.name}" already exists`);
-        return;
-      }
-      await InvolvementType.create(p, {
-        name: config.name.trim(),
-        slug,
-        semantic: INVOLVEMENT_SEMANTICS.includes(config.semantic as InvolvementSemantic)
-          ? config.semantic
-          : 'responsible',
-        reflexive: Boolean(config.reflexive),
+    if (!config?.name?.trim()) return;
+    await changeInvolvementType(
+      'createInvolvementType',
+      {
+        name: config.name,
+        semantic: config.semantic,
+        reflexive: config.reflexive,
         appliesTo: parseAppliesTo(config.appliesTo ?? '').join(','),
-        icon: config.icon ?? '',
-        color: config.color ?? '',
-      });
-      await loadInvolvementTypes();
-    } catch (error) {
-      console.error('SpaceStore: could not create involvement type', error);
-      toastService.error('Could not add that kind');
-    }
+        icon: config.icon,
+        color: config.color,
+      },
+      'Could not add that kind',
+    );
   }
 
   /** Change a kind — see `updateTaskState` for why the slug is absent and an empty string clears. */
@@ -4455,40 +4360,25 @@ export function SpaceStoreProvider(props: ParentProps) {
     slug: string,
     updates: { name?: string; icon?: string; color?: string; semantic?: InvolvementSemantic; appliesTo?: string },
   ): Promise<void> {
-    const p = datasetStore.currentDataset()?.handle;
-    if (!p || !slug || !updates) return;
-    try {
-      const record = await involvementTypeRecord(p, slug);
-      if (!record) return;
-      if (updates.name !== undefined && updates.name.trim()) record.name = updates.name.trim();
-      if (updates.icon !== undefined) record.icon = updates.icon;
-      if (updates.color !== undefined) record.color = updates.color;
-      if (updates.appliesTo !== undefined) record.appliesTo = parseAppliesTo(updates.appliesTo).join(',');
-      if (updates.semantic !== undefined && INVOLVEMENT_SEMANTICS.includes(updates.semantic)) {
-        record.semantic = updates.semantic;
-      }
-      await record.save();
-      await loadInvolvementTypes();
-    } catch (error) {
-      console.error('SpaceStore: could not update involvement type', error);
-      toastService.error('Could not save that change');
-    }
+    if (!slug || !updates) return;
+    await changeInvolvementType(
+      'updateInvolvementType',
+      {
+        slug,
+        name: updates.name,
+        icon: updates.icon,
+        color: updates.color,
+        semantic: updates.semantic,
+        appliesTo: updates.appliesTo === undefined ? undefined : parseAppliesTo(updates.appliesTo).join(','),
+      },
+      'Could not save that change',
+    );
   }
 
   /** Withdraw a kind, or bring it back — `setTaskStateRetired`'s decision, one vocabulary along. */
   async function setInvolvementTypeRetired(slug: string, retired: boolean): Promise<void> {
-    const p = datasetStore.currentDataset()?.handle;
-    if (!p || !slug) return;
-    try {
-      const record = await involvementTypeRecord(p, slug);
-      if (!record) return;
-      record.retired = retired;
-      await record.save();
-      await loadInvolvementTypes();
-    } catch (error) {
-      console.error('SpaceStore: could not update involvement type', error);
-      toastService.error('Could not update that kind');
-    }
+    if (!slug) return;
+    await changeInvolvementType('setInvolvementTypeRetired', { slug, retired }, 'Could not update that kind');
   }
 
   /*
@@ -4506,9 +4396,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     const uuid = datasetStore.currentDataset()?.id;
     return {
       deployment: getSeed().settings ?? {},
-      agent: parseSettings(datasetStore.agentSettings()?.moduleSettings, 'AgentSettings.moduleSettings'),
-      space: parseSettings(currentSpace()?.moduleSettings, 'Space.moduleSettings'),
-      'agent-in-space': parseSettings(preferenceFor(uuid)?.moduleSettings, 'SpacePreference.moduleSettings'),
+      agent: settingsOf(datasetStore.agentSettings()?.moduleSettings, 'AgentSettings.moduleSettings'),
+      space: settingsOf(currentSpace()?.moduleSettings, 'Space.moduleSettings'),
+      'agent-in-space': settingsOf(preferenceFor(uuid)?.moduleSettings, 'SpacePreference.moduleSettings'),
     };
   });
 
@@ -4572,10 +4462,8 @@ export function SpaceStoreProvider(props: ParentProps) {
   ): Promise<void> {
     const ds = targetDataset(spaceUuid);
     const space = ds ? heldSpace(ds) : undefined;
-    if (!ds || !space) return;
-    const raw = (space as unknown as { moduleSettings?: string }).moduleSettings;
-    const next = value === undefined ? clearSetting(raw, group, key) : writeSetting(raw, group, key, value);
-    await writeSpaceFields(ds, space, { moduleSettings: next });
+    if (!ds || !space || !group || !key) return;
+    await writeSpaceSetting(ds, space, 'setSpaceModuleSetting', 'moduleSettings', { group, key, value });
   }
 
   /** The same, for this agent in this one space. Private — written to the root dataset. */
@@ -4586,16 +4474,14 @@ export function SpaceStoreProvider(props: ParentProps) {
     spaceUuid?: string,
   ): Promise<void> {
     const uuid = spaceUuid ?? datasetStore.currentDataset()?.id;
-    if (!uuid) return;
-    const raw = preferenceFor(uuid)?.moduleSettings;
-    const next = value === undefined ? clearSetting(raw, group, key) : writeSetting(raw, group, key, value);
-    await updateSpacePreference(uuid, { moduleSettings: next });
+    if (!uuid || !group || !key) return;
+    await writeSpacePreference('setMyModuleSetting', uuid, { group, key, value });
   }
 
   /** The same, for this agent everywhere. Also private, and also the root dataset. */
   async function setAgentModuleSetting(group: string, key: string, value?: SettingValue): Promise<void> {
-    const raw = datasetStore.agentSettings()?.moduleSettings;
-    const next = value === undefined ? clearSetting(raw, group, key) : writeSetting(raw, group, key, value);
+    const stored = datasetStore.agentSettings()?.moduleSettings;
+    const next = value === undefined ? clearSetting(stored, group, key) : writeSetting(stored, group, key, value);
     await datasetStore.updateAgentSettings({ moduleSettings: next });
   }
 
@@ -4638,7 +4524,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    * watch for a call its participants had switched off for the moment it took to read.
    */
   const [collectionSettings, setCollectionSettings] = createSignal<
-    Record<string, { autoExtract?: boolean; extractionTargets?: string }>
+    Record<string, { autoExtract?: boolean; extractionTargets?: unknown }>
   >({});
   const [loadedCollections, setLoadedCollections] = createSignal<ReadonlySet<string>>(new Set());
   const [askedCollections, setAskedCollections] = createSignal<string[]>([]);
@@ -4747,9 +4633,15 @@ export function SpaceStoreProvider(props: ParentProps) {
   const canSetInterpretationFor = (collectionId: string): boolean =>
     Boolean(collectionId) && (collectionId !== spaceRoot() || canAdministerCurrentSpace());
 
+  /**
+   * Change what one collection is interpreted for — `core.setCollectionInterpretation` — showing
+   * `shown` on the press: the subscription answers a moment later, and a switch that waits for it
+   * reads as one that did not take.
+   */
   async function writeCollectionSettings(
     collectionId: string,
-    fields: { autoExtract?: boolean; extractionTargets?: string },
+    shown: { autoExtract?: boolean; extractionTargets?: string[] },
+    args: Record<string, unknown>,
     what: string,
   ): Promise<void> {
     const dataset = datasetStore.currentDataset();
@@ -4759,11 +4651,9 @@ export function SpaceStoreProvider(props: ParentProps) {
       return;
     }
     const before = collectionSettings()[collectionId];
-    // Shown on the press: the subscription answers a moment later, and a switch that waits for it
-    // reads as one that did not take.
-    setCollectionSettings((current) => ({ ...current, [collectionId]: { ...current[collectionId], ...fields } }));
+    setCollectionSettings((current) => ({ ...current, [collectionId]: { ...current[collectionId], ...shown } }));
     try {
-      await CollectionBlock.update(dataset.handle, collectionId, fields);
+      await runCore('setCollectionInterpretation', { collection: collectionId, ...args }, dataset.handle);
     } catch (error) {
       setCollectionSettings((current) => ({ ...current, [collectionId]: before ?? {} }));
       console.error(`SpaceStore: could not save ${what}`, error);
@@ -4778,21 +4668,26 @@ export function SpaceStoreProvider(props: ParentProps) {
    * Does not stop a pass already running: those tokens are spent.
    */
   const setAutoInterpretFor = (collectionId: string, on: boolean): Promise<void> =>
-    writeCollectionSettings(collectionId, { autoExtract: on }, 'whether this is interpreted as it happens');
+    writeCollectionSettings(
+      collectionId,
+      { autoExtract: on },
+      { autoExtract: on },
+      'whether this is interpreted as it happens',
+    );
 
   /**
    * Add or remove one model from what a collection extracts, for everyone in it.
    *
-   * Writes the resolved list rather than a diff, so a collection made without a copy pins whatever
-   * the space's default was at that moment — the same rule `setModuleEnabled` follows.
+   * A collection made without a list of its own starts from what it resolves to now — the space's
+   * default — so the first toggle pins that, the rule `setModuleEnabled` follows.
    */
   async function setInterpretationTargetFor(collectionId: string, entity: string, on: boolean): Promise<void> {
-    const next = new Set(interpretationTargetsFor(collectionId));
-    if (on) next.add(entity);
-    else next.delete(entity);
+    const resolved = interpretationTargetsFor(collectionId);
+    const next = on ? [...new Set([...resolved, entity])] : resolved.filter((name) => name !== entity);
     await writeCollectionSettings(
       collectionId,
-      { extractionTargets: JSON.stringify([...next]) },
+      { extractionTargets: next },
+      { entity, on, fallback: resolved },
       'what this interprets',
     );
   }
@@ -5017,7 +4912,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   const spaceViews = createMemo<ResolvedView[]>(() =>
     activeSections({
       routable: routableHere(),
-      enabledRaw: currentSpace()?.enabledViews,
+      enabled: currentSpace()?.enabledViews,
       hidden: hiddenViewsFor(datasetStore.currentDataset()?.id),
       fallbackOrder: defaultViewOrder(),
     }),
@@ -5038,7 +4933,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   const enabledViewIds = createMemo<string[]>(() =>
     activeSections({
       routable: routableHere(),
-      enabledRaw: currentSpace()?.enabledViews,
+      enabled: currentSpace()?.enabledViews,
       hidden: [],
       fallbackOrder: defaultViewOrder(),
     }).map((view) => view.id),
@@ -5160,14 +5055,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     const root = datasetStore.rootDataset();
     const uuid = spaceUuid ?? datasetStore.currentDataset()?.id;
     if (!root || !nodeId || !uuid) return;
-    // ISO-8601 UTC: the marker is compared against `createdAt` as a string, so the format has to be
-    // the one whose lexicographic order is chronological. See `ReadMarker.lastReadAt`.
-    const lastReadAt = new Date().toISOString();
     try {
-      const existing = readMarkers().find((m) => m.nodeId === nodeId);
-      if (existing) await ReadMarker.update(root.handle, existing.id, { lastReadAt });
-      else await ReadMarker.create(root.handle, { nodeId, spaceUuid: uuid, lastReadAt });
-      setReadMarkers(await ReadMarker.findAll(root.handle));
+      const marker = await runCore<Partial<ReadMarker>>('markRead', { node: nodeId, space: uuid }, root.handle);
+      setReadMarkers((rows) => withRow(rows, marker));
     } catch (error) {
       console.error('SpaceStore: could not write read marker', error);
     }
@@ -5299,10 +5189,15 @@ export function SpaceStoreProvider(props: ParentProps) {
     const root = datasetStore.rootDataset();
     if (!root || !did) return;
     try {
-      const existing = mutedAgents().find((m) => m.did === did);
-      if (muted && !existing) await MutedAgent.create(root.handle, { did, description });
-      else if (!muted && existing) await MutedAgent.delete(root.handle, existing.id);
-      setMutedAgents(await MutedAgent.findAll(root.handle));
+      await runCore('setAgentMuted', { did, muted, description }, root.handle);
+      // What the operation leaves: one record while muted, none after. Its id is not needed to read it.
+      setMutedAgents((rows) =>
+        muted
+          ? rows.some((m) => m.did === did)
+            ? rows
+            : [...rows, { did, description } as MutedAgent]
+          : rows.filter((m) => m.did !== did),
+      );
     } catch (error) {
       console.error('SpaceStore: could not update mute list', error);
       toastService.error(muted ? 'Could not mute that account' : 'Could not unmute that account');
@@ -5393,23 +5288,23 @@ export function SpaceStoreProvider(props: ParentProps) {
     // Writes the resolved list, so the first toggle pins whatever was on by fallback — the same
     // reason `setModuleEnabled` does, and the same consequence: a module added to the seed later
     // will not silently appear for an agent who has already decided.
-    await datasetStore.updateAgentSettings({ installedModules: JSON.stringify([...next]) });
+    await datasetStore.updateAgentSettings({ installedModules: [...next] });
   }
 
   /**
-   * Write one agent-private choice about one space, creating the record if it is the first.
+   * Write one agent-private choice about one space — the operation finds this agent's preference for
+   * it or makes the first — and hold the record it answers with, so the choice is what the next read
+   * of it sees.
    *
    * Always the root dataset, never the space — these are mine, and putting them in the shared
    * perspective would tell every other member which modules I muted and which theme I use.
    */
-  async function updateSpacePreference(uuid: string, updates: Partial<SpacePreference>): Promise<void> {
+  async function writeSpacePreference(operation: string, uuid: string, args: Record<string, unknown>): Promise<void> {
     const root = datasetStore.rootDataset();
     if (!root) return;
     try {
-      const existing = preferenceFor(uuid);
-      if (existing) await SpacePreference.update(root.handle, existing.id, updates);
-      else await SpacePreference.create(root.handle, { spaceUuid: uuid, ...updates });
-      setSpacePreferences(await SpacePreference.findAll(root.handle));
+      const preference = await runCore<Partial<SpacePreference>>(operation, { space: uuid, ...args }, root.handle);
+      setSpacePreferences((rows) => withRow(rows, preference));
     } catch (error) {
       console.error('SpaceStore: could not persist space preference', error);
     }
@@ -5424,11 +5319,8 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   async function setModuleVisible(moduleId: string, visible: boolean, spaceUuid?: string): Promise<void> {
     const uuid = spaceUuid ?? datasetStore.currentDataset()?.id;
-    if (!uuid) return;
-    const next = new Set(mutedModulesFor(uuid));
-    if (visible) next.delete(moduleId);
-    else next.add(moduleId);
-    await updateSpacePreference(uuid, { mutedModules: JSON.stringify([...next]) });
+    if (!uuid || !moduleId) return;
+    await writeSpacePreference('setModuleVisible', uuid, { module: moduleId, visible });
   }
 
   /**
@@ -5541,7 +5433,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   async function setSpaceTemplateOverride(templateId: string, spaceUuid?: string): Promise<void> {
     const uuid = spaceUuid ?? datasetStore.currentDataset()?.id;
     if (!uuid) return;
-    await updateSpacePreference(uuid, { templateId });
+    await writeSpacePreference('setSpaceTemplateOverride', uuid, { template: templateId });
     if (datasetStore.currentDataset()?.id !== uuid) return;
     const template = templateStore.allTemplates().find((t) => t.id === resolveTemplateFor(uuid));
     if (template) templateStore.replaceTemplate(template);
@@ -5551,7 +5443,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   async function setSpaceThemeOverride(themeId: string, spaceUuid?: string): Promise<void> {
     const uuid = spaceUuid ?? datasetStore.currentDataset()?.id;
     if (!uuid) return;
-    await updateSpacePreference(uuid, { themeId });
+    await writeSpacePreference('setSpaceThemeOverride', uuid, { theme: themeId });
     if (datasetStore.currentDataset()?.id !== uuid) return;
     const effective = resolveThemeFor(uuid);
     // Explicit: this is only reached by someone choosing a theme, so it outranks an editing
@@ -5827,11 +5719,11 @@ export function SpaceStoreProvider(props: ParentProps) {
     const save = defaultSaveFor(ds, 'extractionTargets');
     const isNewest = save.ops.begin();
     const base = save.pending > 0 && save.value !== undefined ? save.value : space.extractionTargets;
-    const current = parseEntityList(base) ?? LEGACY_INTERPRETATION_TARGETS;
+    const current = entityListOf(base) ?? LEGACY_INTERPRETATION_TARGETS;
     const next = new Set(current);
     if (on) next.add(entity);
     else next.delete(entity);
-    const extractionTargets = JSON.stringify([...next]);
+    const extractionTargets = [...next];
     save.value = extractionTargets;
     save.pending += 1;
     try {
@@ -5854,13 +5746,13 @@ export function SpaceStoreProvider(props: ParentProps) {
     // configured from the spaces list as readily as for the one on screen.
     const space = ds ? heldSpace(ds) : undefined;
     if (!ds || !space) return;
-    const next = new Set(resolveEnabledModules(space.enabledModules));
-    if (enabled) next.add(moduleId);
-    else next.delete(moduleId);
-    // Writes the resolved list, not a diff — so the first toggle also pins everything that was on by
-    // fallback, and a module added to the seed later doesn't silently appear in a space that had
-    // already made a decision.
-    await writeSpaceFields(ds, space, { enabledModules: JSON.stringify([...next]) });
+    // The first toggle writes the fallback whole, so it pins everything that was on by default, and a
+    // module added to the seed later doesn't silently appear in a space that had already decided.
+    await writeSpaceSetting(ds, space, 'setModuleEnabled', 'enabledModules', {
+      module: moduleId,
+      on: enabled,
+      fallback: resolveEnabledModules(undefined),
+    });
   }
 
   /**
@@ -5877,59 +5769,40 @@ export function SpaceStoreProvider(props: ParentProps) {
   async function setViewEnabled(viewId: string, enabled: boolean, spaceUuid?: string) {
     const ds = targetDataset(spaceUuid);
     const space = ds ? heldSpace(ds) : undefined;
-    if (!ds || !space) return;
-    const available = availableViews();
-    const current = resolveEnabledViews(space.enabledViews, (id) => available.has(id), defaultViewOrder());
-    const next = enabled
-      ? current.includes(viewId)
-        ? current
-        : [...current, viewId]
-      : current.filter((id) => id !== viewId);
-    await writeEnabledViews(ds, space, next);
+    if (!ds || !space || !viewId) return;
+    /*
+      Worked out from the stored list, where a section this build has never heard of is kept where
+      it is: one member on an older build flicking one switch must not remove, for the whole
+      community, every section their build lacks.
+    */
+    await writeSpaceSetting(ds, space, 'setViewEnabled', 'enabledViews', {
+      view: viewId,
+      on: enabled,
+      fallback: defaultViews(),
+    });
   }
+
+  /** The sections a space has before its community decides: the bundled set this build has, in seed order. */
+  const defaultViews = (): string[] => {
+    const available = availableViews();
+    return resolveEnabledViews(undefined, (id) => available.has(id), defaultViewOrder());
+  };
 
   /**
    * Set the whole section list at once — what a drag-reorder writes.
    *
    * Takes the order rather than a moved id, because `we-sortable` reports the resulting arrangement
-   * and re-deriving it from a move would be a second implementation of the same decision.
+   * and re-deriving it from a move would be a second implementation of the same decision. A reorder
+   * may only reorder, which `core.reorderViews` holds: a section the drag handed back that is not on
+   * stays off. Sections this build does not know go back where they were first (`preserveUnknownViews`).
    */
   async function reorderViews(viewIds: string[], spaceUuid?: string) {
     const ds = targetDataset(spaceUuid);
     const space = ds ? heldSpace(ds) : undefined;
-    if (!ds || !space) return;
-    /*
-      A reorder may only *reorder*. Intersecting with what is already enabled is what stops a drag
-      from turning sections on: the settings list holds every available section, so a drag handed
-      back the disabled ones too, and writing them wholesale enabled every one of them at a stroke.
-
-      The drag zone now holds only the enabled rows, so this is belt and braces — but it is the half
-      that cannot be undone by someone rearranging the schema later.
-    */
-    const enabled = new Set(
-      resolveEnabledViews(space.enabledViews, (id) => availableViews().has(id), defaultViewOrder()),
-    );
-    await writeEnabledViews(
-      ds,
-      space,
-      viewIds.filter((id) => enabled.has(id)),
-    );
-  }
-
-  /** The write half both of the above share — persist, cache, and republish the space on screen. */
-  async function writeEnabledViews(ds: AppDataset, space: Space, viewIds: string[]) {
-    /*
-      Sections this build has never heard of go back in, where they were.
-
-      Both callers start from the *resolved* list, which is right — it is what the person acted on —
-      and resolving drops ids naming a view this build does not have. Writing that straight back
-      persisted the pruning, so one member on an older build flicking one switch removed every
-      section their build lacked, for the whole community, with no way back. See
-      `preserveUnknownViews`.
-    */
+    if (!ds || !space || !Array.isArray(viewIds)) return;
     const available = availableViews();
-    const merged = preserveUnknownViews(viewIds, parseIdList(space.enabledViews), (id) => available.has(id));
-    await writeSpaceFields(ds, space, { enabledViews: JSON.stringify(merged) });
+    const order = preserveUnknownViews(viewIds, idListOf(space.enabledViews), (id) => available.has(id));
+    await writeSpaceSetting(ds, space, 'reorderViews', 'enabledViews', { order, fallback: defaultViews() });
   }
 
   /**
@@ -5941,11 +5814,8 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   async function setViewVisible(viewId: string, visible: boolean, spaceUuid?: string): Promise<void> {
     const uuid = spaceUuid ?? datasetStore.currentDataset()?.id;
-    if (!uuid) return;
-    const next = new Set(hiddenViewsFor(uuid));
-    if (visible) next.delete(viewId);
-    else next.add(viewId);
-    await updateSpacePreference(uuid, { hiddenViews: JSON.stringify([...next]) });
+    if (!uuid || !viewId) return;
+    await writeSpacePreference('setViewVisible', uuid, { view: viewId, visible });
   }
 
   // Subscribe to current space data reactively whenever the dataset changes.
@@ -6105,8 +5975,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     string,
     {
       key: string;
-      confirmed: string | undefined;
-      value: string | undefined;
+      /** The field's value — an id for a default, a list of entity names for the interpretation list. */
+      confirmed: unknown;
+      value: unknown;
       ops: Latest;
       pending: number;
       tail: Promise<unknown>;
@@ -6122,7 +5993,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const fields: Partial<Space> = {};
     for (const field of ['defaultTemplateId', 'defaultThemeId', 'extractionTargets'] as const) {
       const save = defaultSaves.get(`${ds.id}:${field}`);
-      if (save) fields[field] = save.value;
+      if (save) (fields as Record<string, unknown>)[field] = save.value;
     }
     return fields;
   };
@@ -6195,7 +6066,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       save.confirmed = templateId;
     } catch (error) {
       // Only the newest save takes the paint back — an earlier one failing leaves the later one's.
-      if (isNewest()) publishSpaceFields(ds, { defaultTemplateId: save.confirmed });
+      if (isNewest()) publishSpaceFields(ds, { defaultTemplateId: save.confirmed as string | undefined });
       throw error;
     } finally {
       save.pending -= 1;
@@ -6219,7 +6090,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       save.confirmed = themeId;
     } catch (error) {
       // Only the newest save takes the paint back — an earlier one failing leaves the later one's.
-      if (isNewest()) publishSpaceFields(ds, { defaultThemeId: save.confirmed });
+      if (isNewest()) publishSpaceFields(ds, { defaultThemeId: save.confirmed as string | undefined });
       throw error;
     } finally {
       save.pending -= 1;
@@ -6468,7 +6339,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     removeSpace,
     createPost,
     updatePost,
-    moveChild,
     ...boards,
     setAttending,
     mutedDids,

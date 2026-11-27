@@ -77,7 +77,7 @@ const TS_TYPE = {
   boolean: 'boolean',
   date: 'string',
   datetime: 'string',
-  json: 'string',
+  json: 'unknown',
 };
 
 function propertyDecorator(spec) {

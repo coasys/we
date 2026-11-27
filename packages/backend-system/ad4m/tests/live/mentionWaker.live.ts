@@ -6,7 +6,7 @@
  * `@coasys/ad4m`'s own `WakerSubscriptionManager`.
  *
  * WE stores a mention as the visible text `@<name>`, a `mention` mark carrying the bot's DID, and a
- * `we://mention` link to the DID: from a post's root (`createBlocks` writes it from the marks), or
+ * `we://mention` link to the DID: from a post's root (`core.createPost` writes it from the marks), or
  * from a feed line itself (`linkNewMentions` adds it beside the line). The link is the mention. The
  * text holds whatever name WE's picker showed for the bot — a name from some profile, or a shortened
  * DID when it has none — so the bot must be woken whatever the text says:
@@ -15,7 +15,7 @@
  *   relation): woken, naming the line;
  * - the bot's own feed line naming itself: not woken, while the same kind of line by someone else
  *   is;
- * - a post into a channel through WE's own create path (`createBlocks`, which is what
+ * - a post into a channel through WE's own create path (`writePost`, which is what
  *   `spaceStore.createPost` calls): woken, naming the post's root. Its mention link is on the root,
  *   which has no text of its own, so only the waker's `Mentioning` query finds it (`via: 'mentions'`).
  *
@@ -34,7 +34,7 @@ import { createHash, generateKeyPairSync, randomUUID, sign as signBytes } from '
 
 import { Ad4mClient, LinkExpression, LinkQuery, type MentionMessage, WakerSubscriptionManager } from '@coasys/ad4m';
 import type { BackendPorts } from '@we/backend-shared';
-import { type ContentDocument, createBlocks, registerCoreBlocks, serializeMarks } from '@we/block-shared';
+import { type ContentDocument, registerCoreBlocks, writePost } from '@we/block-shared';
 import { CollectionBlock, TextBlock } from '@we/entities';
 import { afterAll, describe, expect, inject, it } from 'vitest';
 
@@ -226,7 +226,7 @@ const LABELS: { label: string; name: (bot: string) => string }[] = [
 ];
 
 /** A post into `channelId` through WE's own create path, its text mentioning `did` as `@<name>`. */
-async function postMentioning(handle: unknown, channelId: string, name: string, did: string) {
+async function postMentioning(handle: unknown, channelId: string, name: string, did: string, author: string) {
   const mention = `@${name}`;
   const post: ContentDocument = {
     _type: 'document',
@@ -238,12 +238,9 @@ async function postMentioning(handle: unknown, channelId: string, name: string, 
       },
     ],
   };
-  const root = await createBlocks(handle as never, post, {
-    kind: 'post',
-    anchor: { id: channelId, relation: 'children', entity: 'CollectionBlock' },
-  });
-  expect(root?.id).toBeTruthy();
-  return root!.id;
+  const id = await writePost(handle as never, post, { invoker: author, kind: 'post', container: channelId });
+  expect(id).toBeTruthy();
+  return id;
 }
 
 /**
@@ -256,7 +253,7 @@ async function lineMentioning(handle: unknown, channelId: string, name: string, 
   const text = `${mention} can you look at this?`;
   expect(text).not.toContain(did);
   const marks = [{ start: 0, end: Array.from(mention).length, type: 'mention' as const, did }];
-  const line = (await TextBlock.create(handle as never, { text, marks: serializeMarks(marks) } as never, {
+  const line = (await TextBlock.create(handle as never, { text, marks } as never, {
     parent: { id: channelId, relation: 'children', entity: 'CollectionBlock' },
   })) as { id: string };
   expect(line?.id).toBeTruthy();
@@ -383,7 +380,13 @@ describe('a bot @mentioned in a WE channel', () => {
   // control that the waker is listening.
   it('is woken by a post whose only mention is the link on its root', { timeout: 180_000 }, async () => {
     const fixture = await botWithWaker();
-    const rootId = await postMentioning(fixture.composing.handle, fixture.channel.id, UNKNOWN_NAME, fixture.bot);
+    const rootId = await postMentioning(
+      fixture.composing.handle,
+      fixture.channel.id,
+      UNKNOWN_NAME,
+      fixture.bot,
+      fixture.bot,
+    );
     const lineId = await lineMentioning(fixture.composing.handle, fixture.channel.id, UNKNOWN_NAME, fixture.bot);
 
     const { woken, why } = await fixture.deliver([lineId, rootId]);

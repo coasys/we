@@ -63,11 +63,12 @@ describe('the record of an install', () => {
     expect(withoutInstalled(list, 'field-guide')).toEqual([]);
   });
 
-  it('survives a round trip through the setting, and reads nothing from a broken one', () => {
+  it('reads the setting as the list it holds, and nothing from one that is not a list', () => {
     const list = [entry('1.0.0')];
-    expect(readInstalledBundles(JSON.stringify(list))).toEqual(list);
-    expect(readInstalledBundles('not json')).toEqual([]);
-    expect(readInstalledBundles('')).toEqual([]);
+    expect(readInstalledBundles(list)).toEqual(list);
+    expect(readInstalledBundles([...list, { name: 'no id' }, null])).toEqual(list);
+    expect(readInstalledBundles('[]')).toEqual([]);
+    expect(readInstalledBundles(undefined)).toEqual([]);
   });
 
   it('reads the themes an install wrote, including one recorded before there could be several', () => {

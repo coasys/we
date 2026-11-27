@@ -163,14 +163,14 @@ export class CollectionBlock extends WeNode {
   autoExtract?: boolean;
 
   /**
-   * The models this collection looks for, as a JSON array of entity names — copied from the
+   * The models this collection looks for, as a list of entity names — copied from the
    * space's default (`Space.extractionTargets`) when the collection is made, for `autoExtract`'s
    * reason.
    *
-   * **`'[]'` means none, and that is different from unset.** Unset is a collection made without
-   * a copy, and reads as the space's default; `'[]'` is a conversation whose participants turned
-   * everything off, and extracts nothing. A string rather than one link per model for exactly
-   * that: zero links could not tell the two apart.
+   * **An empty list means none, and that is different from unset.** Unset is a collection made
+   * without a copy, and reads as the space's default; `[]` is a conversation whose participants
+   * turned everything off, and extracts nothing. A value rather than one link per model for
+   * exactly that: zero links could not tell the two apart.
    *
    * Always intersected with the candidates when read, so a model since deleted narrows the list
    * rather than failing the pass. Rewritten whole, so two people toggling in the same instant
@@ -178,7 +178,7 @@ export class CollectionBlock extends WeNode {
    * presses occasionally.
    */
   @Property({ through: 'we://extraction_targets' })
-  extractionTargets: string = '';
+  extractionTargets?: unknown;
 
   /**
    * What is in this collection, in the order somebody put it there.

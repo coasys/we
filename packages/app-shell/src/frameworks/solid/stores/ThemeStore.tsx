@@ -72,12 +72,16 @@ function asThemeMode(value: string | null | undefined): ThemeMode {
   return value === 'light' || value === 'dark' ? value : 'system';
 }
 
-/** Stored display preferences, or none for anything that does not parse. */
-function parseDisplay(raw: string | null | undefined): DisplayPreferences {
-  if (!raw) return {};
+/** Stored display preferences, or none for anything that is not an object. */
+function displayFrom(stored: unknown): DisplayPreferences {
+  return stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
+}
+
+/** The display preferences this device cached, which is text, since that is what localStorage holds. */
+function cachedDisplay(): DisplayPreferences {
+  if (typeof window === 'undefined') return {};
   try {
-    const parsed: unknown = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? parsed : {};
+    return displayFrom(JSON.parse(localStorage.getItem(DISPLAY_KEY) ?? 'null'));
   } catch {
     return {};
   }
@@ -612,9 +616,8 @@ export function ThemeStoreProvider(props: ParentProps) {
     what this device last wore, so the first paint does not flip sides when the settings land.
   */
   const displayPreferences = createMemo<DisplayPreferences>(() => {
-    const own = datasetStore.agentSettings()?.displayPreferences;
-    if (own !== undefined) return parseDisplay(own);
-    return parseDisplay(typeof window !== 'undefined' ? localStorage.getItem(DISPLAY_KEY) : null);
+    const settings = datasetStore.agentSettings();
+    return settings ? displayFrom(settings.displayPreferences) : cachedDisplay();
   });
   /*
     Handed to @we/themes, which lays them over every theme it applies and redoes every theme on
@@ -630,9 +633,9 @@ export function ThemeStoreProvider(props: ParentProps) {
     const next: DisplayPreferences = { ...displayPreferences() };
     if (value === null || value === undefined || value === 'system') delete next[key];
     else next[key] = value;
-    const stored = Object.keys(next).length ? JSON.stringify(next) : '';
-    localStorage.setItem(DISPLAY_KEY, stored);
-    return datasetStore.updateAgentSettings({ displayPreferences: stored });
+    localStorage.setItem(DISPLAY_KEY, JSON.stringify(next));
+    // Nothing chosen is no value at all, so a later default for an axis reaches this person too.
+    return datasetStore.updateAgentSettings({ displayPreferences: Object.keys(next).length ? next : null });
   }
   const themeMode = createMemo<ThemeMode>(() => asThemeMode(displayPreferences().colorScheme));
   const themeSide = createMemo<'light' | 'dark'>(() => {
@@ -942,8 +945,9 @@ export function ThemeStoreProvider(props: ParentProps) {
 
   // The display needs, cached for the next first paint.
   createEffect(() => {
-    if (!datasetStore.agentSettings()) return;
-    localStorage.setItem(DISPLAY_KEY, datasetStore.agentSettings()?.displayPreferences ?? '');
+    const settings = datasetStore.agentSettings();
+    if (!settings) return;
+    localStorage.setItem(DISPLAY_KEY, JSON.stringify(displayFrom(settings.displayPreferences)));
   });
 
   /** What the scoped wrapper renders. Null in global mode — the template inherits documentElement. */

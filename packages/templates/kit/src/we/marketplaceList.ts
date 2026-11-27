@@ -52,8 +52,11 @@ export function marketplaceList(opts: MarketplaceListOptions): SchemaNode {
   const key = `${opts.as}Items`;
   const grid = opts.layout !== 'list';
 
-  /** What the grid actually shows — the filter the count below must agree with. */
-  const matching = { $: `filter(local.${key}, { name: { contains: local.search } })` };
+  /**
+   * What the grid actually shows — the filter the count below must agree with. With nothing typed
+   * there is nothing to match, so the where is empty rather than a test an unnamed item would fail.
+   */
+  const matching = { $: `filter(local.${key}, local.search ? { name: { contains: local.search } } : {})` };
 
   const rows: SchemaNode = {
     type: '$each',

@@ -13,7 +13,7 @@
 import { cleanup, render } from '@solidjs/testing-library';
 import { createInMemoryBackendPorts, type InMemoryAgentOptions, type InMemoryLifecycle } from '@we/backend-inmemory';
 import { type EntityManifest, type LivePage, type LiveQuery, ModuleSchemasRefused } from '@we/backend-shared';
-import { createBlocks, registerCoreBlocks } from '@we/block-shared';
+import { type ContentInput, registerCoreBlocks, writePost } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
 import { provideFileSaver } from '@we/design-utils';
 import {
@@ -257,7 +257,7 @@ vi.mock('../src/frameworks/solid/stores/ThemeStore', () => ({
 }));
 
 // ── Harness ───────────────────────────────────────────────────────────────────
-import { completeResponse } from '@we/entities';
+import { completeResponse, runOperation } from '@we/entities';
 import { withInterpretationDefaults } from '@we/entities';
 
 import { credential } from '../src/frameworks/solid/credential';
@@ -344,6 +344,11 @@ function mountShell(): Stores {
   ));
   return out;
 }
+
+/** A post written as this agent, through `core.createPost`, as the composer writes one. */
+const composed = async (handle: unknown, blocks: ContentInput, kind: string) => ({
+  id: await writePost(handle as never, blocks, { invoker: 'did:test:james', kind }),
+});
 
 const ready = (stores: Stores) => vi.waitFor(() => expect(stores.session.bootState()).toBe('ready'), { timeout: 5000 });
 
@@ -541,6 +546,8 @@ describe('boot', () => {
           find: (handle, entity, query) => model(entity).findAll(handle, query),
           update: (handle, entity, id, fields) => model(entity).update(handle, id, fields),
           remove: (handle, entity, id) => model(entity).delete(handle, id),
+          run: (handle, name, args) => runOperation(name, args, { dataset: handle, invoker: 'did:test:james' }),
+          invoker: () => 'did:test:james',
         }),
       });
       return {
@@ -2903,7 +2910,7 @@ describe('the personal space', () => {
     // The composer registers these when it mounts; this suite mounts no renderer.
     registerCoreBlocks();
 
-    const root = await createBlocks(personal.handle, [{ _type: 'block', text: 'only mine' }], { kind: 'post' });
+    const root = await composed(personal.handle, [{ _type: 'block', text: 'only mine' }], 'post');
 
     const notes = await CollectionBlock.findAll(personal.handle as never, { where: { kind: 'post' } });
     expect(notes.map((note) => note.id)).toEqual([root!.id]);
@@ -3083,7 +3090,7 @@ describe('following a space from the rows its live queries push', () => {
     const { stores, handle } = await openSpace('Pushed Policy');
     expect(stores.spaces.policy().preset).not.toBe('community');
     const reads = spyFindAll('Policy');
-    await Policy.create(handle, { document: JSON.stringify(COMMUNITY_POLICY) } as never);
+    await Policy.create(handle, { document: COMMUNITY_POLICY } as never);
     await vi.waitFor(() => expect(stores.spaces.policy().preset).toBe('community'));
     expect(reads).not.toHaveBeenCalled();
     reads.mockRestore();
@@ -3097,7 +3104,7 @@ describe('following a space from the rows its live queries push', () => {
     */
     const { stores, handle } = await openSpace('Policy Watch Fails');
     const here = stores.datasets.currentDataset()!.id;
-    await Policy.create(handle, { document: JSON.stringify(COMMUNITY_POLICY) } as never);
+    await Policy.create(handle, { document: COMMUNITY_POLICY } as never);
     await vi.waitFor(() => expect(stores.spaces.policy().preset).toBe('community'));
 
     await stores.spaces.createSpace('Policy Elsewhere', 'x', 'personal', 'hidden');
@@ -3153,6 +3160,58 @@ describe('following a space from the rows its live queries push', () => {
     // Once the rules can be read, writes are judged by them again.
     failingRead.mockRestore();
     await expect(CollectionBlock.create(handle, { kind: 'board', title: 'Board' } as never)).resolves.toBeTruthy();
+    clock.mockRestore();
+    failingWatch.mockRestore();
+  }, 15000);
+
+  it('refuses an operation’s writes while the space’s policy cannot be read', async () => {
+    const { stores, handle } = await openSpace('Operation Unreadable');
+    const here = stores.datasets.currentDataset()!.id;
+    await stores.spaces.createSpace('Operation Unreadable Elsewhere', 'x', 'personal', 'hidden');
+    const elsewhere = (await lifecycle.list()).find((d) => d.name === 'Operation Unreadable Elsewhere')!;
+    await stores.datasets.switchDataset(elsewhere.id);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.name).toBe('Operation Unreadable Elsewhere'));
+
+    const model = getEntity('Policy') as unknown as {
+      query: (...a: unknown[]) => unknown;
+      findAll: (...a: unknown[]) => Promise<unknown>;
+    };
+    const failingWatch = vi.spyOn(model, 'query').mockImplementation(() => ({
+      first: Promise.reject(new Error('executor unreachable')),
+      getSnapshot: () => ({ status: 'error', initial: false }),
+      subscribe: () => () => undefined,
+      dispose: () => undefined,
+    }));
+    const failingRead = vi.spyOn(model, 'findAll').mockRejectedValue(new Error('executor unreachable'));
+    await stores.datasets.switchDataset(here);
+    await vi.waitFor(() => expect(failingRead).toHaveBeenCalled());
+    expect(stores.spaces.policy().loaded).toBe(false);
+    const later = Date.now() + 10_000;
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => later);
+    const boards = () => CollectionBlock.findAll(handle, { where: { kind: 'board' } } as never);
+    const before = (await boards()).length;
+
+    // An operation's writes pass the same check as any other write, so the rules nobody could read
+    // refuse it as they refuse a single write, and nothing of it lands.
+    const run = () =>
+      runOperation(
+        'core.createBoard',
+        { title: 'Board', states: ['todo', 'done'] },
+        {
+          dataset: handle,
+          invoker: 'did:test:james',
+        },
+      );
+    await expect(run()).rejects.toMatchObject({
+      name: 'OperationError',
+      code: 'refused',
+      refusal: { reason: 'unreadable' },
+    });
+    expect((await boards()).length).toBe(before);
+
+    failingRead.mockRestore();
+    await expect(run()).resolves.toBeTruthy();
+    expect((await boards()).length).toBe(before + 1);
     clock.mockRestore();
     failingWatch.mockRestore();
   }, 15000);
@@ -3526,7 +3585,7 @@ describe('bringing a note into a space', () => {
     await vi.waitFor(() => expect(stores.datasets.personalDataset()).not.toBeNull());
     registerCoreBlocks();
     const personal = stores.datasets.personalDataset()!;
-    const note = await createBlocks(personal.handle, [{ _type: 'block', text: 'ready to post' }], { kind: 'post' });
+    const note = await composed(personal.handle, [{ _type: 'block', text: 'ready to post' }], 'post');
 
     await stores.spaces.createSpace('Gardeners', 'x', 'personal', 'hidden');
     const space = (await lifecycle.list()).find((d) => d.name === 'Gardeners')!;
@@ -3562,13 +3621,13 @@ describe('bringing a note into a space', () => {
     await vi.waitFor(() => expect(stores.datasets.personalDataset()).not.toBeNull());
     registerCoreBlocks();
     const personal = stores.datasets.personalDataset()!;
-    const note = await createBlocks(
+    const note = await composed(
       personal.handle,
       [
         { _type: 'block', text: 'the heading' },
         { _type: 'block', text: 'just this paragraph' },
       ],
-      { kind: 'post' },
+      'post',
     );
     const [, paragraph] = (await CollectionBlock.findOne(personal.handle as never, { where: { id: note!.id } }))!
       .children as string[];
@@ -3577,7 +3636,7 @@ describe('bringing a note into a space', () => {
     const space = (await lifecycle.list()).find((d) => d.name === 'Workshop')!;
     await stores.spaces.navigateToSpace(space.id);
     await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(space.id));
-    const canvas = await createBlocks(space.handle, [], { kind: 'canvas' });
+    const canvas = await composed(space.handle, [], 'canvas');
 
     await stores.records.dropOnCanvas(canvas!.id, {
       entity: 'TextBlock',
@@ -3612,7 +3671,7 @@ describe('bringing a note into a space', () => {
     const space = (await lifecycle.list()).find((d) => d.name === 'Here')!;
     await stores.spaces.navigateToSpace(space.id);
     await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(space.id));
-    const post = await createBlocks(space.handle, [{ _type: 'block', text: 'already here' }], { kind: 'post' });
+    const post = await composed(space.handle, [{ _type: 'block', text: 'already here' }], 'post');
 
     await stores.records.bringIn({ items: [{ ref: { entity: 'CollectionBlock', id: post!.id } }] });
 
@@ -3639,7 +3698,7 @@ describe('sidebar ordering', () => {
     // ...and it must have been written, or the order is lost on the next boot.
     const root = (await lifecycle.list()).find((d) => d.name === 'we-root')!;
     const settings = await AgentSettings.findOne(root.handle as never);
-    expect(JSON.parse(settings!.datasetOrder as string)).toEqual([before[1], before[0]]);
+    expect(settings!.datasetOrder).toEqual([before[1], before[0]]);
   }, 10000);
 });
 
@@ -4202,14 +4261,14 @@ describe('what a collection interprets', () => {
     const stores = mountShell();
     await ready(stores);
     const handle = await enterSpace(stores, 'Overlapping');
-    const rawBefore = (await Space.findAll(handle))[0]?.extractionTargets ?? '';
-    const before = (rawBefore ? (JSON.parse(rawBefore) as string[]) : ['TaskBlock', 'EventBlock']).slice();
+    const storedBefore = (await Space.findAll(handle))[0]?.extractionTargets;
+    const before = (Array.isArray(storedBefore) ? (storedBefore as string[]) : ['TaskBlock', 'EventBlock']).slice();
 
     const writes: { released: boolean; release: () => void }[] = [];
     const Entity = getEntity('Space') as unknown as { update: (...a: unknown[]) => Promise<unknown> };
     const update = Entity.update.bind(Entity);
     const spy = vi.spyOn(Entity, 'update').mockImplementation(async (...args: unknown[]) => {
-      const fields = args[2] as { extractionTargets?: string } | undefined;
+      const fields = args[2] as { extractionTargets?: string[] } | undefined;
       if (!fields || !('extractionTargets' in fields)) return update(...args);
       await new Promise<void>((resolve) => {
         const write = {
@@ -4250,11 +4309,11 @@ describe('what a collection interprets', () => {
     }
 
     expect(await saving).toEqual({});
-    const stored = JSON.parse((await Space.findAll(handle))[0]?.extractionTargets || '[]') as string[];
+    const stored = ((await Space.findAll(handle))[0]?.extractionTargets ?? []) as string[];
     const wanted = [...new Set([...before, 'Decision', 'Task'])];
     expect(stored).toEqual(expect.arrayContaining(wanted));
     expect(stored).toHaveLength(wanted.length);
-    const shown = JSON.parse(stores.spaces.currentSpace()?.extractionTargets || '[]') as string[];
+    const shown = (stores.spaces.currentSpace()?.extractionTargets ?? []) as string[];
     expect(shown).toEqual(expect.arrayContaining(['Decision', 'Task']));
   }, 15000);
 
@@ -4350,7 +4409,7 @@ describe('what a collection interprets', () => {
       kind: 'call',
       mode: 'feed',
       autoExtract: true,
-      extractionTargets: '["TaskBlock"]',
+      extractionTargets: ['TaskBlock'],
     } as never);
 
     // Elsewhere's answers differ on both counts — off for the space, events for the list.
@@ -4379,7 +4438,7 @@ describe('what a collection interprets', () => {
       kind: 'call',
       mode: 'feed',
       autoExtract: false,
-      extractionTargets: '["TaskBlock"]',
+      extractionTargets: ['TaskBlock'],
     } as never);
 
     await enterSpace(stores, 'Elsewhere');
@@ -4447,13 +4506,13 @@ describe('what a collection interprets', () => {
       kind: 'call',
       mode: 'feed',
       autoExtract: true,
-      extractionTargets: '["TaskBlock"]',
+      extractionTargets: ['TaskBlock'],
     } as never);
     const other = await CollectionBlock.create(handleA, {
       kind: 'call',
       mode: 'feed',
       autoExtract: true,
-      extractionTargets: '["TaskBlock"]',
+      extractionTargets: ['TaskBlock'],
     } as never);
 
     await enterSpace(stores, 'Elsewhere');
@@ -4532,7 +4591,7 @@ describe('what a collection interprets', () => {
       kind: 'call',
       mode: 'feed',
       autoExtract: true,
-      extractionTargets: '["TaskBlock"]',
+      extractionTargets: ['TaskBlock'],
     } as never);
     callId = call.id;
     const interpretation = kernel();
@@ -4564,7 +4623,7 @@ describe('what a collection interprets', () => {
     const call = await CollectionBlock.create(handleA, {
       kind: 'call',
       mode: 'feed',
-      extractionTargets: '["TaskBlock"]',
+      extractionTargets: ['TaskBlock'],
     } as never);
 
     await enterSpace(stores, 'Elsewhere');
@@ -4607,7 +4666,7 @@ describe('what a collection interprets', () => {
       kind: 'call',
       mode: 'feed',
       autoExtract: true,
-      extractionTargets: '["EventBlock"]',
+      extractionTargets: ['EventBlock'],
     } as never);
 
     await kernel().runOnCollection(call.id);
@@ -4638,7 +4697,7 @@ describe('what a collection interprets', () => {
       kind: 'call',
       mode: 'feed',
       autoExtract: true,
-      extractionTargets: '["EventBlock"]',
+      extractionTargets: ['EventBlock'],
     } as never);
     const Entity = getEntity('CollectionBlock') as unknown as {
       findAll: (handle: unknown, q?: { properties?: readonly string[] }) => Promise<unknown[]>;
@@ -4657,10 +4716,9 @@ describe('what a collection interprets', () => {
     const [row] = (await CollectionBlock.findAll(handleA, {
       where: { id: [call.id] },
       include: { runs: { where: { kind: 'extraction' } } },
-    } as never)) as unknown as { runs?: { outcome?: string; error?: string; detail?: string }[] }[];
+    } as never)) as unknown as { runs?: { outcome?: string; error?: string; detail?: unknown }[] }[];
     expect(row.runs).toHaveLength(1);
-    expect(row.runs![0]).toMatchObject({ outcome: 'failed', error: 'settings unreadable' });
-    expect(JSON.parse(row.runs![0].detail ?? '{}').targets).toEqual([]);
+    expect(row.runs![0]).toMatchObject({ outcome: 'failed', error: 'settings unreadable', detail: { targets: [] } });
   }, 15000);
 
   it('asks for the call’s own classes when the space moves on mid-gather', async () => {
@@ -4681,7 +4739,7 @@ describe('what a collection interprets', () => {
       kind: 'call',
       mode: 'feed',
       autoExtract: true,
-      extractionTargets: '["TaskBlock"]',
+      extractionTargets: ['TaskBlock'],
     } as never);
     // The call's own list — tasks only — is what a caller's open picker would already have read.
     const interpretation = kernel();
@@ -4757,7 +4815,7 @@ describe('what a collection interprets', () => {
         mode: 'feed',
         title: 'the call',
         autoExtract: true,
-        extractionTargets: '["TaskBlock"]',
+        extractionTargets: ['TaskBlock'],
       } as never);
       // A pass, or the log is empty and nothing is written.
       await ModelRun.create(
@@ -4766,7 +4824,7 @@ describe('what a collection interprets', () => {
           kind: 'extraction',
           outcome: 'done',
           recordCount: 0,
-          detail: '{"targets":["TaskBlock"]}',
+          detail: { targets: ['TaskBlock'] },
           error: '',
           trigger: 'auto',
           prompt: 'p',
@@ -4847,7 +4905,7 @@ describe('what a collection interprets', () => {
         mode: 'feed',
         title: 'the call',
         autoExtract: true,
-        extractionTargets: '["TaskBlock"]',
+        extractionTargets: ['TaskBlock'],
       } as never);
       heldCall = call.id;
       const Entity = getEntity('CollectionBlock') as unknown as {
@@ -4870,7 +4928,7 @@ describe('what a collection interprets', () => {
           kind: 'extraction',
           outcome: 'done',
           recordCount: 0,
-          detail: '{"targets":["TaskBlock"]}',
+          detail: { targets: ['TaskBlock'] },
           error: '',
           trigger: 'auto',
           prompt: 'p',
@@ -4970,7 +5028,7 @@ describe('what a collection interprets', () => {
       kind: 'call',
       mode: 'feed',
       autoExtract: true,
-      extractionTargets: '["Sighting"]',
+      extractionTargets: ['Sighting'],
     } as never);
     await enterSpace(stores, 'Elsewhere');
     expect(stores.shapes.interpretationCandidates()).not.toContain('Sighting');
@@ -5028,7 +5086,7 @@ describe('what a collection interprets', () => {
       kind: 'call',
       mode: 'feed',
       autoExtract: true,
-      extractionTargets: '["Heron"]',
+      extractionTargets: ['Heron'],
     } as never);
     await enterSpace(stores, 'Elsewhere');
     provideModuleHostServices({
@@ -5063,7 +5121,7 @@ describe('what a collection interprets', () => {
         mode: 'feed',
         title: 'the call',
         autoExtract: true,
-        extractionTargets: '["TaskBlock"]',
+        extractionTargets: ['TaskBlock'],
       } as never);
       await ModelRun.create(
         handleA,
@@ -5071,7 +5129,7 @@ describe('what a collection interprets', () => {
           kind: 'extraction',
           outcome: 'done',
           recordCount: 0,
-          detail: '{"targets":["TaskBlock"]}',
+          detail: { targets: ['TaskBlock'] },
           error: '',
           trigger: 'auto',
           prompt: 'the prompt',
@@ -5129,7 +5187,7 @@ describe('what a collection interprets', () => {
       kind: 'call',
       mode: 'feed',
       autoExtract: true,
-      extractionTargets: '["Ledger"]',
+      extractionTargets: ['Ledger'],
     } as never);
     await vi.waitFor(() => expect(looksFor(interpretation, call.id, 'Ledger')).not.toBe(true));
 
@@ -5276,7 +5334,7 @@ describe('what a collection interprets', () => {
       kind: 'call',
       mode: 'feed',
       autoExtract: true,
-      extractionTargets: '["Sighting"]',
+      extractionTargets: ['Sighting'],
     } as never);
 
     // From is on screen, so switching to Here leaves its record up: Here's own record read is

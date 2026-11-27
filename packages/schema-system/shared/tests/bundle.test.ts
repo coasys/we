@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { bundlePieceId, bundleThemes, readBundle, svgProblem } from '../src/bundle';
+import { bundleFormatVersionFor, bundlePieceId, bundleThemes, readBundle, svgProblem } from '../src/bundle';
 
 const meta = (role?: string) => ({ name: 'X', description: '', icon: 'x', ...(role ? { role } : {}) });
 
@@ -34,8 +34,36 @@ describe('reading a bundle', () => {
 
   it('stops at once on a file that is not a bundle, or a format this build cannot read', () => {
     expect(paths({ format: 'something-else' })).toEqual(['format']);
-    expect(paths({ ...minimal(), formatVersion: 2 })).toEqual(['formatVersion']);
+    expect(paths({ ...minimal(), formatVersion: 3 })).toEqual(['formatVersion']);
     expect(paths(null)).toEqual(['']);
+  });
+
+  describe('operations, which need format 2', () => {
+    const ping = {
+      description: 'Make a species.',
+      steps: [{ create: { entity: 'Species', fields: {} } }],
+    };
+
+    it('reads a format-2 bundle carrying them, and still reads format 1', () => {
+      expect(readBundle({ ...minimal(), formatVersion: 2, operations: { ping } }).problems).toEqual([]);
+      expect(readBundle({ ...minimal(), formatVersion: 2 }).problems).toEqual([]);
+      expect(readBundle(minimal()).problems).toEqual([]);
+    });
+
+    it('refuses them in a bundle claiming format 1, which an older host would read without them', () => {
+      expect(paths({ ...minimal(), operations: { ping } })).toEqual(['operations']);
+    });
+
+    it('refuses operations that are not the format', () => {
+      const bad = { ...ping, steps: [{ upsert: {} }] };
+      expect(paths({ ...minimal(), formatVersion: 2, operations: { ping: bad } })).toEqual(['operations.ping.steps.0']);
+    });
+
+    it('is written at the lowest format that holds what it carries', () => {
+      expect(bundleFormatVersionFor({})).toBe(1);
+      expect(bundleFormatVersionFor({ operations: {} })).toBe(1);
+      expect(bundleFormatVersionFor({ operations: { ping } as never })).toBe(2);
+    });
   });
 
   it('finds the mistakes an author makes by hand', () => {

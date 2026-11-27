@@ -1,9 +1,12 @@
+import { describeEffects } from '@we/entities';
+
 import type {
   AssembledContext,
   ComponentEntry,
   EntityEntry,
   ForeignElementEntry,
   ModuleCatalogEntry,
+  OperationEntry,
   PluginCatalog,
   PrimitiveEntry,
   TokenCategory,
@@ -52,6 +55,10 @@ export function assembleReference(ctx: AssembledContext): string {
   if (context.modules?.length) {
     sections.push(formatModules(context.modules));
   }
+
+  // Declared operations — after the stores and modules, since an operation is one more thing a
+  // handler invokes, and before the patterns that would use one.
+  sections.push(formatOperations(context.operations ?? []));
 
   // Store patterns
   sections.push(context.fragments.storePatterns.trim());
@@ -258,8 +265,10 @@ function formatEntities(models: EntityEntry[]): string {
       meaning nothing. It is the field a text block's entire inline structure lives in, so a schema
       author reading this had a name, a type of `json`, and no way to find out what is in it.
     */
-    'A `json` field is a stored blob rather than a queryable value. `TextBlock.marks` is the one worth',
-    'knowing: it holds inline structure over `text` as standoff annotations — a JSON array of',
+    'A `json` field holds a structured value — a list or an object, read and written as one, never as',
+    'text to parse — and is not a queryable value. The space settings among them (`Space.enabledViews`,',
+    '`Space.moduleSettings`, …) are read through the spaceStore members that resolve them. `TextBlock.marks` is the',
+    'one worth knowing: it holds inline structure over `text` as standoff annotations — a list of',
     '`{ start, end, type, ...data }` ranges, offsets in Unicode **code points** — with types `strong`,',
     '`em`, `underline`, `strike`, `code`, `link` (`href`), `nodeLink` and `mention` (`did`). A block',
     'with `text` and no `marks` is one unmarked span, which is why a transcriber can write a',
@@ -303,6 +312,58 @@ function formatEntities(models: EntityEntry[]): string {
  * and a hand-kept list would be a second source that drifts. Members carry the sentence they were
  * marked with, so a store member reaches an author with its meaning, as host store members do.
  */
+/**
+ * The declared operations this build registers, from the registry — never written by hand, so what
+ * the reference says an operation takes and writes is what its definition says.
+ */
+function formatOperations(operations: OperationEntry[]): string {
+  const lines: string[] = [
+    '## Declared Operations',
+    '',
+    'An operation is a named write of several records, or a read deciding a write, declared as data and',
+    'run as one transaction: everything it writes lands together or not at all. Reach for one where it',
+    'exists rather than chaining record.create calls through onSuccess — a chain that fails half way',
+    'leaves half its records behind.',
+    '',
+    'Invoke one as ops.<namespace>.<name>, with ONE argument, its params as an object:',
+    '{ "$invoke": "ops.core.example", "args": [{ "title": { "$": "local.title" } }] }',
+    'A second argument { "dataset": "datasetStore.rootDataset" } targets another dataset, exactly as',
+    'record.create takes one; without it the operation runs in the space on screen, as the signed-in',
+    'person. onSuccess reads what it returns as result. A failure reaches onError with result.message',
+    '(said for the person) and result.code (notFound, refused, a check the operation names, …), and',
+    'the person is told in a toast either way.',
+    '',
+    'An operation that writes is a write for the rule above: it runs only when somebody asked for it.',
+    'One that deletes or takes records out of a relation is confirmed by the host first, as',
+    'record.delete is — do not put a confirmation of your own in front of it. A template reaches an',
+    'operation only where it could make the same writes one at a time.',
+    '',
+    'The namespace is who declared it: core for WE, a module id for a module, a bundle id for an app.',
+    'An app installed at runtime brings its own, which this list does not show.',
+  ];
+  if (!operations.length) {
+    lines.push('', 'This build registers no operations yet.');
+    return lines.join('\n');
+  }
+  for (const entry of operations) {
+    lines.push('', `- ops.${entry.name} — ${entry.description}`);
+    const params = Object.entries(entry.params);
+    lines.push(
+      params.length
+        ? `  Params: ${params
+            .map(
+              ([name, param]) =>
+                `${name}: ${param.type}${param.required ? ' (required)' : ''}${param.description ? ` — ${param.description}` : ''}`,
+            )
+            .join('; ')}`
+        : '  Params: none',
+    );
+    lines.push(`  Returns: ${entry.returns ? 'a value, read in onSuccess as result' : 'nothing'}`);
+    lines.push(`  Writes: ${describeEffects(entry.effects as Parameters<typeof describeEffects>[0])}`);
+  }
+  return lines.join('\n');
+}
+
 function formatModules(modules: ModuleCatalogEntry[]): string {
   const lines: string[] = [
     '## Feature Modules',

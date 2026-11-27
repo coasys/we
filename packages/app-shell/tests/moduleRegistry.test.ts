@@ -9,6 +9,7 @@
  * what the registry builds for it (panel plumbing, the deps a store is handed), and what a template
  * can then reach.
  */
+import { listOperations, operationsVersion } from '@we/entities';
 import type { ModuleDefinition, ModuleStoreDeps } from '@we/module-shared';
 import { markAction, markState } from '@we/module-shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -157,6 +158,52 @@ describe('moduleRegistry — registration', () => {
 
     expect(moduleStores.notes).toEqual({ open: true });
     expect(slotRegistry.get('notes:0')?.anchor).toBe('dock-right');
+  });
+
+  it('registers a module’s declared operations under its id, and withdraws them with it', async () => {
+    const tallies = () => listOperations().filter((name) => name.startsWith('tally.'));
+    let deps: ModuleStoreDeps | undefined;
+    const result = moduleRegistry.register(
+      mod('tally', {
+        contributes: {
+          entities: {
+            manifest: {
+              version: '2',
+              entities: { Tally: { properties: { count: { type: 'number', default: 0 } }, relations: {} } },
+              operations: {
+                start: {
+                  description: 'Start a tally.',
+                  steps: [{ create: { as: 'tally', entity: 'Tally', fields: { count: 1 } } }],
+                  returns: { $: 'tally.id' },
+                },
+              },
+            },
+          },
+        },
+        createStore: (d) => {
+          deps = d;
+          return {};
+        },
+      }),
+      host,
+      storeDeps,
+    );
+    expect(result.problems).toEqual([]);
+    expect(tallies()).toEqual(['tally.start']);
+    expect(operationsVersion('tally')).toBe('2');
+
+    // A store reaches them through its deps, run by whatever the host binds.
+    const run = vi.fn(async () => 'tally-1');
+    const unbind = provideModuleHostServices({ runOperation: run });
+    try {
+      await expect(deps!.operations!.run('tally.start', {}, { dataset: 'uri' })).resolves.toBe('tally-1');
+      expect(run).toHaveBeenCalledWith('tally.start', {}, { dataset: 'uri' });
+    } finally {
+      unbind();
+    }
+
+    moduleRegistry.unregister('tally');
+    expect(tallies()).toEqual([]);
   });
 
   it('leaves the module key absent until it registers, so $if on modules.<id> works', () => {

@@ -19,14 +19,14 @@ export const AgentSettings: CoreEntityDef = {
        */
       appTemplateId: { type: 'string', predicate: 'we://app_template', default: '' },
       /**
-       * The bundles this agent installed, and what each wrote: JSON, a list of `InstalledBundle`
-       * (`app-shell/src/shared/bundles/installedBundles.ts`).
+       * The bundles this agent installed, and what each wrote: a list of `InstalledBundle`
+       * (`app-shell/src/shared/bundles/installedBundles.ts`). Absent is none.
        *
        * Kept so an app can be recognised when a later version of it is installed, removed with
        * everything it brought, and asked how it shows spaces — its display policy is read from here,
        * so leaving the app is all it takes to stop it. A seed's bundles are built in and never here.
        */
-      installedBundles: { type: 'string', predicate: 'we://installed_bundles', default: '' },
+      installedBundles: { type: 'json', predicate: 'we://installed_bundles' },
       currentThemeId: { type: 'string', predicate: 'we://current_theme', default: 'default' },
       defaultThemeId: { type: 'string', predicate: 'we://default_theme', default: 'default' },
       /**
@@ -45,15 +45,19 @@ export const AgentSettings: CoreEntityDef = {
       systemLightThemeId: { type: 'string', predicate: 'we://system_light_theme', default: '' },
       systemDarkThemeId: { type: 'string', predicate: 'we://system_dark_theme', default: '' },
       /**
-       * The person's display needs, as JSON (`DisplayPreferences` in @we/themes): colour scheme,
+       * The person's display needs, as an object (`DisplayPreferences` in @we/themes): colour scheme,
        * contrast, text size, density and motion. Applied over every theme on screen — a space's
        * included — because they are this person's needs, not a matter of taste a theme may overrule.
-       * Empty means follow the system on every axis it has a signal for, and change nothing else.
+       * Absent means follow the system on every axis it has a signal for, and change nothing else.
        *
        * The colour scheme replaces `themeMode`, which held that one axis alone.
        */
-      displayPreferences: { type: 'string', predicate: 'we://display_preferences', default: '' },
-      datasetOrder: { type: 'string', predicate: 'we://dataset_order', default: '' },
+      displayPreferences: { type: 'json', predicate: 'we://display_preferences' },
+      /**
+       * The order this agent's spaces are listed in, as a list of dataset ids. Absent until the
+       * first load writes one; a space missing from the list is listed after the ones in it.
+       */
+      datasetOrder: { type: 'json', predicate: 'we://dataset_order' },
       globalSpaceJoined: { type: 'boolean', predicate: 'we://global_space_joined', default: false },
       globalSpaceUrl: { type: 'string', predicate: 'we://global_space_url', default: '' },
       useSpaceTemplate: { type: 'boolean', predicate: 'we://use_space_template', default: true },
@@ -99,7 +103,7 @@ export const AgentSettings: CoreEntityDef = {
        */
       themeScope: { type: 'string', predicate: 'we://theme_scope', default: '' },
       /**
-       * Which feature modules this agent wants available to them, anywhere, as a JSON array of ids.
+       * Which feature modules this agent wants available to them, anywhere, as a list of ids.
        *
        * The middle of three layers. The deployment's seed says what is shipped; this says what I want
        * from it; `Space.enabledModules` says what a community runs. A module renders only where all
@@ -112,9 +116,9 @@ export const AgentSettings: CoreEntityDef = {
        * Mine, so it lives in the root dataset rather than in any space. Writing it into a shared space
        * would broadcast which modules I have turned off to every other member.
        */
-      installedModules: { type: 'string', predicate: 'we://installed_modules', default: '' },
+      installedModules: { type: 'json', predicate: 'we://installed_modules' },
       /**
-       * What this agent decides about each capability's settings, as JSON.
+       * What this agent decides about each capability's settings, as an object keyed by group.
        *
        * `{ "<group>": { "<key>": value } }`, where a group is a module id or a capability the host
        * declares. One field rather than one per setting: `autoInterpret` and `extractionTargets` are
@@ -126,7 +130,7 @@ export const AgentSettings: CoreEntityDef = {
        * has an opinion. See `moduleSettings.ts` in the app shell for the order and for how a
        * `restrict` setting differs.
        */
-      moduleSettings: { type: 'string', predicate: 'we://module_settings', default: '' },
+      moduleSettings: { type: 'json', predicate: 'we://module_settings' },
     },
     relations: {
       /**

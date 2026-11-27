@@ -1538,8 +1538,6 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '{ id, icon, label, active, busy, concealed }[] — one entry per module panel that asks for a rail button, plus the launchers a module declares of its own; what the host module rail renders. `id` is a panel’s dock id (`<moduleId>:<name>`) or a launcher’s key, and is what launchModule takes. `active` is the module reporting its surface open; `concealed` says that panel is open and out of sight — a background tab of a stack, folded to its bar, or in a lane collapsed to its edge — so light the button on `mod.active && !mod.concealed`, since pressing a concealed one brings the panel forward rather than closing it. `busy` says the module is working in the background — an interpretation pass running — and is independent of `active`, so a rail can show work going on behind a closed panel. Pair with { $invoke: "spaceStore.launchModule", args: [{ $: "mod.id" }] }',
     },
     actions: {
-      moveChild:
-        '(childId: string, fromId: string, toId: string): moves an owned child between two collections. Relinks the two children edges; the child itself is untouched. Not for a board — a column arranges its cards through moveCardToColumn, which is a different relation',
       setAttending:
         "(nodeId: string, attending: boolean): joins or leaves a node's participant roster — an RSVP. Writes only this agent's own entry, so the roster stays conflict-free. Boolean, so a switch can pass `event.detail` bare",
       setAgentMuted:

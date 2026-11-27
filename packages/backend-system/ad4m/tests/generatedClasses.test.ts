@@ -46,8 +46,9 @@ function docBodies(source: string): string[] {
   return [...source.matchAll(/\/\*\*((?:[^*]|\*(?!\/))*)\*\//g)].map((m) => normalise(m[1]));
 }
 
-// Every authored entity module, less the shared machinery that declares no entity of its own.
-const SUPPORT = new Set(['base.ts', 'defs.ts', 'index.ts', 'shared.ts', 'types.ts']);
+// Every authored entity module, less the shared machinery that declares no entity of its own (and
+// the core operations, which sit beside the entities in the manifest but are not one).
+const SUPPORT = new Set(['base.ts', 'defs.ts', 'index.ts', 'operations.ts', 'shared.ts', 'types.ts']);
 const cases = readdirSync(MANIFEST)
   .filter((file) => file.endsWith('.ts') && !SUPPORT.has(file))
   .map((file) => ({ name: file.replace('.ts', '') }));

@@ -374,3 +374,37 @@ describe('an absent property, and what the two backends do with it', () => {
     expect(found.map((s) => s.name)).toEqual(['Bare']);
   });
 });
+
+describe('json properties', () => {
+  it('keeps its own copy of a value, so changing one in hand changes nothing until it is saved', async () => {
+    const views = ['posts', 'board'];
+    const space = await Space.create(dataset, { name: 'Copy', enabledViews: views });
+    views.push('calendar');
+    (space.enabledViews as string[]).push('map');
+    const [read] = await Space.findAll(dataset, { where: { id: space.id } });
+    expect(read.enabledViews).toEqual(['posts', 'board']);
+
+    (read.enabledViews as string[]).push('calendar');
+    await read.save();
+    const [saved] = await Space.findAll(dataset, { where: { id: space.id } });
+    expect(saved.enabledViews).toEqual(['posts', 'board', 'calendar']);
+  });
+
+  it('takes text as JSON, and refuses text that is not JSON or a value that is text', async () => {
+    const space = await Space.create(dataset, { name: 'Text', moduleSettings: '{"call":{"on":true}}' });
+    expect(space.moduleSettings).toEqual({ call: { on: true } });
+    await expect(Space.create(dataset, { name: 'Bad', enabledViews: 'posts,board' })).rejects.toThrow(/not JSON/);
+    await expect(Space.create(dataset, { name: 'Bad', enabledViews: '"posts"' })).rejects.toThrow(/not text/);
+  });
+
+  it('reads a stored value that is text and not JSON as absent, reporting it once', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const space = await Space.create(dataset, { name: 'Old' });
+    (dataset.tables.Space[0] as Record<string, unknown>).archivedWorkflows = 'not json';
+    const [read] = await Space.findAll(dataset, { where: { id: space.id } });
+    expect(read.archivedWorkflows).toBeUndefined();
+    await Space.findAll(dataset, { where: { id: space.id } });
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+});

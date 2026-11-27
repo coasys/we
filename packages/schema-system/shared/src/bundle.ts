@@ -19,14 +19,35 @@
  * `formatVersion` is this format's, and is what a reader checks before anything else; `version` is
  * the bundle's own, recorded against what it installed so a later version can be recognised as an
  * update to the same app rather than a second copy.
+ *
+ * Format 2 added `operations`. A reader refuses a format it does not know rather than reading what
+ * it recognises, so a host that predates operations refuses a bundle carrying them instead of
+ * installing the app without its writes. A writer stamps the lowest format that holds what it
+ * carries ({@link bundleFormatVersionFor}), so a bundle with no operations stays readable by those
+ * hosts; this build reads both.
  */
-import { type EntityManifest, validateWorkflowDefinition, type WorkflowDefinition } from '@we/backend-shared';
+import {
+  type EntityManifest,
+  type OperationDefinition,
+  operationsSchema,
+  validateWorkflowDefinition,
+  type WorkflowDefinition,
+} from '@we/backend-shared';
 
 import { type SpaceStarter, STARTER_KEYS } from './spaceStarter';
 import type { SchemaNode, TemplateSchema } from './types';
 
 export const BUNDLE_FORMAT = 'we-bundle';
-export const BUNDLE_FORMAT_VERSION = 1;
+/** The newest bundle format this build reads and writes. */
+export const BUNDLE_FORMAT_VERSION = 2;
+/** Every bundle format this build reads. */
+export const BUNDLE_FORMAT_VERSIONS: readonly BundleFormatVersion[] = [1, 2];
+export type BundleFormatVersion = 1 | 2;
+
+/** The lowest format that holds what a bundle carries: 2 once it declares operations, else 1. */
+export function bundleFormatVersionFor(bundle: Pick<Bundle, 'operations'>): BundleFormatVersion {
+  return bundle.operations && Object.keys(bundle.operations).length ? 2 : 1;
+}
 
 /** A bundle's theme: the parameter object a theme is, plus optional CSS. */
 export interface BundleTheme {
@@ -90,7 +111,7 @@ export interface BundleDisplay {
 
 export interface Bundle {
   format: typeof BUNDLE_FORMAT;
-  formatVersion: typeof BUNDLE_FORMAT_VERSION;
+  formatVersion: BundleFormatVersion;
   /** Stable and lowercase — what an install is recognised by, and the prefix its pieces install under. */
   id: string;
   version: string;
@@ -118,6 +139,12 @@ export interface Bundle {
    */
   themes?: BundleTheme[];
   recordTypes?: BundleRecordType[];
+  /**
+   * The app's declared operations, by bare name — the compound writes its templates invoke. Namespaced
+   * by the bundle's id when installed (`<bundle id>.<name>`), and judged against WE's vocabulary and
+   * the bundle's own record types. Needs format 2.
+   */
+  operations?: Record<string, OperationDefinition>;
   /**
    * The workflows the app's records move through, in the shape `WorkflowPort.install` takes. Like
    * record types they are the space's, installed when a space is set up for the app, after the
@@ -202,13 +229,13 @@ export function readBundle(
       bundle: null,
       problems: [{ path: 'format', message: `Not a bundle: expected format "${BUNDLE_FORMAT}"` }],
     };
-  if (input.formatVersion !== BUNDLE_FORMAT_VERSION)
+  if (!BUNDLE_FORMAT_VERSIONS.includes(input.formatVersion as BundleFormatVersion))
     return {
       bundle: null,
       problems: [
         {
           path: 'formatVersion',
-          message: `Made for bundle format ${String(input.formatVersion)}; this build reads format ${BUNDLE_FORMAT_VERSION}`,
+          message: `Made for bundle format ${String(input.formatVersion)}; this build reads formats ${BUNDLE_FORMAT_VERSIONS.join(' and ')}`,
         },
       ],
     };
@@ -345,6 +372,14 @@ export function readBundle(
           );
       });
     }
+  }
+
+  if (input.operations !== undefined) {
+    // A format-1 reader would drop them without a word, so a file claiming format 1 cannot carry them.
+    if (input.formatVersion === 1) problem('operations', 'Operations need bundle format 2');
+    const parsed = operationsSchema.safeParse(input.operations);
+    if (!parsed.success)
+      for (const issue of parsed.error.issues) problem(['operations', ...issue.path].join('.'), issue.message);
   }
 
   if (input.workflows !== undefined) {

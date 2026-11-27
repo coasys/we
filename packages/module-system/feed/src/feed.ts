@@ -54,7 +54,7 @@ export interface FeedLine {
   updatedAt: string;
   author: string;
   text: string;
-  marks: string;
+  marks: unknown[];
   /** `spoken`, `typed`, `corrected`, or `''` — which, for a line WE did not write, is a bot's. */
   source: string;
   /** The call it was said in, or `''` for a message typed straight into the space. */
@@ -174,7 +174,7 @@ function toLine(row: Row, call: string, callTitle: string): FeedLine {
     updatedAt: text(row.updatedAt),
     author: text(row.author),
     text: text(row.text),
-    marks: text(row.marks),
+    marks: Array.isArray(row.marks) ? row.marks : [],
     source: text(row.source),
     call,
     callTitle,

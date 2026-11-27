@@ -200,12 +200,12 @@ describe('policyWarnings', () => {
 
 describe('readPolicy', () => {
   it('reads a stored document, dropping only the permissions that do not parse', () => {
-    const stored = JSON.stringify({
+    const stored = {
       format: 1,
       permissions: [ADMIN_EDITS, { action: 'Post.create', by: ['everybody'] }, { action: 'Post.edit' }],
-    });
+    };
     expect(readPolicy(stored)).toEqual({ format: 1, permissions: [ADMIN_EDITS] });
-    expect(readPolicy('{nope')).toBeNull();
+    expect(readPolicy(JSON.stringify(stored))).toBeNull();
     expect(readPolicy({ permissions: [] })).toBeNull();
   });
 });

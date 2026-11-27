@@ -41,12 +41,12 @@ export {
   cpToUtf16,
   DECORATORS,
   isDecorator,
+  marksField,
+  marksOf,
   mentionChanges,
   mentionedDids,
   normalizeMarks,
-  parseMarks,
   rebaseMarks,
-  serializeMarks,
   shiftMarks,
   utf16ToCp,
 } from './marks';
@@ -65,23 +65,24 @@ export {
 export { registerCoreBlocks } from './core-blocks';
 export type { CollectionMode } from './modes';
 export { isCollectionMode, isReconcilable } from './modes';
-export type { BlockAnchor, ContentInput, CreateBlocksOptions } from './serialization';
+export type { BlockAnchor, ContentInput, PlanPostOptions, WritePostOptions } from './serialization';
 export {
   childrenToBlocks,
   copyableContent,
   createBlock,
-  createBlocks,
   deleteBlocks,
   encodeEditorState,
   extractBlockData,
   extractMentions,
   extractTextContent,
   loadBlocks,
+  planPost,
   reconcileBlocks,
   refreshComposition,
   recordToTextBlock,
   resolveExpressionAddresses,
   textBlockToRecord,
+  writePost,
 } from './serialization';
 export { contentFromValue, decodeEditorState, encodeBase64Utf8 } from './utils';
 

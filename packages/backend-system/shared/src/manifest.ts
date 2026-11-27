@@ -447,6 +447,224 @@ export interface EntityManifest {
   version: string;
   /** Entities keyed by name (the key IS the entity name). */
   entities: Record<string, EntitySchema>;
+  /**
+   * Declared operations: named compound writes over these entities (and any the host already has),
+   * keyed by bare name. The host assigns the namespace from whoever declared the manifest — `core`
+   * for WE's own, a module's id, a bundle's id — so a manifest cannot claim another's names.
+   *
+   * Only their structure is checked here. Whether every name an operation reads is bound, every
+   * entity and field it writes is known and every call resolves is judged by `validateOperations` in
+   * `@we/entities`, which has the expression language this package cannot depend on.
+   */
+  operations?: Record<string, OperationDefinition>;
+}
+
+// ─── Declared operations (the format) ──────────────────────────────────────────
+
+/**
+ * A value in an operation: a plain JSON value is a literal, `{ $: '<expression>' }` an expression
+ * over the operation's bound names, and an object or list may nest either.
+ */
+export type OperationValue = unknown;
+
+/** `{ $: '<expression>' }` — the only spelling of an expression, as in templates. */
+export interface OperationExpression {
+  $: string;
+}
+
+export type OperationParamType = 'string' | 'number' | 'boolean' | 'list' | 'object' | 'json';
+
+export interface OperationParam {
+  /** `json` is anything. */
+  type: OperationParamType;
+  /** Defaults to false. A missing optional param is absent, and an absent value matches no comparison. */
+  required?: boolean;
+  description?: string;
+}
+
+/**
+ * A closed set of entity categories an operation may name in `oneOf`. A category is resolved against
+ * the entities the host has registered when the step runs, so a block type a module brings is one
+ * without the operation naming it.
+ *
+ * - `blockable` is every entity whose schema says {@link EntitySchema.blockable}.
+ * - `any` is every record type the dataset the operation runs in can read and write — WE's own, a
+ *   module's, a community's shape, a foreign app's model. For the generic writes a form or an
+ *   inspector makes on whatever record is in front of it, which no list could name. The entities
+ *   that decide who may write what are never in it: an operation cannot write them at all.
+ */
+export const OPERATION_CATEGORIES = ['blockable', 'any'] as const;
+export type OperationCategory = (typeof OPERATION_CATEGORIES)[number];
+
+/** One entry of a `oneOf`: an entity by name, or every entity in a category. */
+export type OneOfEntry = string | { category: OperationCategory };
+
+/** Whether an entity's schema puts it in a category. Abstract entities are in none: nothing is ever one. */
+export function inCategory(entity: EntitySchema, category: OperationCategory): boolean {
+  if (entity.abstract) return false;
+  switch (category) {
+    case 'blockable':
+      return Boolean(entity.blockable);
+    case 'any':
+      return true;
+  }
+}
+
+/**
+ * Records under one, by the parent's relation — the `$query` scope with a single anchor. `levels`
+ * walks the relation depth by depth, keeping that many per anchor at each; `transitive` walks it to
+ * the bottom. Either answers flat, every record under the anchor at any depth it reached.
+ */
+export interface OperationScope {
+  anchor: string;
+  via: string;
+  anchorId: OperationValue;
+  levels?: number[];
+  transitive?: boolean;
+}
+
+export interface FindStep {
+  as: string;
+  entity: string;
+  /** The `$query` where-object, with values in value positions. */
+  where?: Record<string, OperationValue>;
+  order?: Record<string, 'asc' | 'desc'>;
+  limit?: OperationValue;
+  scope?: OperationScope;
+  /** Exactly one record, or the precondition error `notFound` / `ambiguous`. Otherwise a list. */
+  one?: boolean;
+  /** Read again at the end of the operation; `expectChanged` if the ids differ. */
+  expect?: boolean;
+}
+
+export interface CreateStep {
+  as?: string;
+  /** A literal name, or an expression whose value must be one of `oneOf`. */
+  entity: string | OperationExpression;
+  oneOf?: OneOfEntry[];
+  /** The fields, or one expression giving them all — for a record whose entity is chosen at run time. */
+  fields: Record<string, OperationValue> | OperationExpression;
+  parent?: { id: OperationValue; relation: string; entity?: string };
+}
+
+export interface UpdateStep {
+  /** A literal name, or an expression whose value must be one of `oneOf`. */
+  entity: string | OperationExpression;
+  oneOf?: OneOfEntry[];
+  id: OperationValue;
+  fields?: Record<string, OperationValue> | OperationExpression;
+  /** Fields to clear. */
+  unset?: string[];
+}
+
+export interface DeleteStep {
+  /** A literal name, or an expression whose value must be one of `oneOf`. */
+  entity: string | OperationExpression;
+  oneOf?: OneOfEntry[];
+  id: OperationValue;
+}
+
+export interface LinkStep {
+  /**
+   * A literal name, or an expression whose value must be one of `oneOf` — for a record whose entity
+   * the caller knows and the definition cannot, such as the subject of a thread.
+   */
+  entity: string | OperationExpression;
+  oneOf?: OneOfEntry[];
+  id: OperationValue;
+  /**
+   * A literal name, or an expression giving one — for a record the definition cannot name, whose
+   * relations it cannot either. An expression's value is judged by the backend when the step runs,
+   * which refuses a relation the record does not declare, or one holding a single record.
+   */
+  relation: string | OperationExpression;
+  target: OperationValue;
+  /** Strict link fails with `alreadyLinked` when present; strict unlink with `notLinked` when absent. */
+  strict?: boolean;
+}
+
+export interface SetRelationStep {
+  /** A literal name, or an expression whose value must be one of `oneOf`. */
+  entity: string | OperationExpression;
+  oneOf?: OneOfEntry[];
+  id: OperationValue;
+  /** A literal name, or an expression giving one — see {@link LinkStep.relation}. */
+  relation: string | OperationExpression;
+  /** The whole ordered list. */
+  targets: OperationValue;
+}
+
+export interface ForEachStep {
+  in: OperationValue;
+  as: string;
+  /** The item's stable identity. Default `item.id`, else `item.key`. */
+  key?: OperationExpression;
+  steps: OperationStep[];
+}
+
+export interface CheckStep {
+  condition: OperationValue;
+  /** A name in the operation's `errors`. */
+  error: string;
+}
+
+export interface CallStep {
+  as?: string;
+  /** `<namespace>.<name>`. */
+  operation: string;
+  args?: Record<string, OperationValue>;
+}
+
+/** What every step may carry beside its verb: a guard, skipping the step when falsy. */
+interface StepGuard {
+  when?: OperationValue;
+}
+
+/** A step: exactly one verb key, plus an optional `when`. A closed union — an unknown verb is refused. */
+export type OperationStep = StepGuard &
+  (
+    | { find: FindStep }
+    | { create: CreateStep }
+    | { update: UpdateStep }
+    | { delete: DeleteStep }
+    | { link: LinkStep }
+    | { unlink: LinkStep }
+    | { setRelation: SetRelationStep }
+    | { forEach: ForEachStep }
+    | { check: CheckStep }
+    | { call: CallStep }
+  );
+
+export type OperationVerb =
+  'find' | 'create' | 'update' | 'delete' | 'link' | 'unlink' | 'setRelation' | 'forEach' | 'check' | 'call';
+
+export const OPERATION_VERBS: readonly OperationVerb[] = [
+  'find',
+  'create',
+  'update',
+  'delete',
+  'link',
+  'unlink',
+  'setRelation',
+  'forEach',
+  'check',
+  'call',
+];
+
+/** The verb of a step, read off its one verb key. */
+export function stepVerb(step: OperationStep): OperationVerb {
+  return OPERATION_VERBS.find((verb) => verb in step)!;
+}
+
+export interface OperationDefinition {
+  /** One sentence, for the AI context and the install screen. */
+  description: string;
+  params?: Record<string, OperationParam>;
+  /** Named precondition errors a `check` may raise, each with a person-readable message. */
+  errors?: Record<string, string>;
+  steps: OperationStep[];
+  /** Evaluated after the last step and handed to the caller. */
+  returns?: OperationValue;
 }
 
 // ─── Zod schema (structural validation) ────────────────────────────────────────
@@ -498,9 +716,131 @@ const entitySchema = z.object({
     .optional(),
 });
 
+// Steps are strict objects: a key the format does not have is refused rather than dropped, because
+// an implementation that silently ignored one (a misspelt `when`) would run a different operation
+// from the one written.
+const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const name = z.string().regex(IDENTIFIER, 'must be a name: letters, digits and _, not starting with a digit');
+const expressionToken = z.strictObject({ $: z.string() });
+const value = z.unknown();
+// `z.unknown()` admits a missing key, so a value the step cannot run without says it is required.
+const present = z.unknown().refine((v) => v !== undefined, 'is required');
+const valueMap = z.record(z.string(), value);
+const guard = { when: value.optional() };
+const oneOf = z.array(z.union([z.string(), z.strictObject({ category: z.enum(OPERATION_CATEGORIES) })])).optional();
+const linkBody = z.strictObject({
+  entity: z.union([z.string(), expressionToken]),
+  oneOf,
+  id: present,
+  relation: z.union([z.string(), expressionToken]),
+  target: present,
+  strict: z.boolean().optional(),
+});
+
+const operationStepSchema: z.ZodType<OperationStep> = z.lazy(() =>
+  z.union([
+    z.strictObject({
+      ...guard,
+      find: z.strictObject({
+        as: name,
+        entity: z.string(),
+        where: valueMap.optional(),
+        order: z.record(z.string(), z.enum(['asc', 'desc'])).optional(),
+        limit: value.optional(),
+        scope: z
+          .strictObject({
+            anchor: z.string(),
+            via: z.string(),
+            anchorId: present,
+            levels: z.array(z.number().int().positive()).min(1).optional(),
+            transitive: z.boolean().optional(),
+          })
+          .refine((scope) => !(scope.levels && scope.transitive), 'takes levels or transitive, not both')
+          .optional(),
+        one: z.boolean().optional(),
+        expect: z.boolean().optional(),
+      }),
+    }),
+    z.strictObject({
+      ...guard,
+      create: z.strictObject({
+        as: name.optional(),
+        entity: z.union([z.string(), expressionToken]),
+        oneOf,
+        fields: z.union([expressionToken, valueMap]),
+        parent: z.strictObject({ id: present, relation: z.string(), entity: z.string().optional() }).optional(),
+      }),
+    }),
+    z.strictObject({
+      ...guard,
+      update: z.strictObject({
+        entity: z.union([z.string(), expressionToken]),
+        oneOf,
+        id: present,
+        fields: z.union([expressionToken, valueMap]).optional(),
+        unset: z.array(z.string()).optional(),
+      }),
+    }),
+    z.strictObject({
+      ...guard,
+      delete: z.strictObject({ entity: z.union([z.string(), expressionToken]), oneOf, id: present }),
+    }),
+    z.strictObject({ ...guard, link: linkBody }),
+    z.strictObject({ ...guard, unlink: linkBody }),
+    z.strictObject({
+      ...guard,
+      setRelation: z.strictObject({
+        entity: z.union([z.string(), expressionToken]),
+        oneOf,
+        id: present,
+        relation: z.union([z.string(), expressionToken]),
+        targets: present,
+      }),
+    }),
+    z.strictObject({
+      ...guard,
+      forEach: z.strictObject({
+        in: present,
+        as: name,
+        key: expressionToken.optional(),
+        steps: z.array(operationStepSchema),
+      }),
+    }),
+    z.strictObject({ ...guard, check: z.strictObject({ condition: present, error: name }) }),
+    z.strictObject({
+      ...guard,
+      call: z.strictObject({
+        as: name.optional(),
+        operation: z.string().regex(/^[a-z][a-z0-9-]*\.[A-Za-z_][A-Za-z0-9_]*$/, 'must be "<namespace>.<name>"'),
+        args: valueMap.optional(),
+      }),
+    }),
+  ]),
+);
+
+export const operationDefinitionSchema = z.strictObject({
+  description: z.string(),
+  params: z
+    .record(
+      name,
+      z.strictObject({
+        type: z.enum(['string', 'number', 'boolean', 'list', 'object', 'json']),
+        required: z.boolean().optional(),
+        description: z.string().optional(),
+      }),
+    )
+    .optional(),
+  errors: z.record(name, z.string()).optional(),
+  steps: z.array(operationStepSchema),
+  returns: value.optional(),
+});
+
+export const operationsSchema = z.record(name, operationDefinitionSchema);
+
 export const modelManifestSchema = z.object({
   version: z.string(),
   entities: z.record(z.string(), entitySchema),
+  operations: operationsSchema.optional(),
 });
 
 // ─── Validation (structure + referential integrity) ────────────────────────────
@@ -587,6 +927,15 @@ export function validateManifest(
       });
     }
     for (const [propName, spec] of Object.entries(entity.properties)) {
+      // A `json` property holds a structured value and a default here is a scalar, so the two
+      // cannot agree. Absent is the only starting point a value field has; a reader that wants
+      // "none yet" to look like an empty list says so where it reads.
+      if (spec.type === 'json' && spec.default !== undefined) {
+        errors.push({
+          path: `entities.${entityName}.properties.${propName}.default`,
+          message: 'a json property has no default — absent is how a value field starts',
+        });
+      }
       if (!spec.options) continue;
       const base = `entities.${entityName}.properties.${propName}.options`;
       if (spec.options.length === 0) {

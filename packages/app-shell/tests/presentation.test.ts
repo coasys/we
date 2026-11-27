@@ -59,8 +59,8 @@ describe('a TypeStyle record’s presentation', () => {
     expect(presentationOf(presentationFields(layer))).toEqual(layer);
   });
 
-  it('reads an empty or unreadable field as unset', () => {
-    expect(presentationOf({ display: '', controls: '{not json', authoring: '"one"' })).toEqual({});
-    expect(presentationFields({})).toEqual({ display: '', controls: '', authoring: '' });
+  it('reads an absent or unreadable field as unset', () => {
+    expect(presentationOf({ display: '{"title":"place"}', controls: ['notes'], authoring: [1] })).toEqual({});
+    expect(presentationFields({})).toEqual({ display: null, controls: null, authoring: null });
   });
 });

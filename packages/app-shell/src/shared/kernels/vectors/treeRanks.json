@@ -1,0 +1,247 @@
+[
+  {
+    "name": "seatInRow: a midpoint in a cleanly ranked row",
+    "fn": "seatInRow",
+    "input": {
+      "row": [
+        {
+          "id": "a",
+          "rank": 1024
+        },
+        {
+          "id": "b",
+          "rank": 2048
+        }
+      ],
+      "card": "x",
+      "index": 1
+    },
+    "output": [
+      {
+        "id": "x",
+        "rank": 1536
+      }
+    ]
+  },
+  {
+    "name": "seatInRow: a step past the end",
+    "fn": "seatInRow",
+    "input": {
+      "row": [
+        {
+          "id": "a",
+          "rank": 1024
+        }
+      ],
+      "card": "x",
+      "index": 1
+    },
+    "output": [
+      {
+        "id": "x",
+        "rank": 2048
+      }
+    ]
+  },
+  {
+    "name": "seatInRow: never zero, so the row is renumbered",
+    "fn": "seatInRow",
+    "input": {
+      "row": [
+        {
+          "id": "a",
+          "rank": 1024
+        },
+        {
+          "id": "b",
+          "rank": 2048
+        }
+      ],
+      "card": "x",
+      "index": 0
+    },
+    "output": [
+      {
+        "id": "x",
+        "rank": 1024
+      },
+      {
+        "id": "a",
+        "rank": 2048
+      },
+      {
+        "id": "b",
+        "rank": 3072
+      }
+    ]
+  },
+  {
+    "name": "seatInRow: an unranked card renumbers the row as shown",
+    "fn": "seatInRow",
+    "input": {
+      "row": [
+        {
+          "id": "a",
+          "rank": 1024
+        },
+        {
+          "id": "b"
+        },
+        {
+          "id": "c",
+          "rank": 4096
+        }
+      ],
+      "card": "x",
+      "index": 2
+    },
+    "output": [
+      {
+        "id": "b",
+        "rank": 2048
+      },
+      {
+        "id": "x",
+        "rank": 3072
+      }
+    ]
+  },
+  {
+    "name": "seatInRow: an empty row",
+    "fn": "seatInRow",
+    "input": {
+      "row": [],
+      "card": "x",
+      "index": 0
+    },
+    "output": [
+      {
+        "id": "x",
+        "rank": 1024
+      }
+    ]
+  },
+  {
+    "name": "rowFor: the order the drop reported",
+    "fn": "rowFor",
+    "input": {
+      "card": "x",
+      "siblings": ["a", "b", "c"],
+      "ranks": {
+        "c": 1024,
+        "b": 2048
+      },
+      "order": ["b", "stranger", "x", "a"],
+      "into": "sibling",
+      "target": "b"
+    },
+    "output": {
+      "row": [
+        {
+          "id": "b",
+          "rank": 2048
+        },
+        {
+          "id": "a"
+        },
+        {
+          "id": "c",
+          "rank": 1024
+        }
+      ],
+      "index": 1
+    }
+  },
+  {
+    "name": "rowFor: a drop on a parent goes last",
+    "fn": "rowFor",
+    "input": {
+      "card": "x",
+      "siblings": ["b", "a"],
+      "ranks": {
+        "a": 1024
+      },
+      "into": "child",
+      "target": "p"
+    },
+    "output": {
+      "row": [
+        {
+          "id": "a",
+          "rank": 1024
+        },
+        {
+          "id": "b"
+        }
+      ],
+      "index": 2
+    }
+  },
+  {
+    "name": "rowFor: before a sibling",
+    "fn": "rowFor",
+    "input": {
+      "card": "x",
+      "siblings": ["a", "b"],
+      "ranks": {
+        "a": 1024,
+        "b": 2048
+      },
+      "into": "sibling",
+      "target": "b",
+      "before": true
+    },
+    "output": {
+      "row": [
+        {
+          "id": "a",
+          "rank": 1024
+        },
+        {
+          "id": "b",
+          "rank": 2048
+        }
+      ],
+      "index": 1
+    }
+  },
+  {
+    "name": "isUnder: a grandchild",
+    "fn": "isUnder",
+    "input": {
+      "candidate": "c",
+      "card": "a",
+      "parentOf": {
+        "c": "b",
+        "b": "a"
+      }
+    },
+    "output": true
+  },
+  {
+    "name": "isUnder: an ancestor is not under",
+    "fn": "isUnder",
+    "input": {
+      "candidate": "a",
+      "card": "c",
+      "parentOf": {
+        "c": "b",
+        "b": "a"
+      }
+    },
+    "output": false
+  },
+  {
+    "name": "isUnder: a loop ends the walk",
+    "fn": "isUnder",
+    "input": {
+      "candidate": "a",
+      "card": "z",
+      "parentOf": {
+        "a": "b",
+        "b": "a"
+      }
+    },
+    "output": false
+  }
+]

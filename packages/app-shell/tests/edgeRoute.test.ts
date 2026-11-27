@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 
 import { routeWrite } from '../src/shared/edgeRoute';
 
-const BENT = '[{"along":0.5,"across":0.2}]';
+const BENT = [{ along: 0.5, across: 0.2 }];
 
 describe('pinning a side', () => {
   it('creates a route when there is none', () => {
@@ -39,7 +39,7 @@ describe('clearing a side', () => {
   it('treats an empty point list as nothing drawn', () => {
     // `rerouteOnCanvas` writes `[]` to straighten a line, because an update skips `''` — so the
     // absence of bends reaches here spelled two different ways.
-    expect(routeWrite({ sourceAnchor: 'n', points: '[]' }, 'source', '')).toEqual({ action: 'delete' });
+    expect(routeWrite({ sourceAnchor: 'n', points: [] }, 'source', '')).toEqual({ action: 'delete' });
   });
 
   it('keeps the other end when only one is cleared', () => {

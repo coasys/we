@@ -14,6 +14,7 @@ import { Involvement } from './Involvement';
 import { InvolvementType } from './InvolvementType';
 import { LinkBlock } from './LinkBlock';
 import { LocationBlock } from './LocationBlock';
+import { CORE_OPERATIONS } from './operations';
 import { TagBlock } from './TagBlock';
 import { TaskBlock } from './TaskBlock';
 import { TaskState } from './TaskState';
@@ -112,4 +113,7 @@ export const CORE_MANIFEST: EntityManifest = {
     ...Object.fromEntries(Object.entries(CORE_DEFS).map(([name, def]) => [name, assemble(def)])),
     WeNode: WE_NODE_ENTITY,
   },
+  operations: CORE_OPERATIONS,
 };
+
+export { CORE_OPERATIONS };

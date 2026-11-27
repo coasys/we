@@ -20,6 +20,7 @@ const judged = (over: { groups?: CapabilityGroup[]; modules?: string[]; recordTy
     pages: [],
     themes: [],
     recordTypes: over.recordTypes ?? ['Species'],
+    operations: [],
     workflows: [],
   },
 });
@@ -63,12 +64,13 @@ describe('the agreement on the install record', () => {
     themes: [],
     recordTypes: [],
     workflows: [],
+    operations: {},
   } as never;
 
   it('is kept, and read back with the record', () => {
     const granted = grantOf(judged({ groups: [first, second] }));
     const entry = installedEntry(pieces, { name: 'Field guide', icon: 'leaf', at: 'now', granted, digest: 'abc' });
-    const [read] = readInstalledBundles(JSON.stringify(withInstalled([], entry)));
+    const [read] = readInstalledBundles(withInstalled([], entry));
     expect(read.granted).toEqual(granted);
     expect(read.digest).toBe('abc');
     expect(whatIsNew(judged({ groups: [first, second] }), read.granted)).toEqual({

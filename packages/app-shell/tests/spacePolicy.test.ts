@@ -120,7 +120,8 @@ describe('actorFacts', () => {
 });
 
 describe('policyInForce', () => {
-  const doc = (policy: Policy) => JSON.stringify(policy);
+  // Copied, as a stored value would be: a version never shares an object with the code that wrote it.
+  const doc = (policy: Policy): unknown => structuredClone(policy);
 
   it('reads as open with no versions, and as the newest version an admin wrote', () => {
     expect(policyInForce([], standing)).toBe(OPEN_POLICY);
@@ -135,7 +136,7 @@ describe('policyInForce', () => {
     const versions = [
       { id: 'v1', author: 'did:admin', createdAt: 1, document: doc(COMMUNITY_POLICY) },
       { id: 'v2', author: 'did:ann', createdAt: 2, document: doc(OPEN_POLICY) },
-      { id: 'v3', author: 'did:admin', createdAt: 3, document: '{broken' },
+      { id: 'v3', author: 'did:admin', createdAt: 3, document: 'not a policy' },
     ];
     expect(policyInForce(versions, standing)).toEqual(COMMUNITY_POLICY);
   });

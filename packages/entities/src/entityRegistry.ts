@@ -174,6 +174,11 @@ export function getEntityNameByTargetClass(targetClass: string, dataset?: unknow
 /**
  * A write group: everything performed inside `run` with the given token commits together where
  * the backend supports atomicity. The token is opaque — backends mint their own.
+ *
+ * What a runner promises, where it can: when `run` resolves, the writes carrying the token land as
+ * one commit, and anything watching hears of them once, after it; when `run` throws, none of them
+ * land and the error reaches the caller unchanged. A runner that cannot keep a part of that says so
+ * where it is registered.
  */
 export type EntityTransactionRunner = <R>(
   dataset: unknown,
@@ -182,8 +187,8 @@ export type EntityTransactionRunner = <R>(
 
 /**
  * Passthrough until a backend registers better: the callback runs with no token, so every write
- * commits individually. Correct for backends without batching (the inmemory one), and the honest
- * default for a backend that forgot to register — writes still land, atomicity is simply absent.
+ * commits individually. The honest default for a backend without batching, or one that forgot to
+ * register — writes still land, atomicity is simply absent.
  */
 let transactionRunner: EntityTransactionRunner = (_dataset, run) => run({});
 
@@ -206,6 +211,34 @@ export function registerTransactionRunner(runner: EntityTransactionRunner): void
  * unpositioned for as long as its placement took to land, then moved it. A nested batch would have
  * been the other way to express this and is worse — the inner one would commit on its own, which is
  * exactly the intermediate state being avoided.
+ *
+ * ## Reads inside one see committed state only
+ *
+ * A write carrying the token is staged, and nothing reads it until the group commits — `fn`'s own
+ * reads included. So a `findOne` for a record created a line earlier finds nothing, and a write that
+ * needs that record names it by the id the create returned (or the id the caller chose for it with
+ * `create`'s `id` option) instead of finding it. That is the one rule every backend can keep, and the
+ * one a runner of compound writes is built on: it holds the group's pending writes itself, rather
+ * than asking the backend to show them back.
+ *
+ * Naming one in a write works everywhere, by id as well as by instance: as a create's relations or
+ * `parent`, through the relation writes on the instance a create returned, and as the record the
+ * static `setRelation`/`addRelation`/`removeRelation` are addressed to. A relation write needs only the
+ * record's id and how its entity stores the relation, not a read of the record, so a backend must
+ * not answer one onto a record the group created by finding nothing and writing nothing. Within the
+ * group such a record holds only what the group wrote to it, so a `setRelation` there replaces that.
+ *
+ * ## The write check sees the group's own writes
+ *
+ * Reads see committed state; the write check does not. Each write in the group is judged against
+ * the records as the group's earlier writes leave them: a second write to a record the group
+ * created is judged against that record, with the writer as its author, and one to a record the
+ * group edited or deleted against the edit or the absence. What a check is told is
+ * {@link EntityWrite.record}, and it is the backend's to answer — never the caller's, since a
+ * caller that could say what the record holds could say whatever lets the write through.
+ *
+ * A write inside `fn` that does not carry the token is not part of the group: it lands when it is
+ * made, and is not undone if `fn` later throws.
  */
 export function runEntityTransaction<R>(
   dataset: unknown,
@@ -241,7 +274,16 @@ export interface EntityWrite {
   relation?: string;
   /** For a create, its fields; for an edit, the changed fields' new values. */
   data?: Record<string, unknown>;
-  /** The record as it stands, or `null` when there is none. */
+  /**
+   * The record as it stands before this write, or `null` when there is none — answered by the
+   * backend, never passed in by whoever asked for the write.
+   *
+   * Inside a transaction it is the record as the transaction has staged it: one created earlier in
+   * the same group, with `author` the writer; one edited earlier, with the edit laid over it; one
+   * deleted earlier, `null`. Outside one, or for a record the group has not touched, the committed
+   * record. So a policy judges a compound write by what it does, and a record that is made and then
+   * edited in one act is edited by its author (see `runEntityTransaction`).
+   */
   record?: () => Promise<WrittenRecord | null> | WrittenRecord | null;
 }
 

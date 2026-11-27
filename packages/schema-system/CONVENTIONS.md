@@ -23,10 +23,13 @@ tokens:
 | Handlers  | `$invoke`, `$setLocal`, `$toggleLocal`, `$toggleLocalIn`, `$callLocal`, `$touch`, `$resetLocal`                       | A closed set of verbs; grants and `destructive` flags attach to verbs |
 | Values    | `{ $: "count(local.rows) > 0 && local.search != ''" }`                                                                | One expression language — closed grammar, open function library       |
 
-The value layer lives in `shared/src/expressions/`: `ast.ts` (the grammar and why it is closed),
-`lexer.ts`/`parser.ts`, `printer.ts` (canonical round trip for the editor), `evaluate.ts` (total,
-inert, reactive), `check.ts` (column-precise static checking), `functions.ts` (the library).
-`propResolvers/expression.ts` is the dispatcher branch that evaluates it.
+The value layer is its own package, `@we/expressions` (`expressions/src/`), so that something with
+no renderer — the entity layer evaluating a declared operation — can run it without the schema
+engine: `ast.ts` (the grammar and why it is closed), `lexer.ts`/`parser.ts`, `printer.ts` (canonical
+round trip for the editor), `evaluate.ts` (total, inert, reactive), `check.ts` (column-precise
+static checking), `functions.ts` (the core library). `shared/src/propResolvers/expression.ts` is
+the dispatcher branch that evaluates it, and `shared/src/formFunctions.ts` registers the form-state
+readers, which are the renderer's and so not core.
 
 **Rules:**
 
@@ -43,13 +46,15 @@ inert, reactive), `check.ts` (column-precise static checking), `functions.ts` (t
 A function is code, and gets the bar code gets: **three real uses**, or a divergence that is already
 a bug. Then:
 
-1. **Define it** in `shared/src/expressions/functions.ts` with `defineFunction({ name, category,
+1. **Define it** in `expressions/src/functions.ts` with `defineFunction({ name, category,
 params, doc, example, impl })`. `params` in the library notation (`limit?`, `...values`); `doc`
    one sentence saying what it answers and what it does with bad input.
 2. **Keep it pure and total.** No I/O, no throwing. Wrong-typed input answers with the empty value
    of its kind (`[]`, `''`, `0`, `false`, `undefined`) — a template that renders too little is
    recoverable, one that throws mid-paint takes the tree with it.
-3. **Test it** in `shared/src/expressions/expressions.test.ts`.
+3. **Test it** in `expressions/src/expressions.test.ts`. Every function defined there is **core**
+   (`CORE_FUNCTIONS`): callable from a declared operation as well as a template, so it must mean the
+   same on every host.
 4. **Regenerate the context** — `pnpm --filter @we/ai-context generate-context`. The reference
    lists the library from the registry; there is no doc to edit. `OPERATORS.md` and `README.md`
    describe the layers, not the functions.

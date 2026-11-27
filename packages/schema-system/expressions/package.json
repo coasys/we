@@ -1,0 +1,32 @@
+{
+  "name": "@we/expressions",
+  "version": "0.1.0",
+  "description": "WE's expression language: grammar, checker, evaluator and the core function library",
+  "type": "module",
+  "scripts": {
+    "build:steps": "tsup",
+    "build": "we-build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "coverage": "vitest run --coverage"
+  },
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@we/backend-shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@vitest/coverage-v8": "^5.0.5",
+    "@we/cli": "workspace:*",
+    "jsdom": "~30.0.1",
+    "tsup": "^9.0.0",
+    "vitest": "^5.0.5"
+  },
+  "sideEffects": false
+}

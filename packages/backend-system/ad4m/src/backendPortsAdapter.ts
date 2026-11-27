@@ -25,6 +25,7 @@ import {
   registerFileStore,
   registerTransactionRunner,
 } from '@we/entities';
+import { CORE_MANIFEST } from '@we/entities/manifest';
 
 import { createAd4mDataBindings } from './ad4mAdapter';
 import { createAd4mEphemeralPort } from './ad4mEphemeralAdapter';
@@ -35,12 +36,14 @@ import {
   publishProfileToPublicPerspective,
 } from './agentHelpers';
 import { createAd4mAgentPort } from './agentPort';
+import { installCallerIds } from './callerIds';
 import { createAd4mCallPort } from './callPort';
 import { installContainmentPredicate } from './containment';
 import { Space } from './entities';
 import { type Ad4mCustodyHost, createAd4mIdentityPort } from './identityPort';
 import { createAd4mInterpretationPort } from './interpretationAdapter';
 import { readInterpretationHints, resetInterpretationHints, writeInterpretationHints } from './interpretationHints';
+import { installJsonValues } from './jsonValues';
 import { type Ad4mHttpConnection, createAd4mLanguageModelPort } from './languageModelPort';
 import { type Ad4mLifecycleOptions, createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
 import { compileManifest, manifestToEntries } from './manifestCompiler';
@@ -62,6 +65,8 @@ import {
   ROOT_MODELS,
   SPACE_MODELS,
 } from './sdnaEntities';
+import { installStagedRecords } from './stagedRecords';
+import { runAd4mTransaction } from './transactions';
 import { createAd4mTranscriptionPort } from './transcriptionAdapter';
 import { createAd4mWorkflowPort } from './workflowPort';
 import { installWriteChecks } from './writeChecks';
@@ -188,6 +193,14 @@ export function createAd4mBackendPorts(
   // "this relation's membership is now that list", and every model class — generated, compiled
   // or built from foreign SHACL — inherits the ability to carry it out. See `relationWrites.ts`.
   installRelationWrites(Ad4mModel);
+  // And `json` properties as values: written as a list or an object and read back as one, swapped
+  // for their stored form around each save. Before the write check, so the check sees the values.
+  // See `jsonValues.ts`.
+  installJsonValues(Ad4mModel, CORE_MANIFEST);
+  // And what each open batch has written, as the batch would leave it — the records a relation write
+  // and the write check reach before any read can see them. After the json values, so it holds
+  // values; before the write check, so a check sees the batch as it stood. See `stagedRecords.ts`.
+  installStagedRecords(Ad4mModel, ctx.selfId);
   // And the host's write check, asked before every create, edit, delete and relation write any model
   // makes — the one place none of them can go around. See `writeChecks.ts`.
   installWriteChecks(Ad4mModel);
@@ -197,6 +210,9 @@ export function createAd4mBackendPorts(
   // And a parent named by the relation it joins, which is how the contract names one — translated to
   // the predicate AD4M stores it under before any model sees it. See `parentByRelation.ts`.
   installParentByRelation(Ad4mModel);
+  // And a create under an id the caller chose, refused when that id is already held. See
+  // `callerIds.ts`.
+  installCallerIds(Ad4mModel);
   // Register the native model classes for name-based $query resolution. Previously a module-load
   // side effect in the shell; it belongs to the backend choice. Use .className (set by @Model)
   // rather than .name — bundlers mangle the native .name in production builds.
@@ -204,10 +220,9 @@ export function createAd4mBackendPorts(
     registerEntity((M as { className?: string }).className ?? M.name, M);
   }
   // Batching, registered beside the models it batches: the neutral runEntityTransaction resolves
-  // to AD4M's own transaction here, and to individual writes on a backend without one.
-  registerTransactionRunner((dataset, run) =>
-    Ad4mModel.transaction(dataset as PerspectiveProxy, (tx) => run({ batchId: tx.batchId })),
-  );
+  // to AD4M's own transaction here, and to individual writes on a backend without one. See
+  // `transactions.ts`.
+  registerTransactionRunner(runAd4mTransaction);
   // File storage the same way: format:'file' properties resolve their bytes through this backend's
   // file-storage language, and the address shape is this backend's own.
   registerFileStore({

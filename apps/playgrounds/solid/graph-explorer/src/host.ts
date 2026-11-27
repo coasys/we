@@ -10,6 +10,7 @@
  * the same question of both, and each backend answers as well as it can.
  */
 import type { GraphHostBindings } from '@we/graph-solid';
+import { matchesWhere } from '@we/schema-shared';
 
 import { DATASET, type Row, SHAPES, TABLES } from './fixture';
 
@@ -70,22 +71,6 @@ function hydrate(row: Row, entity: string, include: Record<string, unknown> | un
   return result;
 }
 
-function matchesWhere(row: Row, where: Record<string, unknown> | undefined): boolean {
-  if (!where) return true;
-  return Object.entries(where).every(([key, expected]) => {
-    const actual = row[key];
-    if (expected && typeof expected === 'object' && !Array.isArray(expected)) {
-      const ops = expected as Record<string, unknown>;
-      if ('contains' in ops) {
-        return typeof actual === 'string' && actual.toLowerCase().includes(String(ops.contains).toLowerCase());
-      }
-      if ('not' in ops) return actual !== ops.not;
-      if ('exists' in ops) return (actual != null) === Boolean(ops.exists);
-    }
-    return actual === expected;
-  });
-}
-
 export function createHost(log?: QueryLog): GraphHostBindings {
   function record(entity: string, kind: string, rows: number) {
     log?.entries.push({ entity, kind, rows });
@@ -127,7 +112,7 @@ export function createHost(log?: QueryLog): GraphHostBindings {
         return rows;
       }
 
-      let rows = table.filter((row) => matchesWhere(row, where));
+      let rows = table.filter((row) => !where || matchesWhere(row, where));
 
       if (order) {
         const [key, direction] = Object.entries(order)[0] ?? [];

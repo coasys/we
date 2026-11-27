@@ -20,9 +20,9 @@ function recorder() {
   const writes: Array<{ model: string; data: Record<string, unknown> }> = [];
   const links: Array<[string, string]> = [];
   const getEntity = (model: string) => ({
-    async create(_handle: unknown, data: Record<string, unknown>) {
+    async create(_handle: unknown, data: Record<string, unknown>, options?: { id?: string }) {
       writes.push({ model, data });
-      const id = (data.id as string) ?? `minted-${writes.length}`;
+      const id = options?.id ?? `minted-${writes.length}`;
       return {
         id,
         async addChildren(related: unknown) {
@@ -119,7 +119,7 @@ describe('editor state', () => {
   });
 
   it('encodes UTF-8 the way the app does, and the app decodes it back exactly', () => {
-    // `createBlocks` writes base64 of the UTF-8 bytes; `decodeEditorState` reads it with a
+    // Writing a post stores base64 of the UTF-8 bytes; `decodeEditorState` reads it with a
     // TextDecoder. A bare `atob` — what the app used to do — yields Latin-1 mojibake, which is why
     // fixture bodies were kept ASCII for a while. They need not be any more.
     const bytes = atob(editorState(['Sørensen']).split(';base64,')[1]);

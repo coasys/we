@@ -63,6 +63,23 @@ A new backend implements these interfaces — runtime-compiled the way `@we/back
 or generated the way the AD4M lane is — and registers its implementations in the entity proxy
 registry; consumers never notice which.
 
+## Structured values — `type: 'json'`
+
+A property that holds a list or an object — a space's enabled modules, a block's marks, a route's
+bends — is declared `type: 'json'`, and every caller reads and writes it as the value. Nobody
+parses or serialises it: how it is stored is each backend's business, and the rule they all keep
+is written beside `WriteValue` in `@we/backend-shared`'s `recordContract.ts`. In short:
+
+- It reads back as the value it was written as, and its generated type is `unknown` — whoever wrote
+  it may not have been this code, so a reader narrows it (`Array.isArray`, a small `…Of` helper).
+- It has no `default` (the manifest refuses one). Unwritten, and written `''` or `null`, it is
+  absent; an empty list or object is a value, so "none" and "not decided" stay two things.
+- Text written to one is taken as JSON and refused when it is not; stored text that does not parse
+  reads as absent, reported once.
+- The whole value is the unit, so two people writing at once keep the later value. That is the
+  right trade for a setting somebody changes occasionally. Something two people edit at the same
+  moment, or that anything filters on, wants records or a relation instead (see Relations below).
+
 ## Blocks are entities, with one extra capability
 
 `blockable: true` on an entity's schema says: **a person can create one of these fresh, inline,
@@ -259,6 +276,78 @@ Rules:
 - Always the **first property** in the class, before any `@Property` or `@HasMany`
 
 ---
+
+## Declaring an operation
+
+A compound write — a board and its columns, a vote that replaces the voter's last one, a post and
+its blocks — is declared as data in the manifest, beside `entities`, rather than written as store
+code. One runner (`runOperation`) runs it on every backend, inside one transaction, with every write
+through the backend's write check (see `docs/architecture/space-policy.md`). Templates, stores and
+agent tools then make the same writes the same way.
+
+```ts
+export const CORE_OPERATIONS: Record<string, OperationDefinition> = {
+  makeBoard: {
+    description: 'A board and a column for each state.',
+    params: { title: { type: 'string', required: true }, columns: { type: 'list', required: true } },
+    errors: { untitled: 'A board needs a title.' },
+    steps: [
+      { check: { condition: { $: "trim(title) != ''" }, error: 'untitled' } },
+      { create: { as: 'board', entity: 'CollectionBlock', fields: { kind: 'board', title: { $: 'title' } } } },
+      {
+        forEach: {
+          in: { $: 'columns' },
+          as: 'col',
+          steps: [
+            {
+              create: {
+                as: 'column',
+                entity: 'CollectionBlock',
+                fields: { kind: 'column', title: { $: 'col.title' } },
+              },
+            },
+            {
+              link: {
+                entity: 'CollectionBlock',
+                id: { $: 'board.id' },
+                relation: 'children',
+                target: { $: 'column.id' },
+              },
+            },
+          ],
+        },
+      },
+    ],
+    returns: { $: 'board.id' },
+  },
+};
+```
+
+- **Where.** Core operations go in `src/manifest/operations.ts` and reach the manifest as
+  `CORE_MANIFEST.operations`. A module's go in its contributed manifest, a bundle's in its
+  `operations`. Keys are bare names; the host assigns the namespace (`core`, the module's id, the
+  bundle's id), so they run as `core.makeBoard`, and a manifest cannot claim another's names.
+- **Data, nothing else.** Plain JSON: a value is a literal, `{ $: '…' }` an expression. The test in
+  `tests/operations.test.ts` checks every core operation survives a JSON round trip unchanged, since
+  another implementation reads exactly that.
+- **The steps** are a closed set: `find`, `create`, `update`, `delete`, `link`, `unlink`, `setRelation`,
+  `forEach` (at most three deep), `check` and `call`, each with an optional `when`. A `find` reads
+  committed state and never the operation's own writes; reach what an earlier step made by the name
+  its `as` bound. `link`, `unlink` and `setRelation` are for to-many relations; a to-one relation is a
+  field.
+- **What an expression may read:** the params, `invoker`, `invokedAt`, earlier steps' `as` names, and a
+  `forEach`'s item. No stores, no `me`, no `local`, and core functions only — an operation means the
+  same on every host.
+- **Ids.** A created record's id is derived from the invocation and the step (`deriveRecordId`), a
+  `forEach` contributing each item's key (`item.id`, else `item.key`, else the loop's `key`
+  expression), never its position. Give every list item a stable key.
+- **What it may not do:** write `Policy`, `Role` or `RoleGrant`, call itself through any chain of
+  calls, or reach a host function. What stays code is listed in the operations format: uploads,
+  derived fields, diffs and merges, service calls, optimistic holds and undo.
+- **Checking.** `validateOperations(manifest, { namespace, external, operations })` is the static
+  check — every name bound, every entity, field and relation known, every call resolved, no cycle —
+  with a path to each problem. `effectSummary` says what an operation may write, which the host maps
+  to the capability group a template needs to invoke it.
 
 ## Adding a New Entity
 

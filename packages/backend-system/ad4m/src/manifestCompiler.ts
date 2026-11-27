@@ -38,6 +38,7 @@ import { FILE_STORAGE_LANGUAGE } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 
 import { toAd4mPredicate } from './containment';
+import { registerJsonFields } from './jsonValues';
 import type { EntityManifestEntry } from './manifestTypes';
 import { toAd4mOptions } from './options';
 
@@ -382,6 +383,9 @@ export function compileManifest(
     resolver at build time instead. The walk is stable: declaration order wherever `extends` does
     not say otherwise.
   */
+  // Which of these entities' properties are `json` is not something an AD4M class can carry, so
+  // the value handling in `jsonValues.ts` reads it from the declaration, by entity name.
+  registerJsonFields(manifest, CORE_MANIFEST);
   const entries = manifestToEntries(manifest, opts);
   const declared = new Map(entries.map((entry) => [entry.name, entry]));
   const ordered: CompilableEntry[] = [];

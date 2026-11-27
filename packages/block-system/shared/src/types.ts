@@ -1,6 +1,7 @@
 import type { DesignSystemProps } from '@we/design-types';
 
 import type { ContentBlock, ContentDocument } from './content';
+import type { StandoffMark } from './marks';
 
 /** The dataset a composer/renderer works against — whichever handle the connected backend takes. */
 export type BlockDataset = unknown;
@@ -92,12 +93,12 @@ export type BlockComposerProps = Omit<DesignSystemProps, 'direction'> & {
    * as they do in a post, which is the reason this is a mode of the composer rather than a second
    * input with its own idea of a mention.
    *
-   * What it sends is `onSubmit`'s `{ text, marks }` — one block's worth, marks serialised as a record
-   * stores them — after which it empties itself.
+   * What it sends is `onSubmit`'s `{ text, marks }` — one block's worth, its marks as a list —
+   * after which it empties itself.
    */
   compact?: boolean;
-  /** Sent on Enter in `compact` mode: the line's text and its marks, serialised. Nothing is sent for an empty line. */
-  onSubmit?: (line: { text: string; marks: string }) => void;
+  /** Sent on Enter in `compact` mode: the line's text and its marks. Nothing is sent for an empty line. */
+  onSubmit?: (line: { text: string; marks: StandoffMark[] }) => void;
   /** What an empty compact composer says. */
   placeholder?: string;
 };

@@ -14,7 +14,7 @@
  * expression in a `$queries` where-clause or a `DropdownMenu`'s items is as much a read as one in
  * `children`, and a structural walk would step over it.
  */
-import { parseCached, referencedPaths, referencedRoots } from './expressions';
+import { parseCached, referencedPaths, referencedRoots } from '@we/expressions';
 
 export interface FreeNames {
   /** Context names read and never bound inside — `tile`, `block`, `item`. */
@@ -34,6 +34,7 @@ const ALWAYS_BOUND = new Set([
   'currentDataset',
   'surface',
   'modules',
+  'ops',
   'event',
   'arg',
   'result',

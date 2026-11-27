@@ -13,7 +13,7 @@ The schema system provides a framework-agnostic, schema-driven UI renderer desig
 
 Anything computed — a condition, a label, a count, a filtered list — is one expression in a
 `{ $: '…' }` token, with a closed grammar and an open function library
-(`shared/src/expressions/`):
+(the `@we/expressions` package, `expressions/src/`):
 
 | Written as                                           | Answers                                  |
 | ---------------------------------------------------- | ---------------------------------------- |

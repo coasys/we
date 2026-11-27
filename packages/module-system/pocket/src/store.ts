@@ -56,7 +56,7 @@ export interface GatherInput {
  * remove, and no way to read a record's parent), so the source says it instead.
  */
 interface PocketOrigin {
-  /** The `PocketItem` record's own id — the row to remove once the copy has landed. */
+  /** The `PocketItem` record's own id — the row a drop on another folder moves. */
   id?: string;
   /** The folder it is sitting in, so dropping it back there is recognised as nothing at all. */
   folder?: string;
@@ -204,13 +204,8 @@ export function createPocketStore(deps: ModuleStoreDeps) {
   async function rootFolder(): Promise<PocketFolderRow | null> {
     const data = agentData();
     if (!data?.ready()) return null;
-    const [existing] = (await data.find('PocketFolder', {
-      where: { root: true },
-      limit: 1,
-    })) as unknown as PocketFolderRow[];
-    if (existing?.id) return existing;
-    const id = await data.create('PocketFolder', { name: 'Pocket', icon: 'bag-simple', root: true });
-    return id ? { id, name: 'Pocket', icon: 'bag-simple', root: true } : null;
+    const root = (await data.run('pocket.rootFolder')) as PocketFolderRow | undefined;
+    return root?.id ? { id: root.id, name: root.name, icon: root.icon, root: true } : null;
   }
 
   /*
@@ -315,123 +310,36 @@ export function createPocketStore(deps: ModuleStoreDeps) {
       .catch(() => setLastError('Could not open your Pocket.'));
   }
 
-  /**
-   * Something already held, dropped on a folder: move it there rather than keeping it twice.
-   *
-   * ## Why this is a copy and a delete
-   *
-   * `AgentDataAccess` is `create`, `find` and `remove`. It cannot relink a record, so a move is the
-   * two writes that add up to one — the new row first, so a failure leaves the item where it was
-   * rather than nowhere. The id changes, which for a bookmark costs nothing: nothing references a
-   * `PocketItem` but the folder holding it.
-   *
-   * The snapshot is carried across verbatim, `gatheredAt` included. When you kept a thing does not
-   * change because you tidied it into a folder, and re-stamping it would silently reorder a list
-   * sorted by exactly that.
-   *
-   * ## Why the source has to say where it came from
-   *
-   * The port cannot read a record's parent, so "is this a re-file or a drop back where it already
-   * is" is unanswerable here. The row carries its own folder in the drag — see {@link PocketOrigin}.
-   * Without that the same-folder case would churn: a delete and a create leaving an identical row
-   * with a new id.
-   */
-  async function refile(row: PocketRow, origin: PocketOrigin | undefined, into?: string): Promise<string> {
-    const data = agentData();
-    const target = into;
-    // No target named (a drop on the panel itself), or it is already there: nothing to do.
-    if (!data?.ready() || !target || !origin?.id || origin.folder === target) return row.id;
-
-    const moved = await data.create(
-      'PocketItem',
-      {
-        ref: row.ref,
-        entity: row.entity,
-        datasetKey: row.datasetKey,
-        recordId: row.recordId,
-        label: row.label,
-        icon: row.icon,
-        thumbnail: row.thumbnail,
-        sourceAuthor: row.sourceAuthor,
-        sourceName: row.sourceName,
-        gatheredAt: row.gatheredAt,
-        withinEntity: row.withinEntity ?? '',
-        withinId: row.withinId ?? '',
-      },
-      { parent: { id: target, relation: 'items', entity: 'PocketFolder' } },
-    );
-    if (!moved) return row.id;
-    await data.remove('PocketItem', origin.id);
-    return moved;
-  }
-
   async function gatherOne(input: GatherInput, into?: string): Promise<string> {
     const data = agentData();
     const ref = referenceFor(input);
     if (!data?.ready() || !ref) return '';
-    // Gathering the same thing twice is a no-op rather than a second row. A native equality on a
-    // scalar, which is half the reason the reference is stored as one.
-    const [already] = (await data.find('PocketItem', { where: { ref }, limit: 1 })) as unknown as PocketRow[];
-    if (already?.id) return refile(already, input.origin, into);
-
-    const parent = into || folderId() || (await rootFolder())?.id;
-    if (!parent) return '';
     // The reference's parts, written out beside it: a template cannot parse a string, so without
-    // them a row could be shown but never dragged back out. See the manifest.
+    // them a row could be shown but never dragged back out. See the manifest. Gathering what is
+    // already held is the operation's to answer — a move, or nothing — never a second row. A move
+    // needs the folder the row is in, which the kernel's reads do not carry, so the drag says it:
+    // see `PocketOrigin`.
     const parsed = parseRef(ref);
-    const id = await data.create(
-      'PocketItem',
-      {
-        ref,
-        entity: parsed?.entity ?? input.entity,
-        datasetKey: parsed?.datasetKey ?? '',
-        recordId: parsed?.id ?? input.id,
-        label: input.label ?? '',
-        icon: input.icon ?? '',
-        // An explicit picture wins; a post has none, so one is taken out of the document it carried.
-        thumbnail: input.preview?.thumbnail || thumbnailFrom(input.preview?.content),
-        sourceAuthor: input.preview?.author ?? '',
-        // Where the source says it was, when it was not the space on screen — a block out of a note is
-        // from the personal space, which has no name worth showing; one out of a feed is from here.
-        sourceName: input.preview?.source ?? (input.datasetKey ? '' : sourceName()),
-        withinEntity: input.within?.entity ?? '',
-        withinId: input.within?.id ?? '',
-        // Stamped here rather than left to the backend's createdAt: this is when *you* kept it,
-        // which is not when the thing was made and not when the record happened to sync.
-        gatheredAt: new Date().toISOString(),
-      },
-      { parent: { id: parent, relation: 'items', entity: 'PocketFolder' } },
-    );
-    return id ?? '';
-  }
-
-  /**
-   * How deep a folder tree may be walked when deleting one.
-   *
-   * The parent relation is written by this agent alone, so a cycle takes a corrupt record rather
-   * than two writers racing — but "cannot happen" is not a reason to recurse without a bound when
-   * the consequence is an unrecoverable hang in the middle of a delete.
-   */
-  const MAX_FOLDER_DEPTH = 32;
-
-  /** A folder, its items, and everything under it — depth first, so a parent outlives its children. */
-  async function removeFolderTree(id: string, depth: number): Promise<void> {
-    const data = agentData();
-    if (!data?.ready() || depth > MAX_FOLDER_DEPTH) return;
-
-    const children = (await data.find('PocketFolder', {})) as unknown as (PocketFolderRow & {
-      parent?: string;
-    })[];
-    for (const child of children) {
-      if (child.id && child.id !== id && child.parent === id) await removeFolderTree(child.id, depth + 1);
-    }
-
-    const items = (await data.find('PocketItem', {})) as unknown as (PocketRow & { parent?: string })[];
-    for (const item of items) {
-      if (item.parent === id) await data.remove('PocketItem', item.id);
-    }
-
-    await data.remove('PocketFolder', id);
+    const id = await data.run('pocket.gather', {
+      ref,
+      entity: parsed?.entity ?? input.entity,
+      datasetKey: parsed?.datasetKey ?? '',
+      recordId: parsed?.id ?? input.id,
+      label: input.label ?? '',
+      icon: input.icon ?? '',
+      // An explicit picture wins; a post has none, so one is taken out of the document it carried.
+      thumbnail: input.preview?.thumbnail || thumbnailFrom(input.preview?.content),
+      sourceAuthor: input.preview?.author ?? '',
+      // Where the source says it was, when it was not the space on screen — a block out of a note is
+      // from the personal space, which has no name worth showing; one out of a feed is from here.
+      sourceName: input.preview?.source ?? (input.datasetKey ? '' : sourceName()),
+      withinEntity: input.within?.entity ?? '',
+      withinId: input.within?.id ?? '',
+      // The folder named, else the one being looked at; the operation files at the root without one.
+      into: into || folderId() || undefined,
+      origin: input.origin?.id ? { id: input.origin.id, folder: input.origin.folder } : undefined,
+    });
+    return typeof id === 'string' ? id : '';
   }
 
   /**
@@ -612,7 +520,7 @@ export function createPocketStore(deps: ModuleStoreDeps) {
       setBusy(true);
       setLastError('');
       try {
-        await removeFolderTree(id, 0);
+        await data.run('pocket.removeFolder', { folder: id });
         await reload();
       } catch (error) {
         setLastError(error instanceof Error ? error.message : 'Could not remove that folder.');

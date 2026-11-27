@@ -18,15 +18,17 @@
  * ```
  */
 import type { Activity, EphemeralPort, Peer, PublishResult } from '@we/backend-shared';
-import { createInMemoryEphemeralPort, InMemoryBus } from '@we/backend-shared';
+import { createInMemoryEphemeralPort, InMemoryBus, matchesWhere } from '@we/backend-shared';
 import type {
   AgentDataKernel,
   ComposedDocument,
   CopiedIn,
+  DatasetTarget,
   DocumentAccess,
   LiveAnchor,
   LiveDecoration,
   ModuleDefinition,
+  ModuleOperations,
   ModuleStoreDeps,
   PresenceKernel,
   RecordQuery,
@@ -72,13 +74,9 @@ export function fakeDeps(overrides: Partial<ModuleStoreDeps> = {}): ModuleStoreD
 /** A row as the fake stores it: whatever was written, plus `id` and `author`. */
 export type FakeRow = Record<string, unknown> & { id: string; author: string };
 
-/** What a query's `where` may say against the fake — equality per key, and `in` for a list. */
+/** A query's `where` against the fake, read as every backend reads it — an absent value matching no comparison. */
 function matches(row: Record<string, unknown>, where: Record<string, unknown> | undefined): boolean {
-  return Object.entries(where ?? {}).every(([key, value]) => {
-    if (Array.isArray(value)) return value.includes(row[key]);
-    if (value && typeof value === 'object' && 'not' in value) return row[key] !== value.not;
-    return row[key] === value;
-  });
+  return where ? matchesWhere(row, where) : true;
 }
 
 /** A field as the text rows are ordered by: a scalar as it prints, anything else as nothing. */
@@ -154,6 +152,45 @@ export function fakeDocuments(options: { datasetKey?: string } = {}) {
     read: (id) => Promise.resolve(documents.get(id)?.document ?? null),
   };
   return { documents, writes, access };
+}
+
+/** One call a store made to {@link fakeOperations}. */
+export interface FakeOperationCall {
+  name: string;
+  args?: Record<string, unknown>;
+  target?: DatasetTarget;
+}
+
+/**
+ * Declared operations as a test answers them: a function per qualified name, given the params, whose
+ * value is what the operation returns. A name with no answer is refused as the runner refuses an
+ * operation nobody registered — an error named `OperationError`, class `static`, code
+ * `unknownOperation` — and an answer that throws is the operation failing. Every call is recorded,
+ * target included.
+ *
+ * ```ts
+ * const ops = fakeOperations({ 'polls.vote': ({ poll }) => `vote-on-${poll}` });
+ * const store = createPollStore(fakeDeps({ operations: ops.access }));
+ * ```
+ */
+export function fakeOperations(answers: Record<string, (args: Record<string, unknown>) => unknown> = {}) {
+  const calls: FakeOperationCall[] = [];
+  const access: ModuleOperations = {
+    run: (name, args, target) => {
+      calls.push({ name, ...(args ? { args } : {}), ...(target ? { target } : {}) });
+      const answer = answers[name];
+      if (!answer) {
+        const error = new Error(`No operation "${name}" is registered`) as Error & { class: string; code: string };
+        error.name = 'OperationError';
+        error.class = 'static';
+        error.code = 'unknownOperation';
+        return Promise.reject(error);
+      }
+      // An answer that throws is the operation failing, which a caller sees as a rejection.
+      return Promise.resolve().then(() => answer(args ?? {}));
+    },
+  };
+  return { access, calls };
 }
 
 /**
@@ -246,6 +283,15 @@ export function fakeRecords(options: { author?: string; datasetKey?: string } = 
       return () => subscriptions.delete(fire);
     },
     documents: documents.access,
+    // The rule the host reads: a response's own subject when it is one, else the record itself.
+    // eslint-disable-next-line @typescript-eslint/require-await -- the kernel's answer is a promise.
+    threadSubject: async (id) => {
+      const record = rows.find((r) => r.id === id);
+      if (!record) return null;
+      const subjectId = typeof record.inThread === 'string' && record.inThread ? record.inThread : id;
+      const subject = rows.find((r) => r.id === subjectId);
+      return subject ? { id: subjectId, entity: String(subject.__entity) } : null;
+    },
     onCopiedIn: (cb) => {
       copiedIn.add(cb);
       return () => copiedIn.delete(cb);
@@ -281,8 +327,17 @@ export function fakeRecords(options: { author?: string; datasetKey?: string } = 
 /**
  * The agent's personal space, as an array. The same fake with the `AgentDataKernel` shape; its
  * documents carry a personal key, as the real ones do.
+ *
+ * `run` is what a declared operation does here, where the test needs one — a fake has no runner,
+ * and an operation's own behaviour is tested against a real backend. Without it, `run` refuses.
  */
-export function fakeAgentData(options: { author?: string; ready?: boolean } = {}) {
+export function fakeAgentData(
+  options: {
+    author?: string;
+    ready?: boolean;
+    run?: (name: string, args: Record<string, unknown>) => Promise<unknown>;
+  } = {},
+) {
   const inner = fakeRecords({ ...options, datasetKey: 'p:personal' });
   const kernel: AgentDataKernel = {
     ready: () => options.ready ?? true,
@@ -291,6 +346,10 @@ export function fakeAgentData(options: { author?: string; ready?: boolean } = {}
     find: (entity, query) => inner.kernel.find(entity, query),
     update: (entity, id, fields) => inner.kernel.update(entity, id, fields),
     remove: (entity, id) => inner.kernel.remove(entity, id),
+    run: async (name, args) => {
+      if (!options.run) throw new Error(`fakeAgentData: no fake given for ${name}`);
+      return options.run(name, args ?? {});
+    },
     documents: inner.kernel.documents,
   };
   return { rows: inner.rows, writes: inner.writes, documents: inner.documents, seed: inner.seed, kernel };

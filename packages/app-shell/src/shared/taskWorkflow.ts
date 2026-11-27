@@ -71,31 +71,27 @@ export interface TaskStateRule {
 export type TaskWorkflowRule = '' | 'next' | 'next-and-back';
 
 /**
- * `TaskState.evidence` as stored — a JSON list of `{ entity, where?, via?, min? }` — read into evidence requirements. Anything
- * unreadable is no evidence requirement at all rather than an error: a state a peer wrote badly still has to load.
+ * `TaskState.evidence` as stored — a list of `{ entity, where?, via?, min? }` — read into evidence
+ * requirements. Anything unreadable is no evidence requirement at all rather than an error: a state a
+ * peer wrote badly still has to load.
  */
-export function parseTaskStateEvidence(json: string | null | undefined): EvidenceRequirement[] {
-  if (!json) return [];
-  try {
-    const parsed: unknown = JSON.parse(json);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.flatMap((raw): EvidenceRequirement[] => {
-      const entry = raw as { entity?: unknown; via?: unknown; min?: unknown; where?: unknown };
-      if (typeof entry.entity !== 'string' || !entry.entity) return [];
-      const min = typeof entry.min === 'number' && entry.min >= 1 ? Math.floor(entry.min) : undefined;
-      return [
-        {
-          kind: 'evidence',
-          entity: entry.entity,
-          ...(whereOf(entry.where) ? { where: whereOf(entry.where) } : {}),
-          ...(typeof entry.via === 'string' && entry.via ? { via: { relation: entry.via } } : {}),
-          ...(min && min !== 1 ? { min } : {}),
-        },
-      ];
-    });
-  } catch {
-    return [];
-  }
+export function readTaskStateEvidence(stored: unknown): EvidenceRequirement[] {
+  if (!Array.isArray(stored)) return [];
+  return stored.flatMap((raw): EvidenceRequirement[] => {
+    if (!raw || typeof raw !== 'object') return [];
+    const entry = raw as { entity?: unknown; via?: unknown; min?: unknown; where?: unknown };
+    if (typeof entry.entity !== 'string' || !entry.entity) return [];
+    const min = typeof entry.min === 'number' && entry.min >= 1 ? Math.floor(entry.min) : undefined;
+    return [
+      {
+        kind: 'evidence',
+        entity: entry.entity,
+        ...(whereOf(entry.where) ? { where: whereOf(entry.where) } : {}),
+        ...(typeof entry.via === 'string' && entry.via ? { via: { relation: entry.via } } : {}),
+        ...(min && min !== 1 ? { min } : {}),
+      },
+    ];
+  });
 }
 
 /** Conditions a stored evidence requirement carries, when they are plain values — anything else reads as none. */
@@ -107,7 +103,7 @@ function whereOf(raw: unknown): Record<string, string | number | boolean> | unde
   return kept.length ? Object.fromEntries(kept) : undefined;
 }
 
-/** Evidence requirements as `TaskState.evidence` stores them. Empty for none, so a state without any stores nothing. */
+/** Evidence requirements as `TaskState.evidence` stores them. `null` for none, so a state without any stores nothing. */
 export function storeTaskStateEvidence(
   evidence: readonly {
     entity: string;
@@ -115,7 +111,7 @@ export function storeTaskStateEvidence(
     via?: string;
     min?: number;
   }[],
-): string {
+): StoredEvidence[] | null {
   const kept = evidence
     .filter((g) => g.entity)
     .map((g) => ({
@@ -124,7 +120,15 @@ export function storeTaskStateEvidence(
       ...(g.via ? { via: g.via } : {}),
       ...(g.min && g.min > 1 ? { min: g.min } : {}),
     }));
-  return kept.length ? JSON.stringify(kept) : '';
+  return kept.length ? kept : null;
+}
+
+/** One evidence requirement as `TaskState.evidence` holds it. */
+interface StoredEvidence {
+  entity: string;
+  where?: Record<string, string | number | boolean>;
+  via?: string;
+  min?: number;
 }
 
 /** A state's approvals, normalised: a whole number from 1 to {@link MAX_APPROVALS}. */

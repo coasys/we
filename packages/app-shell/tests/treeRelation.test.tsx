@@ -9,7 +9,9 @@
  * must read back the same way.
  */
 import { render } from '@solidjs/testing-library';
+import { createInMemoryBackendPorts } from '@we/backend-inmemory';
 import { toastService } from '@we/components/solid';
+import { getEntity, registerEntity, unregisterEntity } from '@we/entities';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const CANVAS = 'canvas-1';
@@ -38,12 +40,6 @@ interface Author {
   /** Derived (`belongsTo` of `Post.author`) — the post pointing at this author, never written here. */
   post?: string;
 }
-interface Row {
-  id: string;
-  node: string;
-  rank?: number;
-  parent: string;
-}
 
 const { world } = vi.hoisted(() => ({
   world: {
@@ -52,9 +48,6 @@ const { world } = vi.hoisted(() => ({
     posts: new Map<string, Post>(),
     authors: new Map<string, Author>(),
     meetings: new Map<string, { id: string; title?: string; items?: string[] }>(),
-    rows: new Map<string, Row>(),
-    /** `Relationship`s the drop created — a model-relation drop must create none. */
-    created: [] as Record<string, unknown>[],
     /** Writes to a parent's list (`Agenda.items`), in order: `+a1:t3`, `-a0:t3`. */
     lists: [] as string[],
     /** Instances without `set`/`add`/`remove` — how AD4M's `fromSHACL` builds an installed SDNA's to-ones. */
@@ -69,7 +62,17 @@ const { world } = vi.hoisted(() => ({
 const { TopicModel, PositionModel, PostModel, AuthorModel, AgendaModel, MeetingModel } = vi.hoisted(() => {
   type AnyRow = Record<string, unknown> & { id: string };
   const live = (table: Map<string, AnyRow>, row: AnyRow, toOnes: string[]) => {
-    const instance = { ...row };
+    const instance: AnyRow = { ...row };
+    // An edit through the record, as the operations runner makes one: '' clears a field, a to-one
+    // with accessors takes a one-element list, anything else is written as given.
+    instance.save = async () => {
+      const stored = table.get(row.id)!;
+      for (const [field, value] of Object.entries(instance)) {
+        if (typeof value === 'function' || field === 'id' || value == null) continue;
+        if (value === '') delete stored[field];
+        else stored[field] = Array.isArray(value) && toOnes.includes(field) ? value[0] : value;
+      }
+    };
     for (const prop of world.bare ? [] : toOnes) {
       const suffix = prop.charAt(0).toUpperCase() + prop.slice(1);
       instance[`set${suffix}`] = async (value: unknown) => {
@@ -283,52 +286,24 @@ const ENTRIES = [
   },
 ];
 
-vi.mock('@we/entities', async () => {
-  const actual = await vi.importActual<Record<string, unknown>>('@we/entities');
-  const Relationship = {
-    findAll: async () => [],
-    findOne: async () => null,
-    create: async (_p: unknown, data: Record<string, unknown>) => {
-      world.created.push(data);
-      return { id: `rel-${world.created.length}`, ...data };
-    },
-    update: async () => {},
-    delete: async () => {},
-  };
-  return {
-    ...actual,
-    Placement: {
-      findAll: async (_p: unknown, query: { parent?: { id: string } }) =>
-        [...world.rows.values()].filter((row) => row.parent === query.parent?.id),
-      update: async (_p: unknown, id: string, patch: Partial<Row>) => void Object.assign(world.rows.get(id)!, patch),
-      delete: async (_p: unknown, id: string) => void world.rows.delete(id),
-      create: async () => ({}),
-    },
-    EdgeRoute: { findAll: async () => [], create: async () => ({}), update: async () => ({}), delete: async () => {} },
-    TypeStyle: { findAll: async () => [], create: async () => ({}), update: async () => ({}) },
-    runEntityTransaction: async (_p: unknown, fn: (tx: { batchId: string }) => Promise<unknown>) =>
-      fn({ batchId: 'batch-1' }),
-    getEntity: () => Relationship,
-    getEntityForDataset: (name: string) =>
-      name === 'DiscussionTopic'
-        ? TopicModel
-        : name === 'Position'
-          ? PositionModel
-          : name === 'Post'
-            ? PostModel
-            : name === 'Author'
-              ? AuthorModel
-              : name === 'AgendaItem'
-                ? AgendaModel
-                : name === 'Meeting'
-                  ? MeetingModel
-                  : Relationship,
-  };
-});
+/*
+  The foreign models are doubles — a drop along one writes the model's own field, through the
+  declared operations the real runner makes, onto these. Registered as the dataset's classes, as a
+  foreign schema's are, so the runner reaches them the way it reaches any record type. WE's own
+  records (placements, connections) are the in-memory backend's.
+*/
+const FOREIGN: Record<string, unknown> = {
+  DiscussionTopic: TopicModel,
+  Position: PositionModel,
+  Post: PostModel,
+  Author: AuthorModel,
+  AgendaItem: AgendaModel,
+  Meeting: MeetingModel,
+};
 
 vi.mock('../src/frameworks/solid/stores/DatasetStore', () => ({
   useDatasetStore: () => ({
-    currentDataset: () => ({ id: 'ds', handle: {}, name: 'Space' }),
+    currentDataset: () => ({ id: 'ds', handle, name: 'Space' }),
     datasets: () => [],
     personalDataset: () => null,
     currentDatasetEntities: () => ENTRIES,
@@ -358,8 +333,30 @@ function mount(): RecordStore {
   return store;
 }
 
+type Record_ = Record<string, unknown> & { id: string; save(): Promise<void>; delete(): Promise<void> };
+const model = (name: string) =>
+  getEntity(name) as unknown as {
+    create(p: unknown, data: Record<string, unknown>, options?: Record<string, unknown>): Promise<Record_>;
+    findAll(p: unknown, query?: Record<string, unknown>): Promise<Record_[]>;
+    findOne(p: unknown, query: Record<string, unknown>): Promise<Record_ | null>;
+  };
+let handle: unknown;
 const place = (node: string, rank?: number) =>
-  world.rows.set(`row-${node}`, { id: `row-${node}`, node, parent: CANVAS, ...(rank ? { rank } : {}) });
+  model('Placement').create(
+    handle,
+    { nodeType: 'Position', node: [node], ...(rank ? { rank } : {}) },
+    { id: `row-${node}`, parent: { id: CANVAS, relation: 'children', entity: 'CollectionBlock' } },
+  );
+const placementOf = async (node: string) =>
+  (await model('Placement').findOne(handle, { where: { id: `row-${node}` } }))!;
+const rankOf = async (node: string) => (await placementOf(node)).rank as number;
+const setRank = async (node: string, rank: number) => {
+  const row = await placementOf(node);
+  row.rank = rank;
+  await row.save();
+};
+/** `Relationship`s the drop created — a model-relation drop must create none. */
+const connections = () => model('Relationship').findAll(handle);
 const aboutOf = (position: string) => world.positions.get(position)?.about;
 /** The edge a card hangs by, as the graph reports it on a drop: a model relation's, here. */
 const hangsBy = (relation: string, holder: string, target: string) => ({
@@ -368,21 +365,26 @@ const hangsBy = (relation: string, holder: string, target: string) => ({
   data: { relation, holder, holderType: relation.split('.')[0], target },
 });
 
-beforeEach(() => {
+beforeEach(async () => {
+  const ports = createInMemoryBackendPorts(
+    { selfId: () => 'did:key:z6Mk' },
+    { agent: { id: 'did:key:z6Mk', unlocked: true }, datasets: [{ id: 'ds-relation-tree', name: 'Tree' }] },
+  );
+  handle = (await ports.lifecycle.get('ds-relation-tree'))!.handle;
+  for (const [name, double] of Object.entries(FOREIGN)) registerEntity(name, double as never);
+  await model('CollectionBlock').create(handle, { kind: 'canvas' }, { id: CANVAS });
   world.topics.clear();
   world.positions.clear();
   world.posts.clear();
   world.authors.clear();
-  world.rows.clear();
   world.meetings.clear();
-  world.created = [];
   world.lists = [];
   world.bare = false;
   world.topics.set('t1', { id: 't1', title: 'Roadmap' });
   world.topics.set('t2', { id: 't2', title: 'Q3', subTopicOf: 't1' });
   world.positions.set('pos1', { id: 'pos1', text: 'Ship it', about: 't2' });
   world.positions.set('pos2', { id: 'pos2', text: 'Wait' });
-  for (const id of ['t1', 't2', 'pos1', 'pos2']) place(id);
+  for (const id of ['t1', 't2', 'pos1', 'pos2']) await place(id);
 });
 
 describe('a tree drop on a model relation', () => {
@@ -517,7 +519,7 @@ describe('a tree drop on a model relation', () => {
 
   it('refuses the wildcard where no pointer of the child reaches the parent’s class', async () => {
     world.topics.set('t3', { id: 't3', title: 'Loose topic' });
-    place('t3');
+    await place('t3');
     const store = mount();
     // A topic's only pointers are at DiscussionTopic/AgendaItem — nothing points at a Position.
     await store.arrangeOnTree(CANVAS, 'rel:*', {
@@ -542,7 +544,7 @@ describe('a tree drop on a model relation', () => {
     */
     world.posts.set('p1', { id: 'p1', text: 'A take', author: 'a1' });
     world.authors.set('a1', { id: 'a1', name: 'Ada', post: 'p1' });
-    place('a1');
+    await place('a1');
     const info = vi.spyOn(toastService, 'info');
     const store = mount();
     await store.arrangeOnTree(CANVAS, 'rel:*', { recordId: 'a1', recordType: 'Author', into: 'loose' });
@@ -575,7 +577,7 @@ describe('a tree drop on a model relation', () => {
 
   it('attaches a card that hangs by nothing through the relation joining the two classes', async () => {
     world.topics.set('t3', { id: 't3', title: 'Loose' });
-    place('t3');
+    await place('t3');
     const store = mount();
     await store.arrangeOnTree(CANVAS, 'rel:*', {
       recordId: 't3',
@@ -595,7 +597,7 @@ describe('a tree drop on a model relation', () => {
       writing the first declared (`about`) would hang the card twice, by one field each.
     */
     world.positions.set('pos3', { id: 'pos3', text: 'Later', regarding: 't2' });
-    place('pos3');
+    await place('pos3');
     const store = mount();
     await store.arrangeOnTree(CANVAS, 'rel:*', {
       recordId: 'pos3',
@@ -687,8 +689,8 @@ describe('a tree drop on a model relation', () => {
 
   it('reorders a card among its own siblings — no link moves, the ranks do', async () => {
     world.positions.set('pos3', { id: 'pos3', text: 'Later', about: 't2' });
-    world.rows.get('row-pos1')!.rank = 1;
-    place('pos3', 2);
+    await setRank('pos1', 1);
+    await place('pos3', 2);
     const store = mount();
     await store.arrangeOnTree(CANVAS, SPINE, {
       recordId: 'pos3',
@@ -700,14 +702,14 @@ describe('a tree drop on a model relation', () => {
       order: ['pos3', 'pos1'],
     });
     expect(aboutOf('pos3')).toBe('t2');
-    expect(world.rows.get('row-pos3')!.rank!).toBeLessThan(world.rows.get('row-pos1')!.rank!);
+    expect(await rankOf('pos3')).toBeLessThan(await rankOf('pos1'));
   });
 
   it('puts a reorder back on undo and does it again on redo', async () => {
     // A reorder moves no link, only ranks — so redo is the ranks the drop wrote, not the ones it replaced.
     world.positions.set('pos3', { id: 'pos3', text: 'Later', about: 't2' });
-    world.rows.get('row-pos1')!.rank = 1;
-    place('pos3', 2);
+    await setRank('pos1', 1);
+    await place('pos3', 2);
     const store = mount();
     await store.arrangeOnTree(CANVAS, SPINE, {
       recordId: 'pos3',
@@ -719,18 +721,18 @@ describe('a tree drop on a model relation', () => {
       order: ['pos3', 'pos1'],
       edge: hangsBy('Position.about', 'pos3', 't2'),
     });
-    const after = world.rows.get('row-pos3')!.rank;
-    expect(after).toBeLessThan(world.rows.get('row-pos1')!.rank!);
+    const after = await rankOf('pos3');
+    expect(after).toBeLessThan(await rankOf('pos1'));
 
     await store.undoCanvas(CANVAS);
-    expect(world.rows.get('row-pos3')!.rank).toBe(2);
+    expect(await rankOf('pos3')).toBe(2);
     await store.redoCanvas(CANVAS);
-    expect(world.rows.get('row-pos3')!.rank).toBe(after);
+    expect(await rankOf('pos3')).toBe(after);
   });
 
   it('writes no rank at a sibling the seed pulled in rather than anybody placed', async () => {
     // The usual case for interpreted items: pos1 hangs under t2 by its field and has no placement.
-    world.rows.delete('row-pos1');
+    await (await placementOf('pos1')).delete();
     const error = vi.spyOn(toastService, 'error');
     const store = mount();
     await store.arrangeOnTree(CANVAS, SPINE, {
@@ -759,7 +761,7 @@ describe('a tree drop writes the link the edge stands for', () => {
       edge: hangsBy('Position.about', 'pos1', 't2'),
     });
     expect(aboutOf('pos1')).toBe('t1');
-    expect(world.created).toEqual([]);
+    expect(await connections()).toEqual([]);
   });
 
   it('refuses under "Any connection" too when the card’s link cannot reach the new parent', async () => {
@@ -775,14 +777,14 @@ describe('a tree drop writes the link the edge stands for', () => {
       edge: hangsBy('Position.about', 'pos1', 't2'),
     });
     expect(aboutOf('pos1')).toBe('t2');
-    expect(world.created).toEqual([]);
+    expect(await connections()).toEqual([]);
     expect(info).toHaveBeenCalledWith(expect.stringContaining('points at'));
   });
 
   it('moves a card between two lists — off the old parent’s, onto the new one’s — and back on undo', async () => {
     world.meetings.set('m1', { id: 'm1', items: ['t2'] });
     world.meetings.set('m2', { id: 'm2', items: [] });
-    for (const id of ['m1', 'm2']) place(id);
+    for (const id of ['m1', 'm2']) await place(id);
     const store = mount();
     await store.arrangeOnTree(CANVAS, 'rel:Meeting.items', {
       recordId: 't2',
@@ -805,7 +807,7 @@ describe('a tree drop writes the link the edge stands for', () => {
     world.meetings.set('m1', { id: 'm1', items: ['t2'] });
     world.meetings.set('m2', { id: 'm2', items: [] });
     world.meetings.set('m3', { id: 'm3', items: ['t2'] });
-    for (const id of ['m1', 'm2', 'm3']) place(id);
+    for (const id of ['m1', 'm2', 'm3']) await place(id);
     const store = mount();
     await store.arrangeOnTree(CANVAS, 'rel:Meeting.items', {
       recordId: 't2',
@@ -831,7 +833,7 @@ describe('a tree drop writes the link the edge stands for', () => {
     world.meetings.set('m1', { id: 'm1', items: ['t2'] });
     world.meetings.set('m2', { id: 'm2', items: [] });
     world.meetings.set('m3', { id: 'm3', items: [] });
-    for (const id of ['m1', 'm2', 'm3']) place(id);
+    for (const id of ['m1', 'm2', 'm3']) await place(id);
     const store = mount();
     await store.arrangeOnTree(CANVAS, 'rel:Meeting.items', {
       recordId: 't2',
@@ -860,14 +862,14 @@ describe('a tree drop writes the link the edge stands for', () => {
       },
     );
     expect(aboutOf('pos2')).toBe('t1');
-    expect(world.created).toEqual([]);
+    expect(await connections()).toEqual([]);
   });
 
   it('refuses a spine naming a reverse relation — the tree never draws one', async () => {
     world.posts.set('p1', { id: 'p1', text: 'A take', author: 'a1' });
     world.authors.set('a1', { id: 'a1', name: 'Ada', post: 'p1' });
     world.authors.set('a2', { id: 'a2', name: 'Bob' });
-    place('p1');
+    await place('p1');
     const store = mount();
     await store.arrangeOnTree(CANVAS, 'rel:Author.post', {
       recordId: 'p1',
@@ -878,10 +880,11 @@ describe('a tree drop writes the link the edge stands for', () => {
       order: ['p1'],
     });
     expect(world.posts.get('p1')?.author).toBe('a1');
-    expect(world.created).toEqual([]);
+    expect(await connections()).toEqual([]);
   });
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
+  for (const name of Object.keys(FOREIGN)) unregisterEntity(name);
 });

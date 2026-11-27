@@ -91,6 +91,33 @@ remove. A refused write rejects with a `PolicyRefusal` and writes nothing.
   `can({ policy: spaceStore.policy, action, record })` lets a template decide what to offer. It is a
   convenience only: the write is judged again when it is made.
 
+## Operations and the write check
+
+A declared operation (see "Declaring an operation" in `packages/entities/CONVENTIONS.md`) is many
+writes made as one, and **each of its writes is judged by the write check on its own**, as if the
+invoker had made it alone. The runner in `@we/entities` adds no permission of its own and skips none:
+it makes every write through the backend's own write path, so the check is asked exactly where it is
+asked for a store's write. An operation can therefore do nothing its invoker could not do one write at
+a time. What it adds is reach (one press, many writes), and that is what its capability group, worked
+out from what it writes, is for.
+
+- **A refused write fails the whole operation.** The refusal reaches the caller as an `OperationError`
+  of class `precondition` and code `refused`, carrying the check's reason as its message and the
+  `Refusal` itself as `refusal`, and none of the operation's writes land, the ones before the refused
+  write included. Rules that cannot be read refuse an operation's writes as they refuse any other
+  (`unreadable`).
+- **Operations may not write `Policy`, `Role` or `RoleGrant`.** Refused when the manifest is validated
+  (`validateOperations`) and again when the operation runs, whatever the policy says. Changing the rules
+  or handing out roles stays an act somebody makes on its own, where it can be seen for what it is,
+  and never a step inside something else. Reading them is allowed, so a `check` may ask what the
+  policy says.
+- **A second write to a record made earlier in the same operation** must be judged against the record
+  as the operation has staged it, with its real author, on every backend. That is a rule each backend
+  keeps in its write path, not something the runner passes in: a caller-supplied "record as it stands"
+  would be a way round the policy. It holds for any transaction, not only an operation's — see
+  `EntityWrite.record` in `@we/entities` — and the conformance suite's `stagedChecks` cases hold
+  every backend to it.
+
 ## Presets
 
 | Preset      | What it allows                                                                                                                                                                                                                                                                       |

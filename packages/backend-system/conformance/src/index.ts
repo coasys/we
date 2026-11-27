@@ -39,14 +39,50 @@ import { type EntityWrite, getEntity, registerEntityWriteCheck } from '@we/entit
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { describeEmptyValues, EMPTY_VALUE_CASES, type EmptyValueCase } from './emptyValues';
+import { describeJsonValues, JSON_VALUE_CASES, type JsonValueCase } from './jsonValues';
+import {
+  describeOperations,
+  OPERATION_CASES,
+  OPERATION_CONFORMANCE_CASES,
+  type OperationCase,
+  type OperationConformanceCase,
+  type OperationVector,
+  readOperationVectors,
+} from './operations';
+import { describeSameBatch, SAME_BATCH_CASES, type SameBatchCase } from './sameBatch';
+import { describeStagedChecks, STAGED_CHECK_CASES, type StagedCheckCase } from './stagedChecks';
 import { describeTemplateQueries, TEMPLATE_QUERY_CASES, type TemplateQueryCase } from './templateQueries';
+import { describeWriteCases, WRITE_CASES, type WriteCase } from './writes';
 
-export { TEMPLATE_QUERY_CASES, type TemplateQueryCase };
+export {
+  EMPTY_VALUE_CASES,
+  type EmptyValueCase,
+  JSON_VALUE_CASES,
+  type JsonValueCase,
+  OPERATION_CASES,
+  OPERATION_CONFORMANCE_CASES,
+  type OperationCase,
+  type OperationConformanceCase,
+  type OperationVector,
+  readOperationVectors,
+  SAME_BATCH_CASES,
+  type SameBatchCase,
+  STAGED_CHECK_CASES,
+  type StagedCheckCase,
+  TEMPLATE_QUERY_CASES,
+  type TemplateQueryCase,
+  WRITE_CASES,
+  type WriteCase,
+};
 
 /** One fresh backend, ready for a case to write into. */
 export interface ConformanceSubject {
   ports: BackendPorts;
-  /** A dataset with the host's space schema installed and no records in it. */
+  /**
+   * A dataset with no records in it, holding every record type the host has: a space's, and the
+   * per-agent ones only an agent's own dataset holds, which the operations cases also write.
+   */
   dataset: DatasetHandle;
   /** The id the ports' context answers `selfId()` with. */
   agent: string;
@@ -146,6 +182,8 @@ export const CONFORMANCE_CASES = [
   'relations.delete-takes-links-to-it',
   'relations.ordered-read',
   'relations.create-links-one',
+  'relations.edit-points-one',
+  'relations.update-as-save',
   'relations.create-links-many',
   'relations.replace-whole',
   'relations.member-type',
@@ -167,8 +205,22 @@ export const CONFORMANCE_CASES = [
   'workflows.remove-refused-with-records',
 ] as const;
 
-/** Every case a harness can name in `knownGaps` — the per-case ones above and the template queries. */
-export type ConformanceCase = (typeof CONFORMANCE_CASES)[number] | TemplateQueryCase;
+/**
+ * Every case a harness can name in `knownGaps` — the per-case ones above, empty values, json
+ * values, grouped and named writes, relation writes in the batch that created the record, write
+ * checks that see the transaction's own writes, the template queries and the declared operations.
+ * An operation case is named by its vector's id, which the type cannot list; the operations suite
+ * refuses a name that is not one of its cases.
+ */
+export type ConformanceCase =
+  | (typeof CONFORMANCE_CASES)[number]
+  | EmptyValueCase
+  | JsonValueCase
+  | WriteCase
+  | SameBatchCase
+  | StagedCheckCase
+  | TemplateQueryCase
+  | OperationConformanceCase;
 
 interface Row {
   id: string;
@@ -786,6 +838,85 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
         expect((row.location as Row | undefined)?.id).toBe(place.id);
       });
 
+      /*
+        An edit that names a to-one relation points it somewhere else — what a declared operation's
+        `update` of one does, through the record's own save. Written as a one-element list, the
+        spelling a create takes too.
+      */
+      test('relations.edit-points-one', 'points a to-one relation named in an edit', async () => {
+        const [here, there] = [
+          await model('LocationBlock').create(subject.dataset, { name: 'Ham Wall' }),
+          await model('LocationBlock').create(subject.dataset, { name: 'Shapwick' }),
+        ];
+        const event = await model('EventBlock').create(subject.dataset, {
+          title: 'Dawn walk',
+          startDate: '2026-10-10',
+          location: here.id,
+        });
+        const [found] = (await model('EventBlock').findAll(subject.dataset, { where: { id: event.id } })) as (Row & {
+          save(batch?: string): Promise<void>;
+        })[];
+        found.location = [there.id];
+        await found.save();
+
+        const [row] = await reader('EventBlock').findAll(subject.dataset, {
+          where: { id: event.id },
+          include: { location: true },
+        });
+        expect((row.location as Row | undefined)?.id).toBe(there.id);
+      });
+
+      /*
+        The contract has two ways to edit a record — the static `update` by id, and an instance's
+        `save()` — and they write the same thing, relations included: a to-one pointed, a to-many
+        replaced, each member's back-reference moving with it. One backend once dropped every
+        relation field from the static path, so an edit that typechecked and ran moved nothing.
+      */
+      test('relations.update-as-save', 'writes the relations an edit names whichever edit path it takes', async () => {
+        const Collection = model('CollectionBlock');
+        const [here, there] = [
+          await model('LocationBlock').create(subject.dataset, { name: 'Ham Wall' }),
+          await model('LocationBlock').create(subject.dataset, { name: 'Shapwick' }),
+        ];
+        const text = () => Collection.create(subject.dataset, { kind: 'text' });
+        const [a, b, c, d, e, f] = [await text(), await text(), await text(), await text(), await text(), await text()];
+        const viaUpdate = await model('EventBlock').create(subject.dataset, { title: 'By id', location: here.id });
+        const viaSave = await model('EventBlock').create(subject.dataset, { title: 'By save', location: here.id });
+        const postA = await Collection.create(subject.dataset, { kind: 'post', children: [a.id] });
+        const postB = await Collection.create(subject.dataset, { kind: 'post', children: [d.id] });
+
+        await model('EventBlock').update(subject.dataset, viaUpdate.id, { location: [there.id] });
+        await Collection.update(subject.dataset, postA.id, { children: [b.id, c.id] });
+        const [event] = (await model('EventBlock').findAll(subject.dataset, { where: { id: viaSave.id } })) as (Row & {
+          save(batch?: string): Promise<void>;
+        })[];
+        event.location = [there.id];
+        await event.save();
+        const [post] = (await Collection.findAll(subject.dataset, { where: { id: postB.id } })) as (Row & {
+          save(batch?: string): Promise<void>;
+        })[];
+        post.children = [e.id, f.id];
+        await post.save();
+
+        const events = await reader('EventBlock').findAll(subject.dataset, {
+          where: { id: [viaUpdate.id, viaSave.id] },
+          include: { location: true },
+        });
+        // Keyed by id: the query names no `order`, so the rows may come back in any order.
+        expect(Object.fromEntries(events.map((row) => [row.id, (row.location as Row | undefined)?.id]))).toEqual({
+          [viaUpdate.id]: there.id,
+          [viaSave.id]: there.id,
+        });
+        const posts = await reader('CollectionBlock').findAll(subject.dataset, {
+          where: { id: [postA.id, postB.id] },
+          include: { children: true },
+        });
+        expect(Object.fromEntries(posts.map((row) => [row.id, (row.children as Row[]).map((r) => r.id)]))).toEqual({
+          [postA.id]: [b.id, c.id],
+          [postB.id]: [e.id, f.id],
+        });
+      });
+
       test('relations.create-links-many', 'links a to-many relation named in a create', async () => {
         const Collection = model('CollectionBlock');
         const [a, b] = [
@@ -1154,5 +1285,11 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
     });
   });
 
+  describeEmptyValues(name, harness, timeout);
+  describeJsonValues(name, harness, timeout);
+  describeWriteCases(name, harness, timeout);
+  describeSameBatch(name, harness, timeout);
+  describeStagedChecks(name, harness, timeout);
   describeTemplateQueries(name, harness, timeout);
+  describeOperations(name, harness, timeout);
 }

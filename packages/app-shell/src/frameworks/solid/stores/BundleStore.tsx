@@ -22,6 +22,7 @@
  */
 import { type BootSnapshot, selectBootSnapshot, writeBootSnapshot } from '@shared/bundles/bootSnapshot';
 import { currentProductName } from '@shared/bundles/brand';
+import { syncBundleOperations } from '@shared/bundles/bundleOperations';
 import { bundlePieces } from '@shared/bundles/bundlePieces';
 import { bundleDigest, type BundleGrant, grantOf, whatIsNew } from '@shared/bundles/consent';
 import {
@@ -192,7 +193,7 @@ export function BundleStoreProvider(props: ParentProps) {
     return JSON.stringify(
       selectBootSnapshot({
         appTemplateId: settings.appTemplateId ?? '',
-        installedBundles: settings.installedBundles ?? '',
+        installedBundles: readInstalledBundles(settings.installedBundles),
         library: templateStore.allTemplates(),
         installedThemes: themeStore.installedThemes(),
       }),
@@ -215,6 +216,21 @@ export function BundleStoreProvider(props: ParentProps) {
   const [busy, setBusy] = createSignal(false);
 
   const installedList = () => readInstalledBundles(datasetStore.agentSettings()?.installedBundles);
+
+  /*
+    The operations of every app this agent has — built in or installed — under each app's id, and
+    only while it is here: an uninstall takes them with it. See `bundleOperations.ts`.
+  */
+  createEffect(() =>
+    syncBundleOperations([
+      ...seedBundlePieces.map((pieces) => ({
+        id: pieces.bundleId,
+        version: pieces.version,
+        operations: pieces.operations,
+      })),
+      ...installedList(),
+    ]),
+  );
 
   const sources = (): SetUpSource[] => [
     ...seedBundlePieces.map((pieces) => ({
@@ -364,7 +380,7 @@ export function BundleStoreProvider(props: ParentProps) {
         is set up. Judging it against the space on screen refused a reinstall over its own earlier
         record types, which every space's model list carries once adopted.
       */
-      knownEntities: Object.keys(CORE_MANIFEST.entities),
+      vocabulary: CORE_MANIFEST.entities,
     });
     if (judged.refusals.length) {
       console.warn(`The app “${bundle.name}” cannot be installed:`, judged.refusals);
@@ -479,12 +495,10 @@ export function BundleStoreProvider(props: ParentProps) {
         digest: request.digest,
       });
       await datasetStore.updateAgentSettings({
-        installedBundles: JSON.stringify(
-          withInstalled(installedList(), {
-            ...entry,
-            ...(written.size ? { themes: pieces.themes.map((theme) => themeRef(theme.id)) } : {}),
-          }),
-        ),
+        installedBundles: withInstalled(installedList(), {
+          ...entry,
+          ...(written.size ? { themes: pieces.themes.map((theme) => themeRef(theme.id)) } : {}),
+        }),
       });
 
       if (pieces.app) await templateStore.setAppTemplate(pieces.app.id);
@@ -625,7 +639,7 @@ export function BundleStoreProvider(props: ParentProps) {
       for (const id of [...(entry.app ? [entry.app] : []), ...entry.templates]) await templateStore.deleteTemplate(id);
       for (const id of installedThemes(entry)) await themeStore.deleteTheme(id);
       await datasetStore.updateAgentSettings({
-        installedBundles: JSON.stringify(withoutInstalled(installedList(), bundleId)),
+        installedBundles: withoutInstalled(installedList(), bundleId),
       });
       toastService.success(`“${entry.name}” removed`);
     } catch (error) {

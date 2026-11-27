@@ -76,15 +76,40 @@ export type { TraceSink } from './trace';
 export {
   blockableEntities,
   CONTAINMENT_PREDICATE,
+  inCategory,
   interpretableEntities,
   getEntity,
   getProperty,
   getRelation,
   modelManifestSchema,
+  OPERATION_CATEGORIES,
+  OPERATION_VERBS,
+  operationDefinitionSchema,
+  operationsSchema,
   resolvesPolymorphically,
+  stepVerb,
   validateManifest,
 } from './manifest';
 export type {
+  CallStep,
+  CheckStep,
+  CreateStep,
+  DeleteStep,
+  FindStep,
+  ForEachStep,
+  LinkStep,
+  OneOfEntry,
+  OperationCategory,
+  OperationDefinition,
+  OperationExpression,
+  OperationParam,
+  OperationParamType,
+  OperationScope,
+  OperationStep,
+  OperationValue,
+  OperationVerb,
+  SetRelationStep,
+  UpdateStep,
   EntityManifest,
   EntitySchema,
   PropertySchema,
@@ -123,6 +148,7 @@ export { combineEntityRows, entityNamesOf, unionByFanOut } from './queryUnion';
 export type { EntityRows, UnionPart } from './queryUnion';
 export type { QueryDiagnostic, QueryRouting } from './queryRouting';
 export { executeQueryIR } from './queryEngine';
+export { compareValue, filterMatches, isAbsent, matchesWhere } from './whereMatch';
 export { rangeCompare, isRangeOp, RANGE_OPS } from './rangeCompare';
 export type { RangeOp } from './rangeCompare';
 export type { Row, InMemoryDataset, InMemoryRelation } from './queryEngine';
@@ -211,6 +237,7 @@ export type {
   IncludeOf,
   NewRecord,
   ParentRef,
+  ParentScope,
   RecordDataKeys,
   RecordInstance,
   EntityStatic,
@@ -224,7 +251,8 @@ export type {
   TypedWhere,
   WriteProperties,
 } from './recordContract';
-export { RECORD_TYPE_KEY, recordTypeOf } from './recordContract';
+export { isRecordExists, RECORD_BASE_FIELDS, RECORD_TYPE_KEY, RecordExistsError, recordTypeOf } from './recordContract';
+export { JsonValueError, readJsonValue, writtenJsonValue } from './jsonValue';
 export type {
   ConversationReply,
   ConversationRequest,

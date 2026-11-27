@@ -21,16 +21,29 @@ const PATCHED = Symbol.for('we.ad4m.parentByRelation');
 type Args = unknown[];
 type Static = (this: unknown, ...args: Args) => unknown;
 
-/** A relation-named parent as AD4M takes one; anything else as it came. */
+/**
+ * A relation-named parent as AD4M takes one; anything else as it came. A read walking below the
+ * parent (`levels`, `transitive`) is the executor's traverse form, which names its anchors as `ids` —
+ * the same form the query adapter builds for a `$query` scope that walks.
+ */
 function translate(parent: unknown): unknown {
   if (!parent || typeof parent !== 'object') return parent;
-  const named = parent as { id?: unknown; relation?: unknown; entity?: unknown };
+  const named = parent as {
+    id?: unknown;
+    relation?: unknown;
+    entity?: unknown;
+    levels?: unknown;
+    transitive?: unknown;
+  };
   if (typeof named.relation !== 'string' || typeof named.id !== 'string') return parent;
-  return parentPredicate({
+  const { id, predicate } = parentPredicate({
     id: named.id,
     relation: named.relation,
     ...(typeof named.entity === 'string' ? { entity: named.entity } : {}),
   });
+  const levels = Array.isArray(named.levels) ? (named.levels as number[]) : undefined;
+  if (!levels && named.transitive !== true) return { id, predicate };
+  return { ids: [id], predicate, ...(levels ? { levels } : { transitive: true }) };
 }
 
 /**

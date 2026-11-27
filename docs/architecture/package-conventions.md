@@ -40,7 +40,7 @@ Multi-package directories use a `-system` suffix:
 ```
 packages/
 ├── design-system/    ← @we/tokens, @we/primitives, @we/components, …
-├── schema-system/    ← @we/schema-shared, @we/schema-solid
+├── schema-system/    ← @we/schema-shared, @we/expressions, @we/schema-solid
 ├── block-system/     ← @we/block-shared, @we/block-solid
 ├── backend-system/   ← @we/backend-shared, @we/backend-ad4m, @we/backend-inmemory, @we/backend-conformance
 ├── module-system/    ← @we/module-shared, @we/module-globe, @we/module-call, …
@@ -221,6 +221,11 @@ modules ──▶ shell ──▶ backend-shared ◀── backend-inmemory
 
 `@we/schema-shared` re-exports `@we/backend-shared`; the reverse would be circular, so
 `@we/module-shared` (which depends on both) is where anything genuinely straddling them belongs.
+
+`@we/expressions` sits between them: it depends on `@we/backend-shared` alone (for the where-object
+matcher) and `@we/schema-shared` depends on it and re-exports it. It must not import the schema side,
+because `@we/entities` evaluates expressions in declared operations and depends only on the backend
+contract.
 
 ## Packages that carry assets are consumed as source
 

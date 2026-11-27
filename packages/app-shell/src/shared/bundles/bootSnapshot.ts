@@ -23,15 +23,17 @@
 import type { ThemeData } from '@we/entities';
 import { type TemplateSchema, templateThemeIds } from '@we/schema-shared';
 
+import type { InstalledBundle } from './installedBundles';
+
 const KEY_PREFIX = 'we:boot-snapshot:';
-const VERSION = 1;
+const VERSION = 2;
 
 export interface BootSnapshot {
   v: typeof VERSION;
   /** `AgentSettings.appTemplateId` as it last was, empty for WE's own. */
   appTemplateId: string;
   /** `AgentSettings.installedBundles` as it last was — what the display policy is read from. */
-  installedBundles: string;
+  installedBundles: InstalledBundle[];
   /** The app in use when it is the agent's own, and every template the bundle it came in brought. */
   templates: TemplateSchema[];
   /** The themes those templates name. */
@@ -40,7 +42,7 @@ export interface BootSnapshot {
 
 export interface BootSnapshotSource {
   appTemplateId: string;
-  installedBundles: string;
+  installedBundles: InstalledBundle[];
   /** The agent's library, as loaded. */
   library: readonly TemplateSchema[];
   installedThemes: readonly ThemeData[];
@@ -85,7 +87,7 @@ export function readBootSnapshot(did: string | undefined): BootSnapshot | null {
       !parsed ||
       parsed.v !== VERSION ||
       typeof parsed.appTemplateId !== 'string' ||
-      typeof parsed.installedBundles !== 'string' ||
+      !Array.isArray(parsed.installedBundles) ||
       !Array.isArray(parsed.templates) ||
       !Array.isArray(parsed.themes)
     )

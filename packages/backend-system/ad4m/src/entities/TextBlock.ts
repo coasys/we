@@ -13,7 +13,7 @@ import { WeNode } from './WeNode';
  *
  * `text` is canonical — the one string search, transcripts, the notes module and the AI read.
  * Inline structure lives beside it in `marks`, as standoff annotations (see `@we/block-shared`'s
- * `marks.ts`): a JSON array of `{ start, end, type, ...data }` ranges over the text, offsets in
+ * `marks.ts`): a list of `{ start, end, type, ...data }` ranges over the text, offsets in
  * Unicode code points. **A block with `text` and no `marks` is one unmarked span**, so a writer
  * that knows nothing about marks — a transcriber, a plain textarea — produces a well-formed block.
  * The same holds for the structural fields: a block with only `text` is a paragraph.
@@ -71,10 +71,10 @@ export class TextBlock extends WeNode {
   text: string = '';
 
   /**
-   * Inline structure over `text`, as standoff annotations — a JSON array of
-   * `{ start, end, type, ...data }` ranges, offsets in Unicode **code points**, empty string for
-   * none. Types are `strong`, `em`, `underline`, `strike`, `code`, `link` (with `href`),
-   * `nodeLink` and `mention` (with `did`).
+   * Inline structure over `text`, as standoff annotations — a list of
+   * `{ start, end, type, ...data }` ranges, offsets in Unicode **code points**, absent for none.
+   * Types are `strong`, `em`, `underline`, `strike`, `code`, `link` (with `href`), `nodeLink` and
+   * `mention` (with `did`).
    *
    * A block with `text` and no `marks` is one unmarked span, which is what makes a writer that
    * knows nothing about marks — a transcriber, a plain textarea — produce a well-formed block.
@@ -84,7 +84,7 @@ export class TextBlock extends WeNode {
    * "who is named in this post" is answered.
    */
   @Property({ through: 'we://marks' })
-  marks: string = '';
+  marks?: unknown;
 
   /**
    * How this text came to be — empty for an ordinary block, and one of three words inside a

@@ -71,12 +71,12 @@ export const ModelRun: CoreEntityDef = {
        */
       recordCount: { type: 'number', predicate: 'we://model_run_record_count', default: 0 },
       /**
-       * What only this kind of run carries, as JSON read whole: an extraction's `targets` (the
+       * What only this kind of run carries, as an object read whole: an extraction's `targets` (the
        * entity names it looked for), a chat reply's `steps`. A blob because it is never filtered
        * on, and because a relation per entry would be a handful of links per run for a list
        * nobody queries across.
        */
-      detail: { type: 'string', predicate: 'we://model_run_detail', default: '' },
+      detail: { type: 'json', predicate: 'we://model_run_detail' },
       /** What the model was asked, verbatim, where the writer keeps it. See the note above. */
       prompt: { type: 'string', predicate: 'we://prompt', default: '' },
       /** What the model answered, verbatim. Same rules as {@link prompt}. */

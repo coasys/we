@@ -1,0 +1,2502 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "create-and-link",
+      "note": "creates a board and its columns, and links each column under it",
+      "manifest": {
+        "version": "1",
+        "entities": {},
+        "operations": {
+          "makeBoard": {
+            "description": "A board and a column under it for each column given.",
+            "params": {
+              "title": {
+                "type": "string",
+                "required": true
+              },
+              "columns": {
+                "type": "list",
+                "required": true
+              }
+            },
+            "steps": [
+              {
+                "create": {
+                  "as": "board",
+                  "entity": "CollectionBlock",
+                  "fields": {
+                    "kind": "board",
+                    "title": {
+                      "$": "title"
+                    }
+                  }
+                }
+              },
+              {
+                "forEach": {
+                  "in": {
+                    "$": "columns"
+                  },
+                  "as": "col",
+                  "steps": [
+                    {
+                      "create": {
+                        "as": "column",
+                        "entity": "CollectionBlock",
+                        "fields": {
+                          "kind": "column",
+                          "title": {
+                            "$": "col.title"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "link": {
+                        "entity": "CollectionBlock",
+                        "id": {
+                          "$": "board.id"
+                        },
+                        "relation": "children",
+                        "target": {
+                          "$": "column.id"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            "returns": {
+              "$": "board.id"
+            }
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [],
+      "operation": "makeBoard",
+      "args": {
+        "title": "Plan",
+        "columns": [
+          {
+            "key": "todo",
+            "title": "To do"
+          },
+          {
+            "key": "done",
+            "title": "Done"
+          }
+        ]
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000001",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind", "title", "slug"],
+          "relations": ["children"]
+        }
+      ],
+      "outcome": {
+        "result": "urn:uuid:30198dab-4163-8c59-abb3-e132517aa975"
+      },
+      "records": {
+        "CollectionBlock": [
+          {
+            "id": "urn:uuid:01b39ce5-8a65-8ff1-8585-d297b052740d",
+            "kind": "column",
+            "title": "To do"
+          },
+          {
+            "id": "urn:uuid:30198dab-4163-8c59-abb3-e132517aa975",
+            "kind": "board",
+            "title": "Plan",
+            "children": [
+              "urn:uuid:01b39ce5-8a65-8ff1-8585-d297b052740d",
+              "urn:uuid:b5aaccfb-347d-82b8-844c-ed58404febc5"
+            ]
+          },
+          {
+            "id": "urn:uuid:b5aaccfb-347d-82b8-844c-ed58404febc5",
+            "kind": "column",
+            "title": "Done"
+          }
+        ]
+      }
+    },
+    {
+      "id": "forEach-keys",
+      "note": "the same invocation with the columns reordered: every record gets the id it got in create-and-link",
+      "manifest": {
+        "version": "1",
+        "entities": {},
+        "operations": {
+          "makeBoard": {
+            "description": "A board and a column under it for each column given.",
+            "params": {
+              "title": {
+                "type": "string",
+                "required": true
+              },
+              "columns": {
+                "type": "list",
+                "required": true
+              }
+            },
+            "steps": [
+              {
+                "create": {
+                  "as": "board",
+                  "entity": "CollectionBlock",
+                  "fields": {
+                    "kind": "board",
+                    "title": {
+                      "$": "title"
+                    }
+                  }
+                }
+              },
+              {
+                "forEach": {
+                  "in": {
+                    "$": "columns"
+                  },
+                  "as": "col",
+                  "steps": [
+                    {
+                      "create": {
+                        "as": "column",
+                        "entity": "CollectionBlock",
+                        "fields": {
+                          "kind": "column",
+                          "title": {
+                            "$": "col.title"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "link": {
+                        "entity": "CollectionBlock",
+                        "id": {
+                          "$": "board.id"
+                        },
+                        "relation": "children",
+                        "target": {
+                          "$": "column.id"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            "returns": {
+              "$": "board.id"
+            }
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [],
+      "operation": "makeBoard",
+      "args": {
+        "title": "Plan",
+        "columns": [
+          {
+            "key": "done",
+            "title": "Done"
+          },
+          {
+            "key": "todo",
+            "title": "To do"
+          }
+        ]
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000001",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind", "title", "slug"],
+          "relations": ["children"]
+        }
+      ],
+      "outcome": {
+        "result": "urn:uuid:30198dab-4163-8c59-abb3-e132517aa975"
+      },
+      "records": {
+        "CollectionBlock": [
+          {
+            "id": "urn:uuid:01b39ce5-8a65-8ff1-8585-d297b052740d",
+            "kind": "column",
+            "title": "To do"
+          },
+          {
+            "id": "urn:uuid:30198dab-4163-8c59-abb3-e132517aa975",
+            "kind": "board",
+            "title": "Plan",
+            "children": [
+              "urn:uuid:b5aaccfb-347d-82b8-844c-ed58404febc5",
+              "urn:uuid:01b39ce5-8a65-8ff1-8585-d297b052740d"
+            ]
+          },
+          {
+            "id": "urn:uuid:b5aaccfb-347d-82b8-844c-ed58404febc5",
+            "kind": "column",
+            "title": "Done"
+          }
+        ]
+      }
+    },
+    {
+      "id": "upsert-existing",
+      "note": "a find that matches skips the guarded create, and the operation returns what it found",
+      "manifest": {
+        "version": "1",
+        "entities": {},
+        "operations": {
+          "ensureTag": {
+            "description": "The tag with this slug, made when there is none.",
+            "params": {
+              "slug": {
+                "type": "string",
+                "required": true
+              }
+            },
+            "steps": [
+              {
+                "find": {
+                  "as": "found",
+                  "entity": "CollectionBlock",
+                  "where": {
+                    "kind": "tag",
+                    "slug": {
+                      "$": "slug"
+                    }
+                  }
+                }
+              },
+              {
+                "create": {
+                  "as": "made",
+                  "entity": "CollectionBlock",
+                  "fields": {
+                    "kind": "tag",
+                    "slug": {
+                      "$": "slug"
+                    }
+                  }
+                },
+                "when": {
+                  "$": "count(found) == 0"
+                }
+              }
+            ],
+            "returns": {
+              "$": "count(found) ? first(found).id : made.id"
+            }
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:tag-garden",
+          "fields": {
+            "kind": "tag",
+            "slug": "garden"
+          }
+        }
+      ],
+      "operation": "ensureTag",
+      "args": {
+        "slug": "garden"
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000002",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind", "title", "slug"],
+          "relations": ["children"]
+        }
+      ],
+      "outcome": {
+        "result": "urn:example:tag-garden"
+      },
+      "records": {
+        "CollectionBlock": [
+          {
+            "id": "urn:example:tag-garden",
+            "kind": "tag",
+            "slug": "garden"
+          }
+        ]
+      }
+    },
+    {
+      "id": "upsert-missing",
+      "note": "a find that matches nothing lets the guarded create run, and the operation returns what it made",
+      "manifest": {
+        "version": "1",
+        "entities": {},
+        "operations": {
+          "ensureTag": {
+            "description": "The tag with this slug, made when there is none.",
+            "params": {
+              "slug": {
+                "type": "string",
+                "required": true
+              }
+            },
+            "steps": [
+              {
+                "find": {
+                  "as": "found",
+                  "entity": "CollectionBlock",
+                  "where": {
+                    "kind": "tag",
+                    "slug": {
+                      "$": "slug"
+                    }
+                  }
+                }
+              },
+              {
+                "create": {
+                  "as": "made",
+                  "entity": "CollectionBlock",
+                  "fields": {
+                    "kind": "tag",
+                    "slug": {
+                      "$": "slug"
+                    }
+                  }
+                },
+                "when": {
+                  "$": "count(found) == 0"
+                }
+              }
+            ],
+            "returns": {
+              "$": "count(found) ? first(found).id : made.id"
+            }
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:tag-garden",
+          "fields": {
+            "kind": "tag",
+            "slug": "garden"
+          }
+        }
+      ],
+      "operation": "ensureTag",
+      "args": {
+        "slug": "weeds"
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000003",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind", "title", "slug"],
+          "relations": ["children"]
+        }
+      ],
+      "outcome": {
+        "result": "urn:uuid:79c3dbb7-8895-8731-92f8-e8cf8cb63ec9"
+      },
+      "records": {
+        "CollectionBlock": [
+          {
+            "id": "urn:example:tag-garden",
+            "kind": "tag",
+            "slug": "garden"
+          },
+          {
+            "id": "urn:uuid:79c3dbb7-8895-8731-92f8-e8cf8cb63ec9",
+            "kind": "tag",
+            "slug": "weeds"
+          }
+        ]
+      }
+    },
+    {
+      "id": "found-carries-id",
+      "note": "a found record carries its id: a step reads it by name, and a forEach over found records keys by it",
+      "manifest": {
+        "version": "1",
+        "entities": {},
+        "operations": {
+          "touchTags": {
+            "description": "Marks every tag as seen, one at a time, and answers with the tags it found.",
+            "steps": [
+              {
+                "find": {
+                  "as": "tags",
+                  "entity": "CollectionBlock",
+                  "where": {
+                    "kind": "tag"
+                  },
+                  "order": {
+                    "slug": "asc"
+                  }
+                }
+              },
+              {
+                "forEach": {
+                  "in": {
+                    "$": "tags"
+                  },
+                  "as": "tag",
+                  "steps": [
+                    {
+                      "update": {
+                        "entity": "CollectionBlock",
+                        "id": {
+                          "$": "tag.id"
+                        },
+                        "fields": {
+                          "title": "seen"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            "returns": {
+              "$": "tags.map(t, t.id)"
+            }
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:tag-garden",
+          "fields": {
+            "kind": "tag",
+            "slug": "garden"
+          }
+        },
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:tag-weeds",
+          "fields": {
+            "kind": "tag",
+            "slug": "weeds"
+          }
+        }
+      ],
+      "operation": "touchTags",
+      "args": {},
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000024",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind", "title", "slug"],
+          "relations": ["children"]
+        }
+      ],
+      "outcome": {
+        "result": ["urn:example:tag-garden", "urn:example:tag-weeds"]
+      },
+      "records": {
+        "CollectionBlock": [
+          {
+            "id": "urn:example:tag-garden",
+            "kind": "tag",
+            "title": "seen",
+            "slug": "garden"
+          },
+          {
+            "id": "urn:example:tag-weeds",
+            "kind": "tag",
+            "title": "seen",
+            "slug": "weeds"
+          }
+        ]
+      }
+    },
+    {
+      "id": "rollback-on-check",
+      "note": "a failed check fails the operation with its named error, and the record made before it does not land",
+      "manifest": {
+        "version": "1",
+        "entities": {},
+        "operations": {
+          "guarded": {
+            "description": "Makes a note, checks, and makes another — so a failed check must take the first back.",
+            "params": {
+              "n": {
+                "type": "number",
+                "required": true
+              }
+            },
+            "errors": {
+              "tooBig": "The number is too big."
+            },
+            "steps": [
+              {
+                "create": {
+                  "entity": "CollectionBlock",
+                  "fields": {
+                    "kind": "note",
+                    "title": "before"
+                  }
+                }
+              },
+              {
+                "check": {
+                  "condition": {
+                    "$": "n < 10"
+                  },
+                  "error": "tooBig"
+                }
+              },
+              {
+                "create": {
+                  "entity": "CollectionBlock",
+                  "fields": {
+                    "kind": "note",
+                    "title": "after"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [],
+      "operation": "guarded",
+      "args": {
+        "n": 12
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000004",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind", "title", "slug"],
+          "relations": ["children"]
+        }
+      ],
+      "outcome": {
+        "error": {
+          "class": "precondition",
+          "code": "tooBig"
+        }
+      },
+      "records": {
+        "CollectionBlock": []
+      }
+    },
+    {
+      "id": "second-write",
+      "note": "a write to a record created earlier in the same operation lands on it",
+      "manifest": {
+        "version": "1",
+        "entities": {},
+        "operations": {
+          "writeTwice": {
+            "description": "Makes a note and retitles it in the same operation.",
+            "steps": [
+              {
+                "create": {
+                  "as": "note",
+                  "entity": "CollectionBlock",
+                  "fields": {
+                    "kind": "note",
+                    "title": "first"
+                  }
+                }
+              },
+              {
+                "update": {
+                  "entity": "CollectionBlock",
+                  "id": {
+                    "$": "note.id"
+                  },
+                  "fields": {
+                    "title": "second"
+                  }
+                }
+              }
+            ],
+            "returns": {
+              "$": "note.id"
+            }
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [],
+      "operation": "writeTwice",
+      "args": {},
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000005",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind", "title", "slug"],
+          "relations": ["children"]
+        }
+      ],
+      "outcome": {
+        "result": "urn:uuid:9dd3f374-cb9a-8ed4-b31a-d42615aa6736"
+      },
+      "records": {
+        "CollectionBlock": [
+          {
+            "id": "urn:uuid:9dd3f374-cb9a-8ed4-b31a-d42615aa6736",
+            "kind": "note",
+            "title": "second"
+          }
+        ]
+      }
+    },
+    {
+      "id": "strict-link",
+      "note": "a strict link to a record already linked fails as alreadyLinked and changes nothing",
+      "manifest": {
+        "version": "1",
+        "entities": {},
+        "operations": {
+          "adopt": {
+            "description": "Puts a record under another, strictly: refused when it is there already.",
+            "params": {
+              "parent": {
+                "type": "string",
+                "required": true
+              },
+              "child": {
+                "type": "string",
+                "required": true
+              }
+            },
+            "steps": [
+              {
+                "link": {
+                  "entity": "CollectionBlock",
+                  "id": {
+                    "$": "parent"
+                  },
+                  "relation": "children",
+                  "target": {
+                    "$": "child"
+                  },
+                  "strict": true
+                }
+              }
+            ]
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:child",
+          "fields": {
+            "kind": "card"
+          }
+        },
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:parent",
+          "fields": {
+            "kind": "board"
+          },
+          "relations": {
+            "children": ["urn:example:child"]
+          }
+        }
+      ],
+      "operation": "adopt",
+      "args": {
+        "parent": "urn:example:parent",
+        "child": "urn:example:child"
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000006",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind", "title", "slug"],
+          "relations": ["children"]
+        }
+      ],
+      "outcome": {
+        "error": {
+          "class": "precondition",
+          "code": "alreadyLinked"
+        }
+      },
+      "records": {
+        "CollectionBlock": [
+          {
+            "id": "urn:example:child",
+            "kind": "card"
+          },
+          {
+            "id": "urn:example:parent",
+            "kind": "board",
+            "children": ["urn:example:child"]
+          }
+        ]
+      }
+    },
+    {
+      "id": "core-upsert-signal",
+      "note": "core.upsertSignal with no reaction yet makes one under the record, and answers with its id",
+      "manifest": {
+        "version": "1",
+        "entities": {},
+        "operations": {
+          "upsertSignal": {
+            "description": "Give the invoker’s reaction of one type on a record, or change it: one per person per type, edited in place, any duplicates removed.",
+            "params": {
+              "node": {
+                "type": "string",
+                "required": true,
+                "description": "The record reacted to."
+              },
+              "signalType": {
+                "type": "string",
+                "required": true,
+                "description": "The SignalType’s id."
+              },
+              "value": {
+                "type": "number",
+                "required": true,
+                "description": "What the reaction says. Zero is a value like any other; withdrawing is withdrawSignal."
+              }
+            },
+            "steps": [
+              {
+                "find": {
+                  "as": "mine",
+                  "entity": "Signal",
+                  "scope": {
+                    "anchor": "WeNode",
+                    "via": "signals",
+                    "anchorId": {
+                      "$": "node"
+                    }
+                  },
+                  "where": {
+                    "signalTypeId": {
+                      "$": "signalType"
+                    },
+                    "author": {
+                      "$": "invoker"
+                    }
+                  },
+                  "order": {
+                    "createdAt": "asc"
+                  }
+                }
+              },
+              {
+                "create": {
+                  "as": "made",
+                  "entity": "Signal",
+                  "fields": {
+                    "signalTypeId": {
+                      "$": "signalType"
+                    },
+                    "value": {
+                      "$": "value"
+                    }
+                  },
+                  "parent": {
+                    "id": {
+                      "$": "node"
+                    },
+                    "relation": "signals"
+                  }
+                },
+                "when": {
+                  "$": "count(mine) == 0"
+                }
+              },
+              {
+                "update": {
+                  "entity": "Signal",
+                  "id": {
+                    "$": "first(mine)"
+                  },
+                  "fields": {
+                    "value": {
+                      "$": "value"
+                    }
+                  }
+                },
+                "when": {
+                  "$": "count(mine) > 0"
+                }
+              },
+              {
+                "forEach": {
+                  "in": {
+                    "$": "slice(mine, 1)"
+                  },
+                  "as": "extra",
+                  "steps": [
+                    {
+                      "delete": {
+                        "entity": "Signal",
+                        "id": {
+                          "$": "extra"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            "returns": {
+              "$": "count(mine) ? first(mine).id : made.id"
+            }
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:post",
+          "fields": {
+            "kind": "post"
+          }
+        }
+      ],
+      "operation": "upsertSignal",
+      "args": {
+        "node": "urn:example:post",
+        "signalType": "urn:example:like",
+        "value": 0
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000007",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind"],
+          "relations": ["signals"]
+        },
+        {
+          "entity": "Signal",
+          "fields": ["signalTypeId", "value"],
+          "relations": []
+        }
+      ],
+      "outcome": {
+        "result": "urn:uuid:e5a8884b-ad96-85aa-b280-93762a318687"
+      },
+      "records": {
+        "CollectionBlock": [
+          {
+            "id": "urn:example:post",
+            "kind": "post",
+            "signals": ["urn:uuid:e5a8884b-ad96-85aa-b280-93762a318687"]
+          }
+        ],
+        "Signal": [
+          {
+            "id": "urn:uuid:e5a8884b-ad96-85aa-b280-93762a318687",
+            "signalTypeId": "urn:example:like",
+            "value": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "core-respond-replaces",
+      "note": "core.respond removes the answer the invoker gave before, on this record only, and makes the new one",
+      "manifest": {
+        "version": "1",
+        "entities": {},
+        "operations": {
+          "respond": {
+            "description": "Give the invoker’s own answer to a record — going, maybe, not going — replacing any answer they gave before; with no kind, withdraw it.",
+            "params": {
+              "node": {
+                "type": "string",
+                "required": true,
+                "description": "The record answered."
+              },
+              "kind": {
+                "type": "string",
+                "description": "A reflexive InvolvementType’s slug; absent withdraws the answer."
+              }
+            },
+            "errors": {
+              "notAnAnswer": "That is not an answer anybody can give to this."
+            },
+            "steps": [
+              {
+                "find": {
+                  "as": "answers",
+                  "entity": "InvolvementType",
+                  "where": {
+                    "reflexive": true
+                  }
+                }
+              },
+              {
+                "check": {
+                  "condition": {
+                    "$": "!kind || kind in answers.map(t, t.slug)"
+                  },
+                  "error": "notAnAnswer"
+                }
+              },
+              {
+                "find": {
+                  "as": "held",
+                  "entity": "Involvement",
+                  "where": {
+                    "agent": {
+                      "$": "invoker"
+                    },
+                    "kind": {
+                      "$": "answers.map(t, t.slug)"
+                    }
+                  }
+                }
+              },
+              {
+                "forEach": {
+                  "in": {
+                    "$": "held.filter(r, (r.node == node || node in r.node) && r.kind != kind)"
+                  },
+                  "as": "stale",
+                  "steps": [
+                    {
+                      "delete": {
+                        "entity": "Involvement",
+                        "id": {
+                          "$": "stale"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "create": {
+                  "entity": "Involvement",
+                  "fields": {
+                    "agent": {
+                      "$": "invoker"
+                    },
+                    "kind": {
+                      "$": "kind"
+                    },
+                    "node": [
+                      {
+                        "$": "node"
+                      }
+                    ]
+                  }
+                },
+                "when": {
+                  "$": "kind && !held.exists(r, (r.node == node || node in r.node) && r.kind == kind)"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [
+        {
+          "entity": "InvolvementType",
+          "id": "urn:example:going",
+          "fields": {
+            "name": "Going",
+            "slug": "going",
+            "reflexive": true
+          }
+        },
+        {
+          "entity": "InvolvementType",
+          "id": "urn:example:maybe",
+          "fields": {
+            "name": "Maybe",
+            "slug": "maybe",
+            "reflexive": true
+          }
+        },
+        {
+          "entity": "Involvement",
+          "id": "urn:example:said-maybe",
+          "fields": {
+            "agent": "did:example:invoker",
+            "kind": "maybe",
+            "node": ["urn:example:event"]
+          }
+        },
+        {
+          "entity": "Involvement",
+          "id": "urn:example:other-event",
+          "fields": {
+            "agent": "did:example:invoker",
+            "kind": "maybe",
+            "node": ["urn:example:elsewhere"]
+          }
+        }
+      ],
+      "operation": "respond",
+      "args": {
+        "node": "urn:example:event",
+        "kind": "going"
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000008",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "Involvement",
+          "fields": ["agent", "kind"],
+          "relations": []
+        }
+      ],
+      "outcome": {
+        "result": null
+      },
+      "records": {
+        "Involvement": [
+          {
+            "id": "urn:example:other-event",
+            "agent": "did:example:invoker",
+            "kind": "maybe"
+          },
+          {
+            "id": "urn:uuid:1d772f7f-2bc7-80e3-b30b-11fe1d59c661",
+            "agent": "did:example:invoker",
+            "kind": "going"
+          }
+        ]
+      }
+    },
+    {
+      "id": "core-create-post-reply",
+      "note": "core.createPost as a reply: in its subject’s responses and thread, a child of nothing, its block under it",
+      "manifest": {
+        "version": "1",
+        "entities": {},
+        "operations": {
+          "createPost": {
+            "description": "Write a composed document — a post, a message or a reply — with its blocks, in a collection or in response to a record, threaded under its subject.",
+            "params": {
+              "root": {
+                "type": "object",
+                "required": true,
+                "description": "The root’s own fields: kind, mode, and what it stores about its blocks (editorState, textContent), plus where a copy came from."
+              },
+              "blocks": {
+                "type": "list",
+                "required": true,
+                "description": "The blocks in document order, each { key, entity, fields, parent } — parent the planned id of the collection block it is in, absent at the top level."
+              },
+              "mentions": {
+                "type": "list",
+                "description": "The DIDs the document mentions."
+              },
+              "container": {
+                "type": "string",
+                "description": "The collection it is a child of."
+              },
+              "respondsTo": {
+                "type": "string",
+                "description": "The record it answers."
+              },
+              "thread": {
+                "type": "string",
+                "description": "The subject of the thread it joins — respondsTo, or the first record above it that is not itself a response."
+              },
+              "threadEntity": {
+                "type": "string",
+                "description": "The thread subject’s entity."
+              },
+              "generatedBy": {
+                "type": "string",
+                "description": "The ModelRun that wrote it, when a model did."
+              }
+            },
+            "errors": {
+              "twoPlaces": "A post goes in a collection or answers a record, not both."
+            },
+            "steps": [
+              {
+                "check": {
+                  "condition": {
+                    "$": "!(container && respondsTo)"
+                  },
+                  "error": "twoPlaces"
+                }
+              },
+              {
+                "create": {
+                  "as": "post",
+                  "entity": "CollectionBlock",
+                  "fields": {
+                    "$": "generatedBy ? merge(root, { mentions: mentions ?? [], generatedBy: [generatedBy] }) : merge(root, { mentions: mentions ?? [] })"
+                  },
+                  "parent": {
+                    "id": {
+                      "$": "respondsTo"
+                    },
+                    "relation": "responses"
+                  }
+                }
+              },
+              {
+                "link": {
+                  "entity": "CollectionBlock",
+                  "id": {
+                    "$": "container"
+                  },
+                  "relation": "children",
+                  "target": {
+                    "$": "post"
+                  }
+                },
+                "when": {
+                  "$": "container"
+                }
+              },
+              {
+                "forEach": {
+                  "in": {
+                    "$": "blocks"
+                  },
+                  "as": "block",
+                  "key": {
+                    "$": "block.key"
+                  },
+                  "steps": [
+                    {
+                      "create": {
+                        "entity": {
+                          "$": "block.entity"
+                        },
+                        "oneOf": [
+                          {
+                            "category": "blockable"
+                          }
+                        ],
+                        "fields": {
+                          "$": "block.fields"
+                        },
+                        "parent": {
+                          "id": {
+                            "$": "block.parent ?? post.id"
+                          },
+                          "relation": "children",
+                          "entity": "CollectionBlock"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "call": {
+                  "operation": "core.thread",
+                  "args": {
+                    "record": {
+                      "$": "post.id"
+                    },
+                    "thread": {
+                      "$": "thread"
+                    },
+                    "threadEntity": {
+                      "$": "threadEntity"
+                    }
+                  }
+                },
+                "when": {
+                  "$": "respondsTo && thread"
+                }
+              }
+            ],
+            "returns": {
+              "$": "post.id"
+            }
+          }
+        }
+      },
+      "calls": {
+        "core.thread": {
+          "description": "Link a response from the subject of the thread it joins, so the whole discussion under a record is one read.",
+          "params": {
+            "record": {
+              "type": "string",
+              "required": true,
+              "description": "The response."
+            },
+            "thread": {
+              "type": "string",
+              "required": true,
+              "description": "The subject of the thread it joins — what it answers, or the first record above that is not itself a response."
+            },
+            "threadEntity": {
+              "type": "string",
+              "required": true,
+              "description": "The subject’s entity."
+            }
+          },
+          "steps": [
+            {
+              "link": {
+                "entity": {
+                  "$": "threadEntity"
+                },
+                "oneOf": [
+                  {
+                    "category": "blockable"
+                  },
+                  "Relationship",
+                  "Topic"
+                ],
+                "id": {
+                  "$": "thread"
+                },
+                "relation": "thread",
+                "target": {
+                  "$": "record"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "dataset": [
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:post",
+          "fields": {
+            "kind": "post"
+          }
+        }
+      ],
+      "operation": "createPost",
+      "args": {
+        "root": {
+          "kind": "reply",
+          "mode": "document",
+          "textContent": "agreed"
+        },
+        "blocks": [
+          {
+            "key": "0",
+            "entity": "TextBlock",
+            "fields": {
+              "text": "agreed"
+            }
+          }
+        ],
+        "respondsTo": "urn:example:post",
+        "thread": "urn:example:post",
+        "threadEntity": "CollectionBlock"
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000009",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind", "textContent"],
+          "relations": ["children", "responses", "thread"]
+        },
+        {
+          "entity": "TextBlock",
+          "fields": ["text"],
+          "relations": []
+        }
+      ],
+      "outcome": {
+        "result": "urn:uuid:11c6684b-5dca-8949-9ac9-fba8cab4baaa"
+      },
+      "records": {
+        "CollectionBlock": [
+          {
+            "id": "urn:example:post",
+            "kind": "post",
+            "responses": ["urn:uuid:11c6684b-5dca-8949-9ac9-fba8cab4baaa"],
+            "thread": ["urn:uuid:11c6684b-5dca-8949-9ac9-fba8cab4baaa"]
+          },
+          {
+            "id": "urn:uuid:11c6684b-5dca-8949-9ac9-fba8cab4baaa",
+            "kind": "reply",
+            "textContent": "agreed",
+            "children": ["urn:uuid:f2a4669d-6d39-8c3a-bcc8-bbf0de9786db"]
+          }
+        ],
+        "TextBlock": [
+          {
+            "id": "urn:uuid:f2a4669d-6d39-8c3a-bcc8-bbf0de9786db",
+            "text": "agreed"
+          }
+        ]
+      }
+    },
+    {
+      "id": "core-move-card",
+      "note": "core.moveCard leaves one column, joins the other where it was dropped, and takes a bound column’s state",
+      "manifest": {
+        "version": "1",
+        "entities": {},
+        "operations": {
+          "moveCard": {
+            "description": "Move a card from one column to another, in one transaction: it leaves the first, joins the second (where it was dropped, or at the end), and takes the second’s state when that column is bound to one.",
+            "params": {
+              "to": {
+                "type": "string",
+                "required": true,
+                "description": "The column it joins."
+              },
+              "from": {
+                "type": "string",
+                "description": "The column it leaves."
+              },
+              "card": {
+                "type": "string",
+                "required": true,
+                "description": "The card."
+              },
+              "ids": {
+                "type": "list",
+                "description": "The joined column’s order with the card where it was dropped. Omit to append."
+              }
+            },
+            "steps": [
+              {
+                "find": {
+                  "as": "target",
+                  "entity": "CollectionBlock",
+                  "where": {
+                    "id": {
+                      "$": "to"
+                    }
+                  },
+                  "one": true
+                }
+              },
+              {
+                "find": {
+                  "as": "task",
+                  "entity": "TaskBlock",
+                  "where": {
+                    "id": {
+                      "$": "card"
+                    }
+                  }
+                },
+                "when": {
+                  "$": "target.slug"
+                }
+              },
+              {
+                "setRelation": {
+                  "entity": "CollectionBlock",
+                  "id": {
+                    "$": "to"
+                  },
+                  "relation": "arranges",
+                  "targets": {
+                    "$": "concat(ids, (target.arranges ?? []).filter(i, !(i in ids)))"
+                  }
+                },
+                "when": {
+                  "$": "card in (ids ?? [])"
+                }
+              },
+              {
+                "link": {
+                  "entity": "CollectionBlock",
+                  "id": {
+                    "$": "to"
+                  },
+                  "relation": "arranges",
+                  "target": {
+                    "$": "card"
+                  }
+                },
+                "when": {
+                  "$": "!(card in (ids ?? []))"
+                }
+              },
+              {
+                "unlink": {
+                  "entity": "CollectionBlock",
+                  "id": {
+                    "$": "from"
+                  },
+                  "relation": "arranges",
+                  "target": {
+                    "$": "card"
+                  }
+                },
+                "when": {
+                  "$": "from && from != to"
+                }
+              },
+              {
+                "update": {
+                  "entity": "TaskBlock",
+                  "id": {
+                    "$": "card"
+                  },
+                  "fields": {
+                    "status": {
+                      "$": "target.slug"
+                    }
+                  }
+                },
+                "when": {
+                  "$": "count(task) > 0"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [
+        {
+          "entity": "TaskBlock",
+          "id": "urn:example:a",
+          "fields": {
+            "title": "A",
+            "status": "todo"
+          }
+        },
+        {
+          "entity": "TaskBlock",
+          "id": "urn:example:b",
+          "fields": {
+            "title": "B",
+            "status": "done"
+          }
+        },
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:todo",
+          "fields": {
+            "kind": "column",
+            "slug": "todo"
+          },
+          "relations": {
+            "arranges": ["urn:example:a"]
+          }
+        },
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:done",
+          "fields": {
+            "kind": "column",
+            "slug": "done"
+          },
+          "relations": {
+            "arranges": ["urn:example:b"]
+          }
+        }
+      ],
+      "operation": "moveCard",
+      "args": {
+        "from": "urn:example:todo",
+        "to": "urn:example:done",
+        "card": "urn:example:a",
+        "ids": ["urn:example:a", "urn:example:b"]
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000010",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind", "slug"],
+          "relations": ["arranges"]
+        },
+        {
+          "entity": "TaskBlock",
+          "fields": ["title", "status"],
+          "relations": []
+        }
+      ],
+      "outcome": {
+        "result": null
+      },
+      "records": {
+        "CollectionBlock": [
+          {
+            "id": "urn:example:done",
+            "kind": "column",
+            "slug": "done",
+            "arranges": ["urn:example:a", "urn:example:b"]
+          },
+          {
+            "id": "urn:example:todo",
+            "kind": "column",
+            "slug": "todo"
+          }
+        ],
+        "TaskBlock": [
+          {
+            "id": "urn:example:a",
+            "title": "A",
+            "status": "done"
+          },
+          {
+            "id": "urn:example:b",
+            "title": "B",
+            "status": "done"
+          }
+        ]
+      }
+    },
+    {
+      "id": "core-remove-board-column",
+      "note": "core.removeBoardColumn hands the column’s cards to the board and deletes the column, never a card",
+      "manifest": {
+        "version": "1",
+        "entities": {},
+        "operations": {
+          "removeBoardColumn": {
+            "description": "Take a column off a board — never the work in it: its cards move to the board’s own arrangement, so a made board keeps them.",
+            "params": {
+              "board": {
+                "type": "string",
+                "required": true,
+                "description": "The board."
+              },
+              "column": {
+                "type": "string",
+                "required": true,
+                "description": "The column."
+              }
+            },
+            "steps": [
+              {
+                "find": {
+                  "as": "boards",
+                  "entity": "CollectionBlock",
+                  "where": {
+                    "id": {
+                      "$": "board"
+                    }
+                  }
+                }
+              },
+              {
+                "find": {
+                  "as": "columns",
+                  "entity": "CollectionBlock",
+                  "where": {
+                    "id": {
+                      "$": "column"
+                    }
+                  }
+                }
+              },
+              {
+                "setRelation": {
+                  "entity": "CollectionBlock",
+                  "id": {
+                    "$": "board"
+                  },
+                  "relation": "arranges",
+                  "targets": {
+                    "$": "distinct(first(boards).arranges, first(columns).arranges)"
+                  }
+                },
+                "when": {
+                  "$": "count(boards) > 0 && count(distinct(first(boards).arranges, first(columns).arranges)) > count(first(boards).arranges)"
+                }
+              },
+              {
+                "setRelation": {
+                  "entity": "CollectionBlock",
+                  "id": {
+                    "$": "board"
+                  },
+                  "relation": "children",
+                  "targets": {
+                    "$": "without(first(boards).children, column)"
+                  }
+                },
+                "when": {
+                  "$": "count(boards) > 0"
+                }
+              },
+              {
+                "delete": {
+                  "entity": "CollectionBlock",
+                  "id": {
+                    "$": "column"
+                  }
+                },
+                "when": {
+                  "$": "first(columns).kind == 'column'"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [
+        {
+          "entity": "TaskBlock",
+          "id": "urn:example:a",
+          "fields": {
+            "title": "A",
+            "status": "todo"
+          }
+        },
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:lane",
+          "fields": {
+            "kind": "column",
+            "title": "Thursday"
+          },
+          "relations": {
+            "arranges": ["urn:example:a"]
+          }
+        },
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:board",
+          "fields": {
+            "kind": "board",
+            "title": "Week"
+          },
+          "relations": {
+            "children": ["urn:example:lane"]
+          }
+        }
+      ],
+      "operation": "removeBoardColumn",
+      "args": {
+        "board": "urn:example:board",
+        "column": "urn:example:lane"
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000011",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind", "title"],
+          "relations": ["children", "arranges"]
+        },
+        {
+          "entity": "TaskBlock",
+          "fields": ["title"],
+          "relations": []
+        }
+      ],
+      "outcome": {
+        "result": null
+      },
+      "records": {
+        "CollectionBlock": [
+          {
+            "id": "urn:example:board",
+            "kind": "board",
+            "title": "Week",
+            "arranges": ["urn:example:a"]
+          }
+        ],
+        "TaskBlock": [
+          {
+            "id": "urn:example:a",
+            "title": "A"
+          }
+        ]
+      }
+    },
+    {
+      "id": "core-place-card",
+      "note": "core.placeCard edits the placement a canvas draws, removes the duplicate it outranks, and answers with what it held",
+      "manifest": {
+        "version": "1",
+        "entities": {},
+        "operations": {
+          "placeCard": {
+            "description": "Write where a card sits on a canvas, or how it looks there: the placement the canvas draws is edited, or one made where there is none, and duplicates beside it removed. Answers { from, to } — what the fields held before — for an undo.",
+            "params": {
+              "canvas": {
+                "type": "string",
+                "required": true,
+                "description": "The canvas."
+              },
+              "node": {
+                "type": "string",
+                "required": true,
+                "description": "The record the card is."
+              },
+              "nodeType": {
+                "type": "string",
+                "description": "Its entity, for a placement made here."
+              },
+              "fields": {
+                "type": "object",
+                "required": true,
+                "description": "Placement fields — x and y, a size, a colour, a rank …"
+              },
+              "placement": {
+                "type": "string",
+                "description": "The placement the canvas draws for the card, where it has one."
+              },
+              "duplicates": {
+                "type": "list",
+                "description": "Placements of the card the drawn one outranks, to remove."
+              },
+              "create": {
+                "type": "boolean",
+                "description": "Whether a card with no placement may be given one. False for a style, which needs a position."
+              }
+            },
+            "errors": {
+              "notPlaced": "Drag this onto the canvas first — how a card looks is saved with where it sits."
+            },
+            "steps": [
+              {
+                "find": {
+                  "as": "current",
+                  "entity": "Placement",
+                  "where": {
+                    "id": {
+                      "$": "placement"
+                    }
+                  }
+                }
+              },
+              {
+                "check": {
+                  "condition": {
+                    "$": "count(current) > 0 || create != false"
+                  },
+                  "error": "notPlaced"
+                }
+              },
+              {
+                "forEach": {
+                  "in": {
+                    "$": "duplicates ?? []"
+                  },
+                  "as": "duplicate",
+                  "key": {
+                    "$": "duplicate"
+                  },
+                  "steps": [
+                    {
+                      "delete": {
+                        "entity": "Placement",
+                        "id": {
+                          "$": "duplicate"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "update": {
+                  "entity": "Placement",
+                  "id": {
+                    "$": "placement"
+                  },
+                  "fields": {
+                    "$": "fields"
+                  }
+                },
+                "when": {
+                  "$": "count(current) > 0"
+                }
+              },
+              {
+                "create": {
+                  "entity": "Placement",
+                  "fields": {
+                    "$": "merge(fields, { nodeType: nodeType, node: [node] })"
+                  },
+                  "parent": {
+                    "id": {
+                      "$": "canvas"
+                    },
+                    "relation": "children",
+                    "entity": "CollectionBlock"
+                  }
+                },
+                "when": {
+                  "$": "count(current) == 0"
+                }
+              }
+            ],
+            "returns": {
+              "from": {
+                "$": "count(current) > 0 ? pick(first(current), keys(fields)) : null"
+              },
+              "to": {
+                "$": "fields"
+              }
+            }
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [
+        {
+          "entity": "Placement",
+          "id": "urn:example:drawn",
+          "fields": {
+            "nodeType": "TaskBlock",
+            "x": 10,
+            "y": 20
+          }
+        },
+        {
+          "entity": "Placement",
+          "id": "urn:example:stray",
+          "fields": {
+            "nodeType": "TaskBlock",
+            "x": 90,
+            "y": 90
+          }
+        }
+      ],
+      "operation": "placeCard",
+      "args": {
+        "canvas": "urn:example:canvas",
+        "node": "urn:example:card",
+        "fields": {
+          "x": 300,
+          "y": 400
+        },
+        "placement": "urn:example:drawn",
+        "duplicates": ["urn:example:stray"]
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000012",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "Placement",
+          "fields": ["nodeType", "x", "y"],
+          "relations": []
+        }
+      ],
+      "outcome": {
+        "result": {
+          "from": {
+            "x": 10,
+            "y": 20
+          },
+          "to": {
+            "x": 300,
+            "y": 400
+          }
+        }
+      },
+      "records": {
+        "Placement": [
+          {
+            "id": "urn:example:drawn",
+            "nodeType": "TaskBlock",
+            "x": 300,
+            "y": 400
+          }
+        ]
+      }
+    },
+    {
+      "id": "core-create-task-state-taken",
+      "note": "core.createTaskState refuses a name whose slug a retired state still holds, and writes nothing",
+      "manifest": {
+        "version": "1",
+        "entities": {},
+        "operations": {
+          "createTaskState": {
+            "description": "Name a state this community’s work moves through, refused when the space already has one by that name.",
+            "params": {
+              "name": {
+                "type": "string",
+                "required": true,
+                "description": "What the state is called."
+              },
+              "semantic": {
+                "type": "string",
+                "description": "What it counts as, one of ['open', 'active', 'blocked', 'done', 'cancelled']; open when not given."
+              },
+              "icon": {
+                "type": "string",
+                "description": "A glyph; empty clears it."
+              },
+              "color": {
+                "type": "string",
+                "description": "A colour; empty clears it."
+              }
+            },
+            "errors": {
+              "noSlug": "That name needs a letter or a digit in it.",
+              "slugTaken": "This space already has one called that.",
+              "notASemantic": "That is not something a state can count as."
+            },
+            "steps": [
+              {
+                "check": {
+                  "condition": {
+                    "$": "!semantic || semantic in ['open', 'active', 'blocked', 'done', 'cancelled']"
+                  },
+                  "error": "notASemantic"
+                }
+              },
+              {
+                "check": {
+                  "condition": {
+                    "$": "slug(trim(name)) != ''"
+                  },
+                  "error": "noSlug"
+                }
+              },
+              {
+                "find": {
+                  "as": "taken",
+                  "entity": "TaskState",
+                  "where": {
+                    "slug": {
+                      "$": "slug(trim(name))"
+                    }
+                  }
+                }
+              },
+              {
+                "check": {
+                  "condition": {
+                    "$": "count(taken) == 0"
+                  },
+                  "error": "slugTaken"
+                }
+              },
+              {
+                "create": {
+                  "as": "made",
+                  "entity": "TaskState",
+                  "fields": {
+                    "name": {
+                      "$": "trim(name)"
+                    },
+                    "slug": {
+                      "$": "slug(trim(name))"
+                    },
+                    "semantic": {
+                      "$": "semantic ?? 'open'"
+                    },
+                    "color": {
+                      "$": "color"
+                    },
+                    "icon": {
+                      "$": "icon"
+                    }
+                  }
+                }
+              }
+            ],
+            "returns": {
+              "$": "made"
+            }
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [
+        {
+          "entity": "TaskState",
+          "id": "urn:example:blocked",
+          "fields": {
+            "name": "Blocked",
+            "slug": "blocked",
+            "retired": true
+          }
+        }
+      ],
+      "operation": "createTaskState",
+      "args": {
+        "name": " BLOCKED "
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000020",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "TaskState",
+          "fields": ["name", "slug", "retired"],
+          "relations": []
+        }
+      ],
+      "outcome": {
+        "error": {
+          "class": "precondition",
+          "code": "slugTaken"
+        }
+      },
+      "records": {
+        "TaskState": [
+          {
+            "id": "urn:example:blocked",
+            "name": "Blocked",
+            "slug": "blocked",
+            "retired": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "core-mark-read-heals",
+      "note": "core.markRead moves the oldest marker for a record to the invocation’s time and removes a doubled one",
+      "manifest": {
+        "version": "1",
+        "entities": {},
+        "operations": {
+          "markRead": {
+            "description": "Say the invoker has read a record as of now: one marker per record, moved forward.",
+            "params": {
+              "node": {
+                "type": "string",
+                "required": true,
+                "description": "The record read."
+              },
+              "space": {
+                "type": "string",
+                "required": true,
+                "description": "The space’s dataset id."
+              }
+            },
+            "steps": [
+              {
+                "find": {
+                  "as": "rows",
+                  "entity": "ReadMarker",
+                  "where": {
+                    "nodeId": {
+                      "$": "node"
+                    }
+                  },
+                  "order": {
+                    "createdAt": "asc"
+                  }
+                }
+              },
+              {
+                "create": {
+                  "as": "made",
+                  "entity": "ReadMarker",
+                  "fields": {
+                    "nodeId": {
+                      "$": "node"
+                    },
+                    "spaceUuid": {
+                      "$": "space"
+                    },
+                    "lastReadAt": {
+                      "$": "invokedAt"
+                    }
+                  }
+                },
+                "when": {
+                  "$": "count(rows) == 0"
+                }
+              },
+              {
+                "update": {
+                  "entity": "ReadMarker",
+                  "id": {
+                    "$": "first(rows)"
+                  },
+                  "fields": {
+                    "spaceUuid": {
+                      "$": "space"
+                    },
+                    "lastReadAt": {
+                      "$": "invokedAt"
+                    }
+                  }
+                },
+                "when": {
+                  "$": "count(rows) > 0"
+                }
+              },
+              {
+                "forEach": {
+                  "in": {
+                    "$": "slice(rows, 1)"
+                  },
+                  "as": "extra",
+                  "steps": [
+                    {
+                      "delete": {
+                        "entity": "ReadMarker",
+                        "id": {
+                          "$": "extra"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            "returns": {
+              "$": "merge({ id: count(rows) > 0 ? first(rows).id : made.id }, { nodeId: node, spaceUuid: space, lastReadAt: invokedAt })"
+            }
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [
+        {
+          "entity": "ReadMarker",
+          "id": "urn:example:marker",
+          "fields": {
+            "nodeId": "urn:example:channel",
+            "spaceUuid": "space",
+            "lastReadAt": "2026-01-01T00:00:00.000Z"
+          }
+        },
+        {
+          "entity": "ReadMarker",
+          "id": "urn:example:doubled",
+          "fields": {
+            "nodeId": "urn:example:channel",
+            "spaceUuid": "space",
+            "lastReadAt": "2026-01-02T00:00:00.000Z"
+          }
+        }
+      ],
+      "operation": "markRead",
+      "args": {
+        "node": "urn:example:channel",
+        "space": "space"
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000021",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "ReadMarker",
+          "fields": ["nodeId", "spaceUuid", "lastReadAt"],
+          "relations": []
+        }
+      ],
+      "outcome": {
+        "result": {
+          "id": "urn:example:marker",
+          "lastReadAt": "2026-11-24T00:00:00.000Z",
+          "nodeId": "urn:example:channel",
+          "spaceUuid": "space"
+        }
+      },
+      "records": {
+        "ReadMarker": [
+          {
+            "id": "urn:example:marker",
+            "nodeId": "urn:example:channel",
+            "spaceUuid": "space",
+            "lastReadAt": "2026-11-24T00:00:00.000Z"
+          }
+        ]
+      }
+    },
+    {
+      "id": "core-delete-records-any",
+      "note": "core.deleteRecords deletes records of two types named at run time, and leaves the rest",
+      "manifest": {
+        "version": "1",
+        "entities": {},
+        "operations": {
+          "deleteRecords": {
+            "description": "Delete several records of any type, for everyone, as one act. Not undoable.",
+            "params": {
+              "records": {
+                "type": "list",
+                "required": true,
+                "description": "Each { entity, id }."
+              }
+            },
+            "steps": [
+              {
+                "forEach": {
+                  "in": {
+                    "$": "records"
+                  },
+                  "as": "record",
+                  "steps": [
+                    {
+                      "delete": {
+                        "entity": {
+                          "$": "record.entity"
+                        },
+                        "oneOf": [
+                          {
+                            "category": "any"
+                          }
+                        ],
+                        "id": {
+                          "$": "record.id"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [
+        {
+          "entity": "TaskBlock",
+          "id": "urn:example:gone-task",
+          "fields": {
+            "title": "Gone",
+            "status": "todo"
+          }
+        },
+        {
+          "entity": "TaskBlock",
+          "id": "urn:example:kept-task",
+          "fields": {
+            "title": "Kept",
+            "status": "todo"
+          }
+        },
+        {
+          "entity": "TextBlock",
+          "id": "urn:example:gone-line",
+          "fields": {
+            "text": "gone"
+          }
+        }
+      ],
+      "operation": "deleteRecords",
+      "args": {
+        "records": [
+          {
+            "entity": "TaskBlock",
+            "id": "urn:example:gone-task"
+          },
+          {
+            "entity": "TextBlock",
+            "id": "urn:example:gone-line"
+          }
+        ]
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000022",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "TaskBlock",
+          "fields": ["title"],
+          "relations": []
+        },
+        {
+          "entity": "TextBlock",
+          "fields": ["text"],
+          "relations": []
+        }
+      ],
+      "outcome": {
+        "result": null
+      },
+      "records": {
+        "TaskBlock": [
+          {
+            "id": "urn:example:kept-task",
+            "title": "Kept"
+          }
+        ],
+        "TextBlock": []
+      }
+    },
+    {
+      "id": "core-move-under",
+      "note": "core.moveUnder takes a record off one holder’s list and onto another’s, the relation named at run time",
+      "manifest": {
+        "version": "1",
+        "entities": {},
+        "operations": {
+          "moveUnder": {
+            "description": "Move a record from one holder to another through a to-many relation the holders declare — off the old list and onto the new in one write, so nobody reads it on neither or on both.",
+            "params": {
+              "holder": {
+                "type": "string",
+                "required": true,
+                "description": "The holders’ entity."
+              },
+              "relation": {
+                "type": "string",
+                "required": true,
+                "description": "The relation holding it."
+              },
+              "record": {
+                "type": "string",
+                "required": true,
+                "description": "The record moved."
+              },
+              "from": {
+                "type": "string",
+                "description": "The holder it leaves."
+              },
+              "to": {
+                "type": "string",
+                "description": "The holder it joins; absent to take it off and put it nowhere."
+              }
+            },
+            "steps": [
+              {
+                "unlink": {
+                  "entity": {
+                    "$": "holder"
+                  },
+                  "oneOf": [
+                    {
+                      "category": "any"
+                    }
+                  ],
+                  "id": {
+                    "$": "from"
+                  },
+                  "relation": {
+                    "$": "relation"
+                  },
+                  "target": {
+                    "$": "record"
+                  }
+                },
+                "when": {
+                  "$": "from && from != to"
+                }
+              },
+              {
+                "link": {
+                  "entity": {
+                    "$": "holder"
+                  },
+                  "oneOf": [
+                    {
+                      "category": "any"
+                    }
+                  ],
+                  "id": {
+                    "$": "to"
+                  },
+                  "relation": {
+                    "$": "relation"
+                  },
+                  "target": {
+                    "$": "record"
+                  }
+                },
+                "when": {
+                  "$": "to && to != from"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [
+        {
+          "entity": "TaskBlock",
+          "id": "urn:example:card",
+          "fields": {
+            "title": "Card",
+            "status": "todo"
+          }
+        },
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:from",
+          "fields": {
+            "kind": "folder"
+          },
+          "relations": {
+            "children": ["urn:example:card"]
+          }
+        },
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:to",
+          "fields": {
+            "kind": "folder"
+          }
+        }
+      ],
+      "operation": "moveUnder",
+      "args": {
+        "holder": "CollectionBlock",
+        "relation": "children",
+        "record": "urn:example:card",
+        "from": "urn:example:from",
+        "to": "urn:example:to"
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000023",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind"],
+          "relations": ["children"]
+        }
+      ],
+      "outcome": {
+        "result": null
+      },
+      "records": {
+        "CollectionBlock": [
+          {
+            "id": "urn:example:from",
+            "kind": "folder"
+          },
+          {
+            "id": "urn:example:to",
+            "kind": "folder",
+            "children": ["urn:example:card"]
+          }
+        ]
+      }
+    }
+  ]
+}

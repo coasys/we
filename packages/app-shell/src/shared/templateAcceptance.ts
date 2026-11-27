@@ -38,7 +38,12 @@ import type { TemplateSchema } from '@we/schema-shared';
 import { isTemplateElement, validateStructure } from '@we/schema-shared';
 
 import type { CapabilityGroup, SurfaceReference } from './registries/templateSurface';
-import { CAPABILITY_GROUPS, inspectTemplateSurface, SPACE_TIER } from './registries/templateSurface';
+import {
+  CAPABILITY_GROUPS,
+  type InspectOptions,
+  inspectTemplateSurface,
+  SPACE_TIER,
+} from './registries/templateSurface';
 
 export interface TemplateAcceptance {
   /** The template, if it may be used at all. Null means refused — do not add it to the list. */
@@ -65,6 +70,8 @@ export interface AcceptTemplateOptions {
   origin: string;
   /** The tier it will render at. Defaults to `SPACE_TIER` — the safe answer for anything synced. */
   grants?: readonly CapabilityGroup[];
+  /** Operations it may invoke that are not registered yet — see `InspectOptions.operation`. */
+  operation?: InspectOptions['operation'];
 }
 
 /**
@@ -90,7 +97,9 @@ export function acceptTemplate(decoded: unknown, options: AcceptTemplateOptions)
     };
   }
 
-  const { blocked, groups } = inspectTemplateSurface(decoded, options.grants ?? SPACE_TIER);
+  const { blocked, groups } = inspectTemplateSurface(decoded, options.grants ?? SPACE_TIER, {
+    operation: options.operation,
+  });
   return {
     schema: decoded as TemplateSchema,
     refusals: [],

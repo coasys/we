@@ -41,8 +41,9 @@ import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
 import { field, pickerPopover, pickerRow, templateChoice, themeChoice } from '@we/template-kit';
 
-/** Rows whose name contains what is typed in the picker's search box. */
-const matching = (items: SchemaProp) => expr`filter(${items}, { name: { contains: local.pickerSearch } })`;
+/** Rows whose name contains what is typed in the picker's search box, and every row while it is empty. */
+const matching = (items: SchemaProp) =>
+  expr`filter(${items}, local.pickerSearch ? { name: { contains: local.pickerSearch } } : {})`;
 
 /**
  * The flags that hold each picker open, declared together on the rail by `chromeRail`.
@@ -245,7 +246,7 @@ const templateRows = matching({ $: 'group.items' });
  * The same three things a template row does, aimed at the app: choose it, edit it where it is drawn,
  * or fork it. WE's own app is built in, so it is forked rather than edited, as a built-in template is.
  */
-const appRows = expr`filter(templateStore.appTemplateOptions, { label: { contains: local.pickerSearch } })`;
+const appRows = expr`filter(templateStore.appTemplateOptions, local.pickerSearch ? { label: { contains: local.pickerSearch } } : {})`;
 
 function appsSection(): SchemaNode {
   return section('App — around every space', appRows, {

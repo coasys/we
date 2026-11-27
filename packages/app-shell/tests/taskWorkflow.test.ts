@@ -10,8 +10,8 @@ import {
   compileTaskWorkflow,
   createTaskWorkflowActions,
   needsAgreement,
-  parseTaskStateEvidence,
   readMoveResult,
+  readTaskStateEvidence,
   storeTaskStateEvidence,
   TASK_WORKFLOW,
   taskMoveCard,
@@ -204,7 +204,7 @@ describe('a rule over the states, and what must be there', () => {
   });
 
   it('compiles a requirement into the state it evidence, and counts it as asking', () => {
-    const evidence = parseTaskStateEvidence(JSON.stringify([{ entity: 'TextBlock', via: 'responses' }]));
+    const evidence = readTaskStateEvidence([{ entity: 'TextBlock', via: 'responses' }]);
     expect(needsAgreement({ slug: 'done', evidence })).toBe(true);
     const workflow = compileTaskWorkflow([{ slug: 'todo' }, { slug: 'done', evidence }])!;
     expect(workflow.states[1]).toEqual({
@@ -215,17 +215,18 @@ describe('a rule over the states, and what must be there', () => {
 
   it('stores evidence compactly, reads them back, and reads anything unreadable as none', () => {
     const stored = storeTaskStateEvidence([{ entity: 'FileBlock', via: 'responses', min: 2 }, { entity: '' }]);
-    expect(JSON.parse(stored)).toEqual([{ entity: 'FileBlock', via: 'responses', min: 2 }]);
-    expect(parseTaskStateEvidence(stored)).toEqual([
+    expect(stored).toEqual([{ entity: 'FileBlock', via: 'responses', min: 2 }]);
+    expect(readTaskStateEvidence(stored)).toEqual([
       { kind: 'evidence', entity: 'FileBlock', via: { relation: 'responses' }, min: 2 },
     ]);
-    expect(storeTaskStateEvidence([])).toBe('');
-    expect(parseTaskStateEvidence('{not json')).toEqual([]);
+    expect(storeTaskStateEvidence([])).toBeNull();
+    expect(readTaskStateEvidence('[{"entity":"TextBlock"}]')).toEqual([]);
+    expect(readTaskStateEvidence([null, { entity: 3 }])).toEqual([]);
   });
 
   it('keeps the conditions a requirement carries, so "a comment" stays a comment', () => {
     const stored = storeTaskStateEvidence([{ entity: 'CollectionBlock', where: { kind: 'reply' }, via: 'responses' }]);
-    expect(parseTaskStateEvidence(stored)).toEqual([
+    expect(readTaskStateEvidence(stored)).toEqual([
       { kind: 'evidence', entity: 'CollectionBlock', where: { kind: 'reply' }, via: { relation: 'responses' } },
     ]);
   });

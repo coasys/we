@@ -16,7 +16,7 @@ function fakeAgentData() {
   const rows: Record<string, Record<string, unknown>[]> = { PocketFolder: [], PocketItem: [] };
   const parents: Record<string, string> = {};
   let next = 0;
-  return {
+  const data = {
     rows,
     parents,
     port: {
@@ -43,8 +43,60 @@ function fakeAgentData() {
       remove: async (entity: string, id: string) => {
         rows[entity] = (rows[entity] ?? []).filter((row) => row.id !== id);
       },
+      /*
+        The Pocket's declared operations, as this stand-in's rows would take them. What each one does
+        is held against a real backend in the app shell's tests (`pocketOperations.test.ts`); here
+        they only have to give the store the answers it acts on.
+      */
+      run: async (name: string, args: Record<string, unknown> = {}): Promise<unknown> => {
+        const self = data.port;
+        if (name === 'pocket.rootFolder') {
+          const found = rows.PocketFolder.find((row) => row.root === true);
+          if (found) return found;
+          const id = await self.create('PocketFolder', { name: 'Pocket', icon: 'bag-simple', root: true });
+          return { id, name: 'Pocket', icon: 'bag-simple', root: true };
+        }
+        if (name === 'pocket.refile') {
+          if (args.from !== args.into) parents[args.item as string] = args.into as string;
+          return args.item;
+        }
+        if (name === 'pocket.gather') {
+          const { into, origin, ...fields } = args as {
+            into?: string;
+            origin?: { id: string; folder: string };
+            ref?: string;
+          };
+          const already = rows.PocketItem.find((row) => row.ref === fields.ref);
+          if (already) {
+            if (origin && into && origin.folder !== into)
+              return self.run('pocket.refile', { item: origin.id, from: origin.folder, into });
+            return already.id;
+          }
+          const folder = into ?? ((await self.run('pocket.rootFolder')) as { id: string }).id;
+          const kept = Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined));
+          return self.create(
+            'PocketItem',
+            { ...kept, gatheredAt: new Date().toISOString() },
+            { parent: { id: folder } },
+          );
+        }
+        if (name === 'pocket.removeFolder') {
+          const gone = new Set([args.folder as string]);
+          for (let grew = true; grew;) {
+            grew = false;
+            for (const row of rows.PocketFolder)
+              if (!gone.has(row.id as string) && gone.has(parents[row.id as string]))
+                grew = gone.add(row.id as string) !== null;
+          }
+          rows.PocketItem = rows.PocketItem.filter((row) => !gone.has(parents[row.id as string]));
+          rows.PocketFolder = rows.PocketFolder.filter((row) => !gone.has(row.id as string));
+          return undefined;
+        }
+        throw new Error(`no stand-in for ${name}`);
+      },
     },
   };
+  return data;
 }
 
 function deps(overrides: Partial<ModuleStoreDeps> = {}): {
@@ -474,9 +526,9 @@ describe('the snapshot a row keeps', () => {
 /**
  * Re-filing something already held.
  *
- * The port is `create`, `find` and `remove` — it cannot relink a record, and it cannot read one's
- * parent. So a move is two writes, and the question "is this a re-file or a drop back where it
- * already is" can only be answered by the row itself, which carries its folder in the drag.
+ * A move is `pocket.refile`: off one folder, onto the other, in one write, so the item keeps its id.
+ * The kernel's reads cannot say a record's parent, so the question "is this a re-file or a drop back
+ * where it already is" can only be answered by the row itself, which carries its folder in the drag.
  */
 describe('moving an item between folders', () => {
   const held = (origin?: { id?: string; folder?: string }) => ({
@@ -501,15 +553,15 @@ describe('moving an item between folders', () => {
     return { store, data, id: data.rows.PocketItem[0].id as string };
   };
 
-  it('lands in the new folder and leaves the old row behind', async () => {
+  it('lands in the new folder, the same row, rather than a copy', async () => {
     const { store, data, id } = await withItem();
 
     await store.gatherInto('PocketFolder-9', held({ id, folder: 'PocketFolder-1' }));
 
     expect(data.rows.PocketItem).toHaveLength(1);
     const [row] = data.rows.PocketItem;
-    expect(row.id).not.toBe(id);
-    expect(data.parents[row.id as string]).toBe('PocketFolder-9');
+    expect(row.id).toBe(id);
+    expect(data.parents[id]).toBe('PocketFolder-9');
   });
 
   it('carries the snapshot across, gatheredAt included', async () => {
@@ -547,14 +599,18 @@ describe('moving an item between folders', () => {
     expect(data.parents[data.rows.PocketItem[0].id as string]).toBe('PocketFolder-1');
   });
 
-  it('keeps the item where it was if the copy fails', async () => {
-    // Copy first, then delete: the other order loses the item outright when the write fails.
+  it('keeps the item where it was, and says so, if the move fails', async () => {
     const { store, data, id } = await withItem();
-    data.port.create = async () => null;
+    const run = data.port.run;
+    data.port.run = async (name, args) => {
+      if (name === 'pocket.gather') throw new Error('refused');
+      return run(name, args);
+    };
 
     await store.gatherInto('PocketFolder-9', held({ id, folder: 'PocketFolder-1' }));
 
     expect(data.rows.PocketItem).toHaveLength(1);
-    expect(data.rows.PocketItem[0].id).toBe(id);
+    expect(data.parents[id]).toBe('PocketFolder-1');
+    expect(store.lastError()).not.toBe('');
   });
 });

@@ -33,15 +33,15 @@ export class AgentSettings extends Ad4mModel {
   appTemplateId: string = '';
 
   /**
-   * The bundles this agent installed, and what each wrote: JSON, a list of `InstalledBundle`
-   * (`app-shell/src/shared/bundles/installedBundles.ts`).
+   * The bundles this agent installed, and what each wrote: a list of `InstalledBundle`
+   * (`app-shell/src/shared/bundles/installedBundles.ts`). Absent is none.
    *
    * Kept so an app can be recognised when a later version of it is installed, removed with
    * everything it brought, and asked how it shows spaces — its display policy is read from here,
    * so leaving the app is all it takes to stop it. A seed's bundles are built in and never here.
    */
   @Property({ through: 'we://installed_bundles' })
-  installedBundles: string = '';
+  installedBundles?: unknown;
 
   @Property({ through: 'we://current_theme' })
   currentThemeId: string = 'default';
@@ -69,18 +69,22 @@ export class AgentSettings extends Ad4mModel {
   systemDarkThemeId: string = '';
 
   /**
-   * The person's display needs, as JSON (`DisplayPreferences` in @we/themes): colour scheme,
+   * The person's display needs, as an object (`DisplayPreferences` in @we/themes): colour scheme,
    * contrast, text size, density and motion. Applied over every theme on screen — a space's
    * included — because they are this person's needs, not a matter of taste a theme may overrule.
-   * Empty means follow the system on every axis it has a signal for, and change nothing else.
+   * Absent means follow the system on every axis it has a signal for, and change nothing else.
    *
    * The colour scheme replaces `themeMode`, which held that one axis alone.
    */
   @Property({ through: 'we://display_preferences' })
-  displayPreferences: string = '';
+  displayPreferences?: unknown;
 
+  /**
+   * The order this agent's spaces are listed in, as a list of dataset ids. Absent until the
+   * first load writes one; a space missing from the list is listed after the ones in it.
+   */
   @Property({ through: 'we://dataset_order' })
-  datasetOrder: string = '';
+  datasetOrder?: unknown;
 
   @Property({ through: 'we://global_space_joined' })
   globalSpaceJoined: boolean = false;
@@ -139,7 +143,7 @@ export class AgentSettings extends Ad4mModel {
   themeScope: string = '';
 
   /**
-   * Which feature modules this agent wants available to them, anywhere, as a JSON array of ids.
+   * Which feature modules this agent wants available to them, anywhere, as a list of ids.
    *
    * The middle of three layers. The deployment's seed says what is shipped; this says what I want
    * from it; `Space.enabledModules` says what a community runs. A module renders only where all
@@ -153,10 +157,10 @@ export class AgentSettings extends Ad4mModel {
    * would broadcast which modules I have turned off to every other member.
    */
   @Property({ through: 'we://installed_modules' })
-  installedModules: string = '';
+  installedModules?: unknown;
 
   /**
-   * What this agent decides about each capability's settings, as JSON.
+   * What this agent decides about each capability's settings, as an object keyed by group.
    *
    * `{ "<group>": { "<key>": value } }`, where a group is a module id or a capability the host
    * declares. One field rather than one per setting: `autoInterpret` and `extractionTargets` are
@@ -169,7 +173,7 @@ export class AgentSettings extends Ad4mModel {
    * `restrict` setting differs.
    */
   @Property({ through: 'we://module_settings' })
-  moduleSettings: string = '';
+  moduleSettings?: unknown;
 
   /**
    * The library templates this agent took out of their lists — not deleted, only hidden. Every

@@ -26,7 +26,7 @@ describe.each(files)('%s', (file) => {
       hasModule: () => true,
       moduleInstalled: () => true,
       moduleName: (id) => id,
-      knownEntities: Object.keys(CORE_MANIFEST.entities),
+      vocabulary: CORE_MANIFEST.entities,
     });
     expect(judged.refusals).toEqual([]);
   });

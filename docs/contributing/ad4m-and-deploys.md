@@ -230,7 +230,7 @@ an ad4m change closes it, which is the cue to delete the entry.
 configures its waker as the AD4M plugin does (`get_mention_waker_config` over the executor's MCP
 endpoint, opened by `@coasys/ad4m`'s `WakerSubscriptionManager`), and what a person writes arrives
 signed by a second agent, as sync delivers it. A mention is the `we://mention` link to the bot's
-DID, never the name in the text: a post through WE's own `createBlocks` (the link from its root) and
+DID, never the name in the text: a post through WE's own `writePost` (the link from its root) and
 a feed line written as a module writes one (the link from the line) each wake the bot, labelled by a
 name in no profile or by a shortened DID. The bot's own post mentioning itself does not. It never
 writes to an agent it did not create: against an executor already running it only reads the agent's

@@ -24,21 +24,21 @@ export interface AgentSettingsRecord extends RecordInstance {
   currentTemplateId: string;
   defaultTemplateId: string;
   appTemplateId: string;
-  installedBundles: string;
+  installedBundles?: unknown;
   currentThemeId: string;
   defaultThemeId: string;
   systemLightThemeId: string;
   systemDarkThemeId: string;
-  displayPreferences: string;
-  datasetOrder: string;
+  displayPreferences?: unknown;
+  datasetOrder?: unknown;
   globalSpaceJoined: boolean;
   globalSpaceUrl: string;
   useSpaceTemplate: boolean;
   useTemplateTheme: boolean;
   followTemplateUpdates: boolean;
   themeScope: string;
-  installedModules: string;
-  moduleSettings: string;
+  installedModules?: unknown;
+  moduleSettings?: unknown;
   hiddenTemplates: TemplateRecord[];
   installedThemes: ThemeRecord[];
   spaceTemplatePreferences: SpaceTemplatePreferenceRecord[];
@@ -88,7 +88,7 @@ export interface CollectionBlockRecord extends WeNodeRecord {
   sourceRef: string;
   sourceName: string;
   autoExtract?: boolean;
-  extractionTargets: string;
+  extractionTargets?: unknown;
   children: string[];
   arranges: string[];
   gathers?: string;
@@ -113,7 +113,7 @@ export interface DividerBlockRecord extends WeNodeRecord {
 export interface EdgeRouteRecord extends RecordInstance {
   sourceAnchor: string;
   targetAnchor: string;
-  points: string;
+  points?: unknown;
   connection?: string;
 }
 
@@ -258,7 +258,7 @@ export interface RoleGrantRecord extends RecordInstance {
 }
 
 export interface PolicyRecord extends RecordInstance {
-  document: string;
+  document?: unknown;
 }
 
 export interface ShapeRecord extends WeNodeRecord {
@@ -304,13 +304,13 @@ export interface SpaceRecord extends WeNodeRecord {
   coverImage?: string;
   defaultTemplateId: string;
   defaultThemeId: string;
-  enabledModules: string;
-  enabledViews: string;
-  extractionTargets: string;
+  enabledModules?: unknown;
+  enabledViews?: unknown;
+  extractionTargets?: unknown;
   autoInterpret: boolean;
   threadMode: string;
-  moduleSettings: string;
-  archivedWorkflows: string;
+  moduleSettings?: unknown;
+  archivedWorkflows?: unknown;
   taskWorkflowRule: string;
   location?: LocationBlockRecord;
   taskStates: string[];
@@ -326,9 +326,9 @@ export interface SpaceRecord extends WeNodeRecord {
 
 export interface SpacePreferenceRecord extends WeNodeRecord {
   spaceUuid: string;
-  mutedModules: string;
-  moduleSettings: string;
-  hiddenViews: string;
+  mutedModules?: unknown;
+  moduleSettings?: unknown;
+  hiddenViews?: unknown;
   templateId: string;
   themeId: string;
 }
@@ -369,7 +369,7 @@ export interface TaskStateRecord extends WeNodeRecord {
   retired: boolean;
   approvals: number;
   approverKind: string;
-  evidence: string;
+  evidence?: unknown;
   schemaVersion: number;
 }
 
@@ -397,7 +397,7 @@ export interface TextBlockRecord extends WeNodeRecord {
   align: string;
   direction: string;
   text: string;
-  marks: string;
+  marks?: unknown;
   source: string;
   version: number;
 }
@@ -441,7 +441,7 @@ export interface ModelRunRecord extends RecordInstance {
   outcome: string;
   error: string;
   recordCount: number;
-  detail: string;
+  detail?: unknown;
   prompt: string;
   output: string;
 }
@@ -449,9 +449,9 @@ export interface ModelRunRecord extends RecordInstance {
 export interface TypeStyleRecord extends RecordInstance {
   nodeType: string;
   color: string;
-  display: string;
-  controls: string;
-  authoring: string;
+  display?: unknown;
+  controls?: unknown;
+  authoring?: unknown;
 }
 
 export interface VideoBlockRecord extends WeNodeRecord {

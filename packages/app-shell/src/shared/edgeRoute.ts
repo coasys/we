@@ -18,8 +18,8 @@
 export interface StoredRoute {
   sourceAnchor?: string;
   targetAnchor?: string;
-  /** The bends, as stored — a JSON array, or absent. */
-  points?: string;
+  /** The bends, as stored — a list, or absent. Whatever the last writer wrote, so it is checked. */
+  points?: unknown;
 }
 
 /**
@@ -30,14 +30,14 @@ export interface StoredRoute {
  */
 export type RouteWrite =
   | { action: 'none' }
-  | { action: 'create'; fields: Record<string, string> }
-  | { action: 'replace'; fields: Record<string, string> }
-  | { action: 'update'; fields: Record<string, string> }
+  | { action: 'create'; fields: Record<string, unknown> }
+  | { action: 'replace'; fields: Record<string, unknown> }
+  | { action: 'update'; fields: Record<string, unknown> }
   | { action: 'delete' };
 
 /** Whether a stored `points` value actually holds a bend, as opposed to being absent or empty. */
-function bent(points: string | undefined): points is string {
-  return typeof points === 'string' && points !== '' && points !== '[]';
+function bent(points: unknown): points is unknown[] {
+  return Array.isArray(points) && points.length > 0;
 }
 
 /**

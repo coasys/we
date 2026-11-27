@@ -8,6 +8,8 @@
  * record" about seven of them is the guard misreporting the thing somebody is about to answer.
  */
 
+import { describeEffects, describeOperation } from '@we/entities';
+
 /**
  * What the host says when a template asks to delete something.
  *
@@ -42,6 +44,18 @@ export function describeDestructive(
   facts: DestructiveFacts = {},
 ): { title: string; body: string } {
   const entity = typeof args[0] === 'string' ? args[0] : '';
+  /*
+    A declared operation says what it does in its own definition, and its effects are worked out
+    from the steps rather than taken from the description — so the body is the host's reading of
+    what it may remove, whatever the description claims.
+  */
+  if (path.startsWith('ops.')) {
+    const described = describeOperation(path.slice('ops.'.length));
+    return {
+      title: described ? `${described.description.replace(/\.$/, '')}?` : 'Run this?',
+      body: described ? `It ${describeEffects(described.effects)}. This cannot be undone.` : 'This cannot be undone.',
+    };
+  }
   switch (path) {
     case 'record.delete':
       return {

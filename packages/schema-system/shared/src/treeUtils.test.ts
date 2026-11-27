@@ -1,6 +1,7 @@
+import { REACTIVE_ACCESSOR } from '@we/expressions';
 import { describe, expect, it } from 'vitest';
 
-import { deepUnwrap, REACTIVE_ACCESSOR } from './propResolvers';
+import { deepUnwrap } from './propResolvers';
 import { isPropsSchemaNode, isSchemaChild, replaceNodeInTree } from './treeUtils';
 import type { SchemaNode } from './types';
 

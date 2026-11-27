@@ -1,12 +1,4 @@
-/** Symbol used to tag reactive accessors (signals, memos) so the renderer can distinguish them from event handlers */
-export const REACTIVE_ACCESSOR = Symbol('schema-reactive-accessor');
-
-export function markReactive<T>(value: T): T {
-  if (typeof value === 'function') {
-    Reflect.set(value, REACTIVE_ACCESSOR, true);
-  }
-  return value;
-}
+import { REACTIVE_ACCESSOR } from '@we/expressions';
 
 /**
  * A cyclic structure would otherwise recurse forever; ten levels is deeper than any

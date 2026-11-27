@@ -1,7 +1,32 @@
 import type { LiveAnchor, LiveDecoration, ModuleDefinition } from '@we/module-shared';
 import { describe, expect, it } from 'vitest';
 
-import { buildStore, fakeDeps, fakeEphemeral, fakePresence, fakeRecords, fakeView, lintModule } from './index';
+import {
+  buildStore,
+  fakeDeps,
+  fakeEphemeral,
+  fakeOperations,
+  fakePresence,
+  fakeRecords,
+  fakeView,
+  lintModule,
+} from './index';
+
+describe('fakeOperations', () => {
+  it('answers by name, records the call, and refuses a name it has no answer for', async () => {
+    const ops = fakeOperations({ 'polls.vote': ({ poll }) => `vote-on-${String(poll)}` });
+    const deps = fakeDeps({ operations: ops.access });
+    await expect(deps.operations?.run('polls.vote', { poll: 'p1' }, { dataset: 'uri' })).resolves.toBe('vote-on-p1');
+    await expect(deps.operations?.run('polls.nope')).rejects.toMatchObject({
+      name: 'OperationError',
+      code: 'unknownOperation',
+    });
+    expect(ops.calls).toEqual([
+      { name: 'polls.vote', args: { poll: 'p1' }, target: { dataset: 'uri' } },
+      { name: 'polls.nope' },
+    ]);
+  });
+});
 
 describe('fakeRecords', () => {
   it('stores what a module writes and reads it back by equality, order and limit', async () => {

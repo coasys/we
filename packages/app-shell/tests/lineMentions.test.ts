@@ -32,7 +32,7 @@ function model(row: Record<string, unknown> | null = null) {
 describe('a line’s mentions', () => {
   it('links everybody a new line’s marks mention, once each', async () => {
     const { links, Model } = model();
-    const marks = JSON.stringify([mention(0, 4, ANN), mention(9, 13, ANN), mention(14, 18, BEN)]);
+    const marks = [mention(0, 4, ANN), mention(9, 13, ANN), mention(14, 18, BEN)];
     await linkNewMentions(Model, {}, 'TextBlock', 'line-1', { text: '@Ann and @Ann @Ben', marks });
     expect(links).toEqual([`+line-1.mentions=${ANN}`, `+line-1.mentions=${BEN}`]);
   });
@@ -40,26 +40,26 @@ describe('a line’s mentions', () => {
   it('writes nothing for a line with no marks, or a record that is not a message', async () => {
     const { links, Model } = model();
     await linkNewMentions(Model, {}, 'TextBlock', 'line-1', { text: 'plain' });
-    await linkNewMentions(Model, {}, 'TaskBlock', 'task-1', { marks: JSON.stringify([mention(0, 4, ANN)]) });
+    await linkNewMentions(Model, {}, 'TaskBlock', 'task-1', { marks: [mention(0, 4, ANN)] });
     expect(links).toEqual([]);
   });
 
   it('keeps a mention whose words an edit left alone, and drops the one it edited away', async () => {
     const { links, Model } = model({
       text: '@Ann and @Ben',
-      marks: JSON.stringify([mention(0, 4, ANN), mention(9, 13, BEN)]),
+      marks: [mention(0, 4, ANN), mention(9, 13, BEN)],
       mentions: [ANN, BEN],
     });
     const { fields, after } = await prepareMentionUpdate(Model, {}, 'TextBlock', 'line-1', {
       text: '@Ann and nobody',
     });
     await after();
-    expect(JSON.parse(String(fields.marks))).toEqual([mention(0, 4, ANN)]);
+    expect(fields.marks).toEqual([mention(0, 4, ANN)]);
     expect(links).toEqual([`-line-1.mentions=${BEN}`]);
   });
 
   it('leaves an update that is not about the words alone', async () => {
-    const { links, Model } = model({ text: 'x', marks: '', mentions: [] });
+    const { links, Model } = model({ text: 'x', mentions: [] });
     const { fields, after } = await prepareMentionUpdate(Model, {}, 'TextBlock', 'line-1', { source: 'corrected' });
     await after();
     expect(fields).toEqual({ source: 'corrected' });

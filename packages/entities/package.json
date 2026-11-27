@@ -27,7 +27,8 @@
     "dist"
   ],
   "dependencies": {
-    "@we/backend-shared": "workspace:*"
+    "@we/backend-shared": "workspace:*",
+    "@we/expressions": "workspace:*"
   },
   "peerDependencies": {},
   "devDependencies": {

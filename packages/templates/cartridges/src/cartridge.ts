@@ -18,8 +18,8 @@
 import {
   type Bundle,
   BUNDLE_FORMAT,
-  BUNDLE_FORMAT_VERSION,
   type BundleBrand,
+  bundleFormatVersionFor,
   type BundleRecordType,
   type BundleTheme,
   type BundleWorkflow,
@@ -178,7 +178,8 @@ export function toBundle(cartridge: Cartridge, version = '1.0.0'): Bundle {
     : undefined;
   return {
     format: BUNDLE_FORMAT,
-    formatVersion: BUNDLE_FORMAT_VERSION,
+    // A cartridge declares no operations, so it stays readable by a host that predates them.
+    formatVersion: bundleFormatVersionFor({}),
     id: cartridge.id,
     version,
     name: cartridge.name,

@@ -2678,7 +2678,7 @@ const feedRichLines = (): Scenario => {
       updatedAt: at,
       author,
       text,
-      marks: marks.length ? JSON.stringify(marks) : '',
+      marks: marks.length ? marks : '',
       source: 'typed',
       call: '',
       callTitle: '',
@@ -2794,7 +2794,7 @@ const feedLinesAt = (count: number): Scenario => {
         : i % 3 === 1
           ? `Line ${i}: the review is up at https://github.com/coasys/ad4m/pull/${1800 + i}. Approve.`
           : `Line ${i}: comments only.\nI pushed nothing to your branch.`;
-    const marks = i % 3 === 0 ? JSON.stringify([{ start: 0, end: 5, type: 'mention', did: 'did:data' }]) : '';
+    const marks = i % 3 === 0 ? [{ start: 0, end: 5, type: 'mention', did: 'did:data' }] : '';
     return { i, text, marks };
   };
   // What the Feed's reader hands the view each time it reads the window: new objects for every line.

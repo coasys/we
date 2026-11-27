@@ -12,8 +12,8 @@
  * Built on the expression AST rather than on the token objects it replaced: the rows are the same,
  * the spelling underneath is `{ $: "local.open && item.n > 0" }`.
  */
-import type { Expr, ExpressionSource } from './expressions';
-import { isExpressionToken, parseExpression, printExpression } from './expressions';
+import type { Expr, ExpressionSource } from '@we/expressions';
+import { isExpressionToken, parseExpression, printExpression } from '@we/expressions';
 
 // ── Public types ────────────────────────────────────────────────────────────
 

@@ -15,6 +15,8 @@
  * that resolved as five characters was a bug that survived four reviews. A reference is always
  * `{ $: 'item.name' }` now; there is nothing for a string to be but itself.
  */
+import { REACTIVE_ACCESSOR } from '@we/expressions';
+
 import { hasToken } from '../predicates';
 import { resolveIfHandler } from './conditional';
 import { resolveExpressionProp } from './expression';
@@ -27,7 +29,6 @@ import {
   resolveToggleLocalProp,
   resolveTouchProp,
 } from './local';
-import { REACTIVE_ACCESSOR } from './reactive';
 import type { Memo, Props } from './types';
 import { noMemo } from './types';
 

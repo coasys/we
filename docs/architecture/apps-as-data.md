@@ -15,7 +15,7 @@ data the host already understands.
 
 | Field                                   | What it is                                                                                                  |
 | --------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `format`, `formatVersion`               | `we-bundle`, `1`. Checked before anything else.                                                             |
+| `format`, `formatVersion`               | `we-bundle`, `1` or `2`. Checked before anything else. See "Format versions".                               |
 | `id`, `version`                         | The app's own. Lowercase with single dashes; an install is recognised by the id.                            |
 | `name`, `description`, `icon`, `author` | `author` is a claim — a file attests nothing.                                                               |
 | `app`                                   | A template with `meta.role: 'app'`: the chrome around every space (see `chrome-and-panels.md`).             |
@@ -26,13 +26,21 @@ data the host already understands.
 | `brand`                                 | `{ name, mark?, wordmark?, about?, aboutPage? }`: what the app calls itself. See "Whitelabelling".          |
 | `bootScreen`                            | A node: the app's own sign-in screen, placing WE's sign-in form or the host's `CredentialField`. See below. |
 | `recordTypes`                           | `{ name, icon?, description?, manifest }`, one entity each, as the model wizard writes it.                  |
+| `operations`                            | Declared operations by bare name, installed as `<bundle id>.<name>`. Format 2 only. See `space-policy.md`.  |
 | `workflows`                             | `WorkflowDefinition`s, as `WorkflowPort.install` takes them: what the app's records move through.           |
 | `display`                               | `{ spaces: 'ours' \| 'theirs', template? }` — see "How an app shows spaces".                                |
 | `starters`                              | Space starters, as a seed's `spaceStarters` are: what a space made in the app begins with. See below.       |
 
+**Format versions.** A reader refuses a `formatVersion` it does not know rather than reading the
+parts it recognises, so a host that predates a field refuses a bundle using it instead of installing
+the app without it. Format 2 is format 1 plus `operations`: a host that reads only 1 refuses an app
+that brings its own compound writes, and this build reads both. A writer stamps the lowest format that
+holds what it carries (`bundleFormatVersionFor`), so a bundle without operations stays a format-1 file
+and the older host still reads it; a file claiming format 1 and carrying operations is refused.
+
 **What a bundle needs and what it can do are not in it.** `judgeBundle`
 (`app-shell/src/shared/bundles/judgeBundle.ts`) works both out from its templates — the app at the
-chrome tier it is drawn with, and its pages with it, everything else at the space tier — and validates its record types. A
+chrome tier it is drawn with, and its pages with it, everything else at the space tier — and validates its record types and its operations (against WE's vocabulary and those record types). A
 list an author writes is a claim; an install prompt shows only what the walk found.
 
 `bundles/` at the repository root holds the two checked in, the field guide and the tool library,
@@ -75,10 +83,11 @@ only Close. Decided by content, not version — the install record keeps a diges
 
 ## Whose is what
 
-| Piece                             | Belongs to | So                                                                        |
-| --------------------------------- | ---------- | ------------------------------------------------------------------------- |
-| App, space templates, theme       | The person | In their library; another member of the same space may be in another app. |
-| Record types, workflows, sections | The space  | Added to the spaces their installer runs and ticks, for everyone in each. |
+| Piece                             | Belongs to | So                                                                          |
+| --------------------------------- | ---------- | --------------------------------------------------------------------------- |
+| App, space templates, theme       | The person | In their library; another member of the same space may be in another app.   |
+| Record types, workflows, sections | The space  | Added to the spaces their installer runs and ticks, for everyone in each.   |
+| Declared operations               | The person | Registered while the app is installed; what they write is ordinary records. |
 
 **Setting a space up** adds the app's record types (`shapeStore.addRecordTypes`, recognised by
 `shapeId: we://shapes/bundle/<id>/<name>` so it never adds one twice), installs its workflows through
@@ -98,6 +107,27 @@ already set up is shown as such rather than offered again.
 **Removing an app** removes its app, templates and theme. Never its record types, which hold what
 people made with it, in spaces other people share — and never the sections a space was set up with,
 which are the space's by then.
+
+## Declared operations
+
+An app's compound writes — logging a sighting with its photo and its place, opening a loan — travel
+in the bundle as `operations`, top level rather than inside a record type, since one operation
+spans several. Bringing any makes the file format 2.
+
+- **Namespace = bundle id.** An operation the file calls `log` runs as `<bundle id>.log`, and a
+  template of the app invokes it as `ops.<bundle id>.log`. The file cannot choose a namespace, so it
+  can reach neither WE's `core` operations under another name nor another app's, and a bundle whose
+  id is a namespace already taken (`core`, a module's id) has its operations refused.
+- **Judged on install.** `judgeBundle` runs the static checks against WE's vocabulary and the
+  bundle's own record types, refuses the bundle when they fail, and counts the capability group the
+  operations' writes need towards what the person agrees to. Its templates' `ops.<bundle id>.*`
+  references are judged against those definitions, before anything is registered.
+- **Registered while installed.** The install record keeps the definitions whole, as it keeps record
+  types, because the file is gone by the next boot; `bundleOperations.ts` holds exactly the installed
+  and built-in apps' operations in the registry, and removing an app withdraws them.
+
+An operation is the person's, like the app: another member of a space set up for the app runs it
+only if they have the app too. What it wrote is ordinary records in the space either way.
 
 ## How an app shows spaces
 

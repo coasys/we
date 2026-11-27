@@ -16,7 +16,7 @@
  * A thread holds every response, and a call held about a line is one; it is a conversation of its
  * own, not a line of this one, so it is left out.
  */
-import { isTextBlock, markdownToBlocks, parseMarks, withFoundLinks } from '@we/block-shared';
+import { isTextBlock, markdownToBlocks, marksOf, withFoundLinks } from '@we/block-shared';
 import type { ModuleFunction } from '@we/module-shared';
 
 import { CORRECTED, SPOKEN } from './source.ts';
@@ -70,13 +70,13 @@ type Row = Record<string, unknown>;
  * field, so content equal to what is on screen never reaches the renderer. The browser harness's
  * `perfFeedLines` case holds that — a message arriving draws the new line and nothing else.
  *
- * Marks are stored as JSON on the record; marks that do not parse are drawn as if there were none
- * rather than not drawing the line at all.
+ * Anything in a record's marks that is not a mark is left out (`marksOf`), so a line holding a bad
+ * mark is still drawn, as if that mark were not there.
  */
 export function lineContent(row: Row): Row[] | null {
   const text = typeof row.text === 'string' ? row.text : '';
   if (!text) return null;
-  const marks = parseMarks(row.marks);
+  const marks = marksOf(row.marks);
   if (row.source === SPOKEN || row.source === CORRECTED)
     return [{ _type: 'block', text, marks: withFoundLinks(text, marks) }];
   return markdownToBlocks(text, marks).map((block) =>

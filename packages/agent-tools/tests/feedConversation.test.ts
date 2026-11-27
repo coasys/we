@@ -73,7 +73,7 @@ const lastResult = (request: ConversationRequest) => results(request).at(-1) ?? 
 const madeId = (text: string) => /: ([^\s.]+)\.?$/.exec(text)?.[1] ?? '';
 
 const turns = (request: string): ConversationTurn[] => [{ role: 'user', text: request }];
-const tools = () => createDataToolset({ dataset });
+const tools = () => createDataToolset({ dataset, invoker: 'did:test:me' });
 
 describe('the feed agent, against a real backend', () => {
   it('makes a task where it was asked, and offers the person a way to it', async () => {
@@ -331,7 +331,11 @@ describe('a new kind of record', () => {
     expect(tools().tools.map((t) => t.name)).not.toContain('define_model');
 
     const defined: unknown[] = [];
-    const withModels = createDataToolset({ dataset, defineModel: async (d) => (defined.push(d), d.name) });
+    const withModels = createDataToolset({
+      dataset,
+      invoker: 'did:test:me',
+      defineModel: async (d) => (defined.push(d), d.name),
+    });
     const asked: string[] = [];
     const model_ = scripted([
       () => ({
@@ -370,7 +374,7 @@ describe('a new kind of record', () => {
   });
 
   it('refuses a name that is taken, and properties it cannot store', async () => {
-    const withModels = createDataToolset({ dataset, defineModel: async (d) => d.name });
+    const withModels = createDataToolset({ dataset, invoker: 'did:test:me', defineModel: async (d) => d.name });
     expect(
       (await withModels.call('define_model', { name: 'TaskBlock', properties: [{ name: 'x', type: 'string' }] })).text,
     ).toMatch(/^Error: There is already/);
@@ -383,14 +387,14 @@ describe('a new kind of record', () => {
 describe('a feed an agent makes', () => {
   it('starts with its space’s interpretation defaults, as one the app makes does', async () => {
     const [space] = await model('Space').findAll(dataset);
-    await model('Space').update(dataset, space.id, { autoInterpret: true, extractionTargets: '["TaskBlock"]' });
+    await model('Space').update(dataset, space.id, { autoInterpret: true, extractionTargets: ['TaskBlock'] });
     const answer = await tools().call('create_record', {
       entity: 'CollectionBlock',
       fields: { kind: 'channel', mode: 'feed', title: 'Planning' },
       in: rootId,
     });
     const channel = await model('CollectionBlock').findOne(dataset, { where: { id: madeId(answer.text) } });
-    expect(channel).toMatchObject({ autoExtract: true, extractionTargets: '["TaskBlock"]' });
+    expect(channel).toMatchObject({ autoExtract: true, extractionTargets: ['TaskBlock'] });
   });
 });
 
@@ -400,7 +404,7 @@ describe('what an agent writes, marked as a model’s', () => {
 
   it('marks a record it creates with the run, and a post it writes', async () => {
     const run = await model('ModelRun').create(dataset, { kind: 'agent' });
-    const toolset = createDataToolset({ dataset, run: run.id });
+    const toolset = createDataToolset({ dataset, invoker: 'did:test:me', run: run.id });
 
     const made = await toolset.call('create_record', {
       entity: 'TaskBlock',
@@ -418,7 +422,7 @@ describe('what an agent writes, marked as a model’s', () => {
   it('keeps what it changed on an existing record as amendments naming the run', async () => {
     const task = await model('TaskBlock').create(dataset, { title: 'Buy paint', status: 'todo' });
     const run = await model('ModelRun').create(dataset, { kind: 'agent' });
-    await createDataToolset({ dataset, run: run.id }).call('update_record', {
+    await createDataToolset({ dataset, invoker: 'did:test:me', run: run.id }).call('update_record', {
       entity: 'TaskBlock',
       id: task.id,
       fields: { status: 'done', title: 'Buy paint' },

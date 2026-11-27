@@ -16,6 +16,7 @@ import { globSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { operationCatalog, registerOperations } from '@we/entities';
 import type { ContextData, ContextFragment, StoreEntry } from '@we/schema-shared';
 import { listFunctions } from '@we/schema-shared';
 import { format, resolveConfig } from 'prettier';
@@ -333,7 +334,21 @@ async function main() {
     functions, views, blocks and entities — reaches the reference and the validator from here, which
     is what turns `modules.transcribe.typo` from a silent nothing into an error with a suggestion.
   */
-  contextData.modules = await extractModules(repoRoot);
+  contextData.modules = await extractModules(repoRoot, (definition) => {
+    // A module's operations go in under its id, as the host registers them when it is active.
+    const operations = definition.contributes?.entities?.manifest.operations;
+    if (operations && Object.keys(operations).length)
+      registerOperations(definition.manifest.id, operations as Parameters<typeof registerOperations>[1], {
+        version: definition.contributes?.entities?.manifest.version,
+      });
+  });
+
+  /*
+    The declared operations — WE's own, registered by @we/entities on load, and the bundled
+    modules' just above — read from the registry, so the reference and the validator list exactly
+    what a template can invoke and say what each writes from its definition.
+  */
+  contextData.operations = operationCatalog();
 
   /*
     Custom elements from libraries the seed says this deployment bundles. Read from each package's
@@ -473,6 +488,7 @@ async function main() {
     sources: context.sources,
     modules: context.modules,
     foreignElements: context.foreignElements,
+    operations: context.operations,
     /*
       What the validator checks plugin names against, and nothing more: every name with its category,
       and where each catalogue says names are written. The descriptions, options and examples reach

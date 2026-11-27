@@ -179,10 +179,14 @@ export interface ModuleHostServices {
   ) => () => void;
   /** Composed documents in the space on screen — the records kernel's `documents`. */
   documents?: DocumentAccess;
+  /** The subject of the thread a response to a record joins — the records kernel's `threadSubject`. */
+  threadSubject?: (id: string, options?: DatasetTarget) => Promise<{ id: string; entity: string } | null>;
   /** This agent's own records, in their personal space. */
   agentData?: AgentDataKernel;
   /** How the current dataset is named in a record reference. */
   datasetRefKey?: () => string;
+  /** Run a declared operation as the signed-in agent — the host's `ops.<ns>.<name>`, imperative. */
+  runOperation?: (name: string, args?: Record<string, unknown>, target?: DatasetTarget) => Promise<unknown>;
 }
 
 const services: ModuleHostServices = {};
@@ -392,6 +396,7 @@ export function createModuleStoreDeps(framework: {
       find: async (entity, query, target) => (await services.findEntities?.(entity, query, target)) ?? [],
       subscribe: (entity, query, cb, target) => services.subscribeEntities?.(entity, query, cb, target) ?? (() => {}),
       documents: forwardDocuments(() => services.documents),
+      threadSubject: async (id, target) => (await services.threadSubject?.(id, target)) ?? null,
       onCopiedIn: (cb) => {
         copiedInListeners.add(cb);
         return () => copiedInListeners.delete(cb);
@@ -410,6 +415,10 @@ export function createModuleStoreDeps(framework: {
       },
       remove: async (entity, id) => {
         await services.agentData?.remove(entity, id);
+      },
+      run: async (name, args) => {
+        if (!services.agentData) throw new Error(`Cannot run ${name} yet: the host is still starting`);
+        return services.agentData.run(name, args);
       },
       documents: forwardDocuments(() => services.agentData?.documents),
     },
@@ -718,6 +727,13 @@ export function createModuleStoreDeps(framework: {
     identities: {
       get: (agentId) => services.identities?.get(agentId),
       fetch: (agentId) => services.identities?.fetch(agentId),
+    },
+    // Forwarded like the rest: the runner needs the session and the datasets, bound after stores mount.
+    operations: {
+      run: async (name, args, target) => {
+        if (!services.runOperation) throw new Error(`Cannot run ${name} yet: the host is still starting`);
+        return services.runOperation(name, args, target);
+      },
     },
 
     kernels,

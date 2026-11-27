@@ -116,6 +116,17 @@ function harness(
     update: async (entity: string, id: string, fields: Record<string, unknown>) => {
       updated.push({ entity, id, fields });
     },
+    // Every line here is the subject of its own thread, as a line nobody has answered is.
+    threadSubject: async (id: string) => ({ id, entity: 'TextBlock' }),
+  };
+  /** The operations run, in order — a reply is `feed.reply`. */
+  const ran: { name: string; args: Record<string, unknown> }[] = [];
+  const operations = {
+    run: async (name: string, args: Record<string, unknown> = {}) => {
+      ran.push({ name, args });
+      await creating;
+      return `reply-${ran.length}`;
+    },
   };
   const interpretation = {
     targets: () => targets.map((entity) => ({ entity })),
@@ -141,6 +152,7 @@ function harness(
     selfId: () => 'did:me',
     notify: (_tone: string, message: string, options?: unknown) => void notices.push({ message, options }),
     kernels: { records, interpretation },
+    operations,
     firstScreen,
     ...(showPart && { showPart }),
   } as never) as Record<string, (...args: unknown[]) => unknown>;
@@ -150,6 +162,7 @@ function harness(
     answer,
     notices,
     created,
+    ran,
     holdCreates,
     updated,
     subscriptions,
@@ -168,11 +181,11 @@ describe('messages written from the Feed', () => {
     vi.useFakeTimers();
     const h = harness();
     await vi.runAllTimersAsync();
-    await h.store.sendToFeed('see you all on Friday', '[{"start":0,"end":3,"type":"strong"}]');
+    await h.store.sendToFeed('see you all on Friday', [{ start: 0, end: 3, type: 'strong' }]);
     expect(h.created).toEqual([
       {
         entity: 'TextBlock',
-        fields: { text: 'see you all on Friday', source: 'typed', marks: '[{"start":0,"end":3,"type":"strong"}]' },
+        fields: { text: 'see you all on Friday', source: 'typed', marks: [{ start: 0, end: 3, type: 'strong' }] },
         options: { parent: { id: 'root-1', relation: 'children', entity: 'CollectionBlock' } },
       },
     ]);
@@ -189,11 +202,10 @@ describe('messages written from the Feed', () => {
       surface: 'feed',
     });
     await h.store.reply('line-1', 'I do');
-    expect(h.created[0]).toMatchObject({
-      entity: 'TextBlock',
-      fields: { text: 'I do', source: 'typed' },
-      options: { parent: { id: 'line-1', relation: 'responses' } },
-    });
+    expect(h.ran).toEqual([
+      { name: 'feed.reply', args: { line: 'line-1', text: 'I do', thread: 'line-1', threadEntity: 'TextBlock' } },
+    ]);
+    expect(h.created).toEqual([]);
     expect(h.store.replyingTo()).toBeNull();
   });
 

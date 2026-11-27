@@ -56,7 +56,7 @@ interface RecordInstance {
 }
 
 interface EntityClass {
-  create(handle: unknown, data: Record<string, unknown>): Promise<RecordInstance>;
+  create(handle: unknown, data: Record<string, unknown>, options?: { id?: string }): Promise<RecordInstance>;
 }
 
 export interface AppliedFixture {
@@ -97,21 +97,24 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
   /** Per-kind counter, so a node with no title still gets a stable id from its position. */
   const counters = new Map<string, number>();
 
-  const space = await getEntity('Space').create(dataset, {
-    id: `${fixture.id}-space`,
-    uuid: datasetId,
-    ...(deps.sharedId ? { url: deps.sharedId } : {}),
-    name: fixture.space.name,
-    description: fixture.space.description,
-    ...(fixture.space.avatar ? { avatar: fixture.space.avatar } : {}),
-    discovery: 'hidden',
-    // What the space opens as. Without these the preview shows whichever template the *agent*
-    // defaults to, which is `default` — so every fixture would photograph the same layout.
-    defaultTemplateId: fixture.templateId,
-    ...(fixture.themeId || fixture.theme ? { defaultThemeId: fixture.themeId ?? fixture.theme!.id } : {}),
-    ...(fixture.space.enabledViews ? { enabledViews: JSON.stringify(fixture.space.enabledViews) } : {}),
-    ...(fixture.space.enabledModules ? { enabledModules: JSON.stringify(fixture.space.enabledModules) } : {}),
-  });
+  const space = await getEntity('Space').create(
+    dataset,
+    {
+      uuid: datasetId,
+      ...(deps.sharedId ? { url: deps.sharedId } : {}),
+      name: fixture.space.name,
+      description: fixture.space.description,
+      ...(fixture.space.avatar ? { avatar: fixture.space.avatar } : {}),
+      discovery: 'hidden',
+      // What the space opens as. Without these the preview shows whichever template the *agent*
+      // defaults to, which is `default` — so every fixture would photograph the same layout.
+      defaultTemplateId: fixture.templateId,
+      ...(fixture.themeId || fixture.theme ? { defaultThemeId: fixture.themeId ?? fixture.theme!.id } : {}),
+      ...(fixture.space.enabledViews ? { enabledViews: fixture.space.enabledViews } : {}),
+      ...(fixture.space.enabledModules ? { enabledModules: fixture.space.enabledModules } : {}),
+    },
+    { id: `${fixture.id}-space` },
+  );
 
   await writeCarried(deps, fixture, getEntity);
 
@@ -133,21 +136,24 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
   // by slug through a hoisted query, precisely because the id is per-community.
   const signalTypeIds = new Map<string, string>();
   for (const type of fixture.signalTypes ?? []) {
-    const instance = await getEntity('SignalType').create(dataset, {
-      id: `${fixture.id}-signal-${type.slug}`,
-      name: type.name,
-      slug: type.slug,
-      icon: type.icon,
-      ...(type.description ? { description: type.description } : {}),
-      mode: type.mode ?? 'toggle',
-      ...(type.semantic ? { semantic: type.semantic } : {}),
-      rangeMin: 0,
-      rangeMax: 1,
-      step: 1,
-      aggregate: 'count',
-      allowChange: true,
-      valueType: 'numeric',
-    });
+    const instance = await getEntity('SignalType').create(
+      dataset,
+      {
+        name: type.name,
+        slug: type.slug,
+        icon: type.icon,
+        ...(type.description ? { description: type.description } : {}),
+        mode: type.mode ?? 'toggle',
+        ...(type.semantic ? { semantic: type.semantic } : {}),
+        rangeMin: 0,
+        rangeMax: 1,
+        step: 1,
+        aggregate: 'count',
+        allowChange: true,
+        valueType: 'numeric',
+      },
+      { id: `${fixture.id}-signal-${type.slug}` },
+    );
     signalTypeIds.set(type.slug, instance.id);
   }
 
@@ -162,21 +168,24 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
   async function write(node: FixtureNode, parent?: RecordInstance): Promise<RecordInstance> {
     const hasBody = Boolean(node.body?.length);
     const id = idFor(node);
-    const instance = await getEntity('CollectionBlock').create(dataset, {
-      id,
-      kind: node.kind,
-      mode: node.mode ?? (hasBody ? 'document' : 'feed'),
-      ...(node.title ? { title: node.title } : {}),
-      ...(node.slug ? { slug: node.slug } : {}),
-      ...(node.description ? { description: node.description } : {}),
-      ...(hasBody ? { editorState: editorState(node.body!, id), textContent: textContent(node.body!) } : {}),
-      // Both are overrides of values the entity layer would otherwise stamp with `selfId()` and
-      // `now`. Authorship is the entire reason a fixture looks like a community rather than a
-      // diary, and a feed where every row was written this instant sorts arbitrarily and reads
-      // "just now" all the way down.
-      ...(node.author ? { author: node.author } : {}),
-      ...(node.createdAt ? { createdAt: node.createdAt, timestamp: node.createdAt } : {}),
-    });
+    const instance = await getEntity('CollectionBlock').create(
+      dataset,
+      {
+        kind: node.kind,
+        mode: node.mode ?? (hasBody ? 'document' : 'feed'),
+        ...(node.title ? { title: node.title } : {}),
+        ...(node.slug ? { slug: node.slug } : {}),
+        ...(node.description ? { description: node.description } : {}),
+        ...(hasBody ? { editorState: editorState(node.body!, id), textContent: textContent(node.body!) } : {}),
+        // Both are overrides of values the entity layer would otherwise stamp with `selfId()` and
+        // `now`. Authorship is the entire reason a fixture looks like a community rather than a
+        // diary, and a feed where every row was written this instant sorts arbitrarily and reads
+        // "just now" all the way down.
+        ...(node.author ? { author: node.author } : {}),
+        ...(node.createdAt ? { createdAt: node.createdAt, timestamp: node.createdAt } : {}),
+      },
+      { id },
+    );
 
     created.push({ id, kind: node.kind, ...(node.title ? { title: node.title } : {}) });
 
@@ -188,26 +197,32 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
     // paragraph, keyed to match the blob, so a reader that walks `children` (the graph, a
     // transcript, a regeneration of the blob) finds the same content the blob carries.
     for (const [index, paragraph] of (node.body ?? []).entries()) {
-      const block = await getEntity('TextBlock').create(dataset, {
-        id: textBlockId(id, index),
-        style: 'normal',
-        text: paragraph,
-        ...(node.author ? { author: node.author } : {}),
-        ...(node.createdAt ? { createdAt: node.createdAt, timestamp: node.createdAt } : {}),
-      });
+      const block = await getEntity('TextBlock').create(
+        dataset,
+        {
+          style: 'normal',
+          text: paragraph,
+          ...(node.author ? { author: node.author } : {}),
+          ...(node.createdAt ? { createdAt: node.createdAt, timestamp: node.createdAt } : {}),
+        },
+        { id: textBlockId(id, index) },
+      );
       await instance.addChildren?.(block);
     }
 
     for (const [index, image] of (node.images ?? []).entries()) {
-      const block = await getEntity('ImageBlock').create(dataset, {
-        id: `${id}-image-${index + 1}`,
-        src: image.src,
-        ...(image.alt ? { altText: image.alt } : {}),
-        ...(image.width ? { width: image.width } : {}),
-        ...(image.height ? { height: image.height } : {}),
-        ...(node.author ? { author: node.author } : {}),
-        ...(node.createdAt ? { createdAt: node.createdAt, timestamp: node.createdAt } : {}),
-      });
+      const block = await getEntity('ImageBlock').create(
+        dataset,
+        {
+          src: image.src,
+          ...(image.alt ? { altText: image.alt } : {}),
+          ...(image.width ? { width: image.width } : {}),
+          ...(image.height ? { height: image.height } : {}),
+          ...(node.author ? { author: node.author } : {}),
+          ...(node.createdAt ? { createdAt: node.createdAt, timestamp: node.createdAt } : {}),
+        },
+        { id: `${id}-image-${index + 1}` },
+      );
       await instance.addChildren?.(block);
     }
 
@@ -217,12 +232,15 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
         throw new Error(`fixture '${fixture.id}': signal slug '${signal.slug}' has no matching signalTypes entry`);
       }
       for (const did of signal.by) {
-        const value = await getEntity('Signal').create(dataset, {
-          id: `${id}-${signal.slug}-${slug(did)}`,
-          signalTypeId,
-          value: 1,
-          author: did,
-        });
+        const value = await getEntity('Signal').create(
+          dataset,
+          {
+            signalTypeId,
+            value: 1,
+            author: did,
+          },
+          { id: `${id}-${signal.slug}-${slug(did)}` },
+        );
         await instance.addSignals?.(value);
       }
     }
@@ -277,30 +295,36 @@ async function writeCarried(
 
   for (const template of fixture.templates ?? []) {
     const meta = template.meta as { name?: string; description?: string; icon?: string; role?: string };
-    await getEntity('Template').create(dataset, {
-      id: `${fixture.id}-template-${template.id}`,
-      name: meta.name ?? template.id,
-      description: meta.description ?? '',
-      icon: meta.icon ?? 'layout',
-      origin: 'custom',
-      version: 1,
-      slug: template.id,
-      ...(meta.role ? { role: meta.role } : {}),
-      schema: asFile(template),
-    });
+    await getEntity('Template').create(
+      dataset,
+      {
+        name: meta.name ?? template.id,
+        description: meta.description ?? '',
+        icon: meta.icon ?? 'layout',
+        origin: 'custom',
+        version: 1,
+        slug: template.id,
+        ...(meta.role ? { role: meta.role } : {}),
+        schema: asFile(template),
+      },
+      { id: `${fixture.id}-template-${template.id}` },
+    );
   }
 
   if (fixture.theme) {
     const { id, name, icon, overrides } = fixture.theme;
-    await getEntity('Theme').create(dataset, {
-      id,
-      name,
-      icon: icon ?? 'palette',
-      origin: 'custom',
-      version: 1,
-      slug: id,
-      overrides: asFile(JSON.stringify(overrides)),
-    });
+    await getEntity('Theme').create(
+      dataset,
+      {
+        name,
+        icon: icon ?? 'palette',
+        origin: 'custom',
+        version: 1,
+        slug: id,
+        overrides: asFile(JSON.stringify(overrides)),
+      },
+      { id },
+    );
   }
 
   /*
@@ -313,15 +337,18 @@ async function writeCarried(
       throw new Error(`fixture '${fixture.id}' carries shapes, so applyFixture needs a declareShape dependency`);
     }
     const shapeId = `we://shapes/${fixture.id}-${toSnake(shape.name)}`;
-    await getEntity('Shape').create(dataset, {
-      id: `${fixture.id}-shape-${toSnake(shape.name)}`,
-      name: shape.name,
-      ...(shape.description ? { description: shape.description } : {}),
-      ...(shape.icon ? { icon: shape.icon } : {}),
-      shapeId,
-      version: 1,
-      definition: asFile(shape.manifest),
-    });
+    await getEntity('Shape').create(
+      dataset,
+      {
+        name: shape.name,
+        ...(shape.description ? { description: shape.description } : {}),
+        ...(shape.icon ? { icon: shape.icon } : {}),
+        shapeId,
+        version: 1,
+        definition: asFile(shape.manifest),
+      },
+      { id: `${fixture.id}-shape-${toSnake(shape.name)}` },
+    );
     await deps.declareShape(shape.manifest, `shape/${shapeId}`);
   }
 
@@ -332,12 +359,15 @@ async function writeCarried(
   */
   const instances = new Map<string, RecordInstance & Record<string, unknown>>();
   for (const record of fixture.records ?? []) {
-    const instance = await getEntity(record.entity).create(dataset, {
-      id: record.id,
-      ...(record.fields ?? {}),
-      ...(record.author ? { author: record.author } : {}),
-      ...(record.createdAt ? { createdAt: record.createdAt, timestamp: record.createdAt } : {}),
-    });
+    const instance = await getEntity(record.entity).create(
+      dataset,
+      {
+        ...(record.fields ?? {}),
+        ...(record.author ? { author: record.author } : {}),
+        ...(record.createdAt ? { createdAt: record.createdAt, timestamp: record.createdAt } : {}),
+      },
+      { id: record.id },
+    );
     instances.set(record.id, instance as RecordInstance & Record<string, unknown>);
   }
   for (const record of fixture.records ?? []) {

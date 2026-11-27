@@ -4,8 +4,8 @@
  * The model layer runs every file property through the file-storage language, which wants the
  * file's data — hand it an address and the language fails. The blob, a projection nobody writes
  * back through a language, carries the addresses. This suite registers a fake file store and pins
- * that split, plus the one economy that matters: a file the author never touched is not written
- * again.
+ * that split — in what `planPost` hands `core.createPost`, and in an edit — plus the one economy
+ * that matters: a file the author never touched is not written again.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -21,6 +21,8 @@ vi.mock('@we/entities', () => ({
     file_type: uri.slice(5, uri.indexOf(';')),
   }),
   runEntityTransaction: (_dataset: unknown, fn: (tx: { batchId: string }) => unknown) => fn({ batchId: 'batch-1' }),
+  // The id the operation would give each block, as a test can read it back.
+  postBlockId: async (_invocation: string, key: string) => `block-${key}`,
   getFileStore: () => ({
     store: async (dataset: unknown, file: { name: string; file_type: string; data_base64: string }) => {
       stored.push(file);
@@ -50,7 +52,7 @@ import { type BlockEntityStatic, registerBlock } from '../src/registry';
 import {
   copyableContent,
   createBlock,
-  createBlocks,
+  planPost,
   reconcileBlocks,
   resolveExpressionAddresses,
 } from '../src/serialization';
@@ -111,27 +113,34 @@ beforeEach(() => {
   storedIn.length = 0;
 });
 
+/** The blob a planned post's root stores, decoded. */
+const blobOf = (root: Record<string, unknown>) =>
+  decodeEditorState(`data:application/json;base64,${(root.editorState as { data_base64: string }).data_base64}`)!;
+
+/** A post holding one picture, as reading one back hands it to an edit. */
+async function storedImagePost(): Promise<{ root: FakeCollection; image: FakeImage }> {
+  const root = (await FakeCollection.create(perspective, { mode: 'document' })) as FakeCollection;
+  const image = (await FakeImage.create(perspective, { src: fileData })) as FakeImage;
+  await root.addChildren(image.id);
+  return { root, image };
+}
+
 describe('file-backed fields', () => {
   it('hands the model the file data and the blob the address', async () => {
     const blocks: ContentBlock[] = [{ _type: 'image', src: fileData, altText: 'a' }];
-    const root = (await createBlocks(perspective, blocks, { kind: 'post' })) as unknown as FakeCollection;
+    const { args } = await planPost(perspective, blocks, { kind: 'post' });
+    const [image] = args.blocks as { key: string; fields: Record<string, unknown> }[];
 
-    const image = byId.get(root.children[0]) as FakeImage;
-    expect(image.src).toEqual(fileData); // the payload — the model layer creates the expression
-    expect(blocks[0]._key).toBe(image.id); // the author's copy is stamped too
+    expect(image.fields.src).toEqual(fileData); // the payload — the model layer creates the expression
+    expect(blocks[0]._key).toBe('block-0'); // the author's copy is stamped too
 
-    const blob = decodeEditorState(
-      `data:application/json;base64,${(root.editorState as { data_base64: string }).data_base64}`,
-    )!;
+    const blob = blobOf(args.root as Record<string, unknown>);
     expect((blob[0] as { src?: string }).src).toBe('qm://image-block@4'); // the address, for the blob alone
-    expect(blob[0]._key).toBe(image.id);
+    expect(blob[0]._key).toBe('block-0');
   });
 
   it('turns a loaded data URI back into file data with its original name, and does not rewrite an untouched one', async () => {
-    const root = (await createBlocks(perspective, [{ _type: 'image', src: fileData }], {
-      kind: 'post',
-    })) as unknown as FakeCollection;
-    const image = byId.get(root.children[0]) as FakeImage;
+    const { root, image } = await storedImagePost();
     // What a reader hydrates: the model resolves the file to a data URI on read.
     image.src = 'data:image/png;base64,QUJD';
     stored.length = 0;
@@ -152,10 +161,7 @@ describe('file-backed fields', () => {
   });
 
   it('a changed image reaches the model as file data on edit', async () => {
-    const root = (await createBlocks(perspective, [{ _type: 'image', src: fileData }], {
-      kind: 'post',
-    })) as unknown as FakeCollection;
-    const image = byId.get(root.children[0]) as FakeImage;
+    const { root, image } = await storedImagePost();
     const replacement = { data_base64: 'WFla', name: 'image-block', file_type: 'image/png' };
 
     await reconcileBlocks(perspective, root as never, {
@@ -172,19 +178,19 @@ describe('a composition moving between datasets', () => {
   it('carries its files as payloads, so the destination uploads them into its own storage', async () => {
     const personal = { name: 'personal' };
     const space = { name: 'space' };
-    const root = (await createBlocks(
+    const { args: note } = await planPost(
       personal,
       [
         { _type: 'block', text: 'a note with a picture' },
         { _type: 'image', src: fileData, altText: 'a' },
       ],
       { kind: 'post' },
-    )) as unknown as FakeCollection;
+    );
     expect(storedIn).toEqual([personal]);
 
     const copy = await copyableContent(
       personal,
-      `data:application/json;base64,${(root.editorState as { data_base64: string }).data_base64}`,
+      `data:application/json;base64,${((note.root as Record<string, unknown>).editorState as { data_base64: string }).data_base64}`,
     );
 
     // No keys: they are record ids in the dataset it was read from, and name nothing elsewhere.
@@ -194,9 +200,8 @@ describe('a composition moving between datasets', () => {
 
     stored.length = 0;
     storedIn.length = 0;
-    const post = (await createBlocks(space, copy!, { kind: 'post' })) as unknown as FakeCollection;
+    await planPost(space, copy!, { kind: 'post' });
 
-    expect(post.id).not.toBe(root.id);
     expect(storedIn).toEqual([space]);
     // Under the name it was first uploaded with — content addressing lands on the same expression.
     expect(stored.map((file) => file.name)).toEqual(['image-block']);
@@ -208,16 +213,16 @@ describe('a composition moving between datasets', () => {
   });
 
   it('takes one block out of a composition by its key, wherever it sits', async () => {
-    const root = (await createBlocks(
+    const { args } = await planPost(
       {},
       [
         { _type: 'block', text: 'the words around it' },
         { _type: 'image', src: fileData, altText: 'the picture' },
       ],
       { kind: 'post' },
-    )) as unknown as FakeCollection;
-    const imageKey = root.children[1];
-    const blob = `data:application/json;base64,${(root.editorState as { data_base64: string }).data_base64}`;
+    );
+    const imageKey = 'block-1';
+    const blob = `data:application/json;base64,${((args.root as Record<string, unknown>).editorState as { data_base64: string }).data_base64}`;
 
     const picture = await copyableContent({}, blob, imageKey);
 
