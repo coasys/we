@@ -251,7 +251,7 @@ export type {
   TypedWhere,
   WriteProperties,
 } from './recordContract';
-export { isRecordExists, RECORD_TYPE_KEY, RecordExistsError, recordTypeOf } from './recordContract';
+export { isRecordExists, RECORD_BASE_FIELDS, RECORD_TYPE_KEY, RecordExistsError, recordTypeOf } from './recordContract';
 export { JsonValueError, readJsonValue, writtenJsonValue } from './jsonValue';
 export type {
   ConversationReply,

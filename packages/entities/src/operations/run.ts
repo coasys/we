@@ -30,6 +30,7 @@ import {
   type OperationParam,
   type OperationScope,
   type OperationStep,
+  RECORD_BASE_FIELDS,
 } from '@we/backend-shared';
 import {
   CORE_FUNCTIONS,
@@ -827,9 +828,14 @@ function keyOf(item: unknown, keyExpr: unknown, scope: Map<string, unknown>, ste
   throw staticError('forEachKey', 'an item has no key — give it an "id" or a "key", or the forEach a "key"', step);
 }
 
-/** A record's fields as data, so an expression reads values and never a backend's methods. */
+/**
+ * A record's fields as data, so an expression reads values and never a backend's methods. The
+ * contract's own fields are read by name: a backend may hold them as getters, which
+ * `Object.entries` never sees, and a found record without its `id` breaks every step that names it.
+ */
 function snapshot(instance: Instance): Bound {
   const out: Bound = {};
   for (const [key, value] of Object.entries(instance)) if (typeof value !== 'function') out[key] = value;
+  for (const key of RECORD_BASE_FIELDS) if (instance[key] !== undefined) out[key] = instance[key];
   return out;
 }

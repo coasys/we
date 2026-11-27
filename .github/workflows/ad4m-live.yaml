@@ -6,7 +6,7 @@
 # means.
 #
 # Not a required check, and not meant to become one: the suite lists cases AD4M is known to fail,
-# one of them intermittent, and a check that can go red for a reason in another repository should
+# some of them intermittent, and a check that can go red for a reason in another repository should
 # inform a merge rather than decide it — the same reasoning that took the AD4M source build out of
 # `build.yaml`.
 #
