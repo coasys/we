@@ -6,7 +6,7 @@
  * does to the page — its variables, its stylesheet — can be read back.
  */
 import { createInMemoryBackendPorts } from '@we/backend-inmemory';
-import { AGENT_DEFAULT, FOLLOW_SPACE, Theme } from '@we/entities';
+import { AGENT_DEFAULT, clearPredictions, FOLLOW_SPACE, predict, predictionLanded, Theme } from '@we/entities';
 import type { ReactivityPort } from '@we/reactivity';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -38,6 +38,7 @@ describe.each(reactivityPorts)('the theme store under %s', (_name, makePort) => 
     options: { space?: boolean; spaceTheme?: string; spaceTemplate?: string; settingsLate?: boolean } = {},
   ) {
     const [spaceRecord, setSpaceRecord] = reactivity.signal({
+      id: 'space-record',
       uuid: 'space',
       defaultThemeId: options.spaceTheme ?? '',
       defaultTemplateId: options.spaceTemplate ?? '',
@@ -362,6 +363,47 @@ describe.each(reactivityPorts)('the theme store under %s', (_name, makePort) => 
       expect(follow.value).toBe(FOLLOW_SPACE);
       expect(mine.value).toBe(AGENT_DEFAULT);
       expect(rest.some((option) => option.value === 'retro')).toBe(true);
+    });
+
+    describe('setting the space’s default theme while something hides it', () => {
+      afterEach(() => clearPredictions());
+      const setDefault = (id: string, fields: Record<string, unknown>) =>
+        predict(handles.space, id, [{ kind: 'edit', entity: 'Space', id: 'space-record', fields }]);
+
+      it('says so once, by the theme the agent is pinned to, and offers the way back', async () => {
+        const { store, setSpaceRecord } = await mount({ space: true, spaceTheme: 'retro' });
+        await store.applyTheme('cyberpunk');
+        told.length = 0;
+        // The operation's write, drawn over the held record as the spaces part draws it.
+        setSpaceRecord({ id: 'space-record', uuid: 'space', defaultThemeId: 'dark', defaultTemplateId: '' });
+        setDefault('set-default', { defaultThemeId: 'dark' });
+        await flush();
+        expect(told).toHaveLength(1);
+        expect(told[0]).toMatch(/^Saved\. You won't see it while you're using .* in this space\.$/);
+        // Its landing is the same write.
+        predictionLanded('set-default');
+        await flush();
+        expect(told).toHaveLength(1);
+      });
+
+      it('says nothing when nothing hides it, or for a write that leaves the default alone', async () => {
+        const { setSpaceRecord } = await mount({ space: true, spaceTheme: 'retro' });
+        told.length = 0;
+        setSpaceRecord({ id: 'space-record', uuid: 'space', defaultThemeId: 'dark', defaultTemplateId: '' });
+        setDefault('seen', { defaultThemeId: 'dark' });
+        setDefault('renamed', { name: 'The Allotment' });
+        await flush();
+        expect(told).toEqual([]);
+      });
+
+      it('says nothing for a pinned agent’s write that sets the template', async () => {
+        const { store } = await mount({ space: true, spaceTheme: 'retro' });
+        await store.applyTheme('cyberpunk');
+        told.length = 0;
+        setDefault('template', { defaultTemplateId: 'plots' });
+        await flush();
+        expect(told).toEqual([]);
+      });
     });
   });
 });

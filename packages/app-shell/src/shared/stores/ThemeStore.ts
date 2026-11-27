@@ -8,7 +8,16 @@ import { getSeed } from '@shared/seedRegistry';
 import { createLibraryFlow, type InstallDestination, type LibraryEntity } from '@shared/stores/libraryFlow';
 import type { NewRecord } from '@we/backend-shared';
 import type { ThemeData } from '@we/entities';
-import { AGENT_DEFAULT, asFileField, decodeFileAsString, FOLLOW_SPACE, modelToThemeData, Theme } from '@we/entities';
+import {
+  AGENT_DEFAULT,
+  asFileField,
+  decodeFileAsString,
+  FOLLOW_SPACE,
+  modelToThemeData,
+  onPredictionsChange,
+  predictionsFor,
+  Theme,
+} from '@we/entities';
 import type { Accessor, ReactivityPort } from '@we/reactivity';
 import type { BundleTheme, DisplayPreferences, ThemeOverrides } from '@we/schema-shared';
 import {
@@ -1988,6 +1997,50 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
     const datasetId = datasetStore.currentDataset()?.id;
     if (datasetId) await setSpaceThemeOverride(FOLLOW_SPACE, datasetId);
   }
+
+  /*
+    Members see a space's new default; the person who set it is the one looking at something else,
+    and without this the setting reads as not having saved.
+  */
+  function explainSpaceThemeHidden(): void {
+    const reason = untrack(spaceThemeHiddenBy);
+    const datasetId = datasetStore.currentDataset()?.id;
+    if (!reason || !datasetId) return;
+    const resolved = untrack(() => resolveThemeFor(datasetId));
+    const name = untrack(allThemes).find((t) => t.id === resolved)?.name ?? 'another theme';
+    if (reason === 'template') {
+      toasts.info(`Saved. You won't see it while this template brings its own theme, ${name}.`, 8000);
+      return;
+    }
+    const useSpaceTheme = { label: "Use the space's theme", run: () => void clearSpaceThemePin() };
+    toasts.info(`Saved. You won't see it while you're using ${name} in this space.`, 8000, useSpaceTheme);
+  }
+
+  /*
+    The default is written by an operation (`core.setSpaceDefaultTheme`), so whatever invoked it — the
+    settings page, a template, an agent — this agent's write is known here by its prediction: an edit
+    of the on-screen space's own record that sets `defaultThemeId`. Said once per invocation, after
+    every listener has drawn the prediction, so the theme it names is the one the new default leaves.
+  */
+  const explained = new Set<string>();
+  onCleanup(
+    onPredictionsChange(() => {
+      const ds = untrack(datasetStore.currentDataset);
+      const record = ds ? untrack(() => appearance()?.spaceFor(ds.id)) : undefined;
+      if (!ds || !record?.id) return;
+      const pending = predictionsFor(ds.handle);
+      for (const id of explained) if (!pending.some((p) => p.invocationId === id)) explained.delete(id);
+      for (const prediction of pending) {
+        if (explained.has(prediction.invocationId)) continue;
+        const setsTheme = prediction.writes.some(
+          (w) => w.kind === 'edit' && w.entity === 'Space' && w.id === record.id && 'defaultThemeId' in w.fields,
+        );
+        if (!setsTheme) continue;
+        explained.add(prediction.invocationId);
+        queueMicrotask(explainSpaceThemeHidden);
+      }
+    }),
+  );
 
   const store: ThemeStore = {
     automaticThemes,
