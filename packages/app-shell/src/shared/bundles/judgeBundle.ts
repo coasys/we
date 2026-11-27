@@ -129,6 +129,7 @@ export function judgeBundle(bundle: Bundle, deps: BundleJudgeDeps): BundleJudgem
       origin: `the bundle "${bundle.name}"`,
       grants,
       operation: ownSurface,
+      hasModule: (id) => deps.hasModule(id),
     });
     if (!accepted.schema) {
       refusals.push(

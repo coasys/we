@@ -20,6 +20,7 @@ import {
   resolveAppTemplate,
 } from '@shared/registries/appTemplates';
 import { withDerivedIds } from '@shared/registries/derivedIds';
+import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { reservedTemplateIds } from '@shared/registries/reservedTemplateIds';
 import { seedBundleAppId, seedBundlePages, seedBundlePieces } from '@shared/registries/seedBundles';
 import { slotRegistry } from '@shared/registries/slotRegistry';
@@ -58,7 +59,13 @@ import type { PlatformPort } from '../platform/port';
 import { CHROME_TIER, SPACE_TIER } from '../registries/templateSurface';
 import { beginRender, leaveSafeMode, safeMode, type SafeModeState } from '../safeMode';
 import { overrideOptions, overrideTemplateId, type SpaceAppearance } from '../spaceAppearance';
-import { acceptTemplate, describeAcceptance, describeCapabilities, describeRefusal } from '../templateAcceptance';
+import {
+  acceptTemplate,
+  describeAcceptance,
+  describeCapabilities,
+  describeRefusal,
+  missingRequiredModules,
+} from '../templateAcceptance';
 import { createTemplateDrafts } from '../templateDrafts';
 import {
   remoteUpdateFor,
@@ -1943,10 +1950,19 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
     // A deliberate install, so a refusal is worth a toast rather than a console line — the user
     // pressed a button and is owed an answer. Space tier: a marketplace template is a stranger's,
     // whatever it says about itself, and the tier is what makes it safe to press the button.
-    const accepted = acceptTemplate(raw, { origin: 'the marketplace', grants: SPACE_TIER });
+    const accepted = acceptTemplate(raw, {
+      origin: 'the marketplace',
+      grants: SPACE_TIER,
+      hasModule: (id) => moduleRegistry.has(id),
+    });
     if (!accepted.schema) {
       console.warn(describeAcceptance(accepted, 'the marketplace').join('\n'));
-      return { refused: 'That template is not a valid schema and was not installed' };
+      // A template that declared a module this deployment lacks says so; anything else is broken.
+      return {
+        refused: missingRequiredModules(raw, (id) => moduleRegistry.has(id)).length
+          ? `${describeRefusal(accepted)}. It was not installed.`
+          : 'That template is not a valid schema and was not installed',
+      };
     }
     return {
       marketplaceId: listing.id,

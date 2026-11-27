@@ -62,6 +62,7 @@ export type {
 // What a host provides a template beyond records, queries and operations — see `profiles/profiles.ts`.
 export {
   CAPABILITY_PROFILES,
+  catalogsNamedBy,
   describeHostOnly,
   HOST_ONLY_EQUIVALENTS,
   hostOnlyUses,
@@ -71,7 +72,14 @@ export {
   profileMemberNamed,
   profileOf,
 } from './profiles';
-export type { CapabilityProfile, HostOnlyUse, ProfileArg, ProfileEvent, ProfileMember } from './profiles';
+export type {
+  CapabilityProfile,
+  HostOnlyUse,
+  NamedCatalogs,
+  ProfileArg,
+  ProfileEvent,
+  ProfileMember,
+} from './profiles';
 
 export {
   asHostChrome,

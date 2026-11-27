@@ -127,9 +127,10 @@ different: board arrangement and tree ranks answer with data other members of a 
 card a column shows and where a card sits — so a host that draws boards or trees MUST give their
 answers.
 
-> **Planned.** A template names the profiles it needs, with the version it was written against, in
-> `meta.requires` ([Declaring what a template requires](../template/catalogs.md#declaring-what-a-template-requires)),
-> so a host can say what it lacks before drawing.
+A template names the profiles it needs, by id, in `meta.requires.profiles`
+([Declaring what a template requires](../template/catalogs.md#declaring-what-a-template-requires)),
+so a host can say what it lacks before drawing. Writing the list declares the template portable, and a
+validator then errs on a profile it names but does not list and warns on every host-only member it uses.
 
 ## WE-host-only
 

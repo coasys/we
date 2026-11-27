@@ -40,7 +40,7 @@ export const coasysSpace: TemplateSchema & { id: string } = {
     name: 'Coasys',
     description: 'A space as one tree and one view: its channels, calls, workflows and people beside what you chose.',
     icon: 'tree-structure',
-    requires: { modules: ['call', 'transcribe'] },
+    requires: { modules: ['call', 'feed', 'transcribe'] },
     // `grow` so the tree takes the lane's whole length and scrolls inside it, rather than stopping
     // where its rows do. `fixed`: see above.
     panels: [
