@@ -84,6 +84,12 @@ A profile says what a host provides; the group still decides whether a template 
 as for anything else in the bag. A template granted some of a profile's groups sees those members
 and not the others, which are absent rather than blocked.
 
+A profile groups members by what they are, not by the group that grants them, so one profile can hold
+members of several groups and one group can grant members of several profiles: `currentSpace` is in
+`space-settings` and `mutedDids` and `readMarkers` are in `identity`, and all three grant as `content`;
+the address is in `navigation` and grants as `view-state`. Which profile a member is in says what a
+host must provide alongside it; which group it is in says whether a template may have it.
+
 Actions in `space-settings` and `appearance` are pinned to the space on screen: none takes an argument
 naming another space, and a host MUST NOT let one reach another.
 
