@@ -2058,21 +2058,6 @@ export function shareSeatBox(resolved: Record<string, DockGeometry>, follows: Re
 }
 
 /**
- * The floating panels sharing one edge, in the order they sit along it — one lane, the one that
- * covers rather than displaces.
- *
- * Kept as its own name because most callers want exactly this and should not have to filter for it.
- * See {@link edgeGroups} for the arrangement rule itself.
- */
-export function columnMembers<T extends { placement: FloatPlacement }>(
-  panels: T[],
-  edge: Exclude<DockEdge, null>,
-  viewport: Viewport,
-): T[] {
-  return edgeGroups(panels, edge, viewport).find((group) => !group.displacing)?.members ?? [];
-}
-
-/**
  * Hand a span out between members that each want a base and a share of what is left.
  *
  * Flexbox, computed. Spare room after the bases goes out by grow ratio; a shortfall shrinks the bases
@@ -3890,13 +3875,19 @@ export function stackDropSlots(boxes: readonly Rect[]): DropSlot[] {
  * A home lane's targets: the seams between its sections (a row lane's run across, a column's down),
  * or, for an empty lane, its whole box — at least 24px each way — which is how a lane gets its first
  * section by dragging.
+ *
+ * Only once the panel has been carried to it: the outlet's box, grown by half of `EDGE_REACH_PX` on
+ * every side, stands in for an edge's band, so a lane's seams are not lit by a drag across the other
+ * side of the screen.
  */
 export function homeDropSlots(
   lane: string,
   direction: 'row' | 'column',
   sections: readonly Rect[],
   outlet: Rect,
+  carried: Rect,
 ): DropSlot[] {
+  if (overlapArea(carried, grown(outlet, EDGE_REACH_PX / 2)) <= 0) return [];
   const slots =
     sections.length > 0
       ? columnSlots(direction === 'row' ? 'top' : 'left', [...sections], outlet)

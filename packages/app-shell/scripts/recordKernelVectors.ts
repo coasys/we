@@ -13,7 +13,7 @@ import { arrangeBoard, type BoardArrangementInput } from '../src/shared/kernels/
 import { connectionKey } from '../src/shared/kernels/connectionKey';
 import * as dockLayout from '../src/shared/kernels/dockLayout';
 import { isUnder, rowFor, type RowInput, seatInRow } from '../src/shared/kernels/treeRanks';
-import { dockLayoutCases } from './dockLayoutCases';
+import { askScenario, dockLayoutScenarios } from './dockLayoutCases';
 
 const out = (name: string) => new URL(`../src/shared/kernels/vectors/${name}.json`, import.meta.url);
 const asJson = (value: unknown) => JSON.parse(JSON.stringify(value)) as unknown;
@@ -210,13 +210,27 @@ writeFileSync(
 // ── Dock layout ───────────────────────────────────────────────────────────────
 
 const kernel = dockLayout as unknown as Record<string, (...args: unknown[]) => unknown>;
-const dockVectors = dockLayoutCases().map((c) => {
-  const args = c.args.map((arg, index) => (c.absent?.includes(index) ? undefined : arg));
-  const answer = kernel[c.fn](...args);
+const dockScenarios = dockLayoutScenarios().map((scenario) => {
+  const answers = askScenario(scenario, (fn, args) => kernel[fn](...args));
   // JSON has no undefined: an answer of nothing is recorded as null.
-  return { ...c, output: answer === undefined ? null : asJson(answer) };
+  const asks = scenario.asks.map((ask, i) => ({
+    ...ask,
+    output: answers[i] === undefined ? null : asJson(answers[i]),
+  }));
+  return { ...scenario, asks };
 });
-// One vector per line, so a diff names the vectors that changed; formatted, the file is four times the size.
-writeFileSync(out('dockLayout'), `[\n${dockVectors.map((vector) => JSON.stringify(vector)).join(',\n')}\n]\n`);
+/*
+  One question per line, so a diff names the questions whose answers changed; formatted, the file is
+  several times the size. A scenario's inputs are its own line above them.
+*/
+writeFileSync(
+  out('dockLayout'),
+  `[\n${dockScenarios
+    .map(
+      ({ asks, ...scenario }) =>
+        `${JSON.stringify(scenario).slice(0, -1)},"asks":[\n${asks.map((ask) => `  ${JSON.stringify(ask)}`).join(',\n')}\n]}`,
+    )
+    .join(',\n')}\n]\n`,
+);
 
 console.log('kernel vectors recorded');

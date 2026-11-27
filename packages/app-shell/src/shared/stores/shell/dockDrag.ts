@@ -8,18 +8,15 @@ import {
   chooseTarget,
   displaces,
   type DockRequest,
-  EDGE_REACH_PX,
   edgeDropSlots,
   edgeOfSnap,
   edgeSeatOrder,
   type FloatPlacement,
   floorOf,
   followSeat,
-  grown,
   homeDropSlots,
   liftedCard,
   movedBoundary,
-  overlapArea,
   type Rect,
   resizedBox,
   RESTORE_DRAG_PX,
@@ -898,7 +895,7 @@ export function createShellDockDrag(deps: {
         The home lanes: every `$panels` outlet on screen that would take this panel, measured, because an
         outlet is an element the template laid out and only it knows where it is. Only for a panel an
         interface declared at home in a lane — a lane keeps nothing else (see `placementOf`) — and only
-        an outlet it has been carried to: the outlet's own box, grown a little, stands in for a band.
+        an outlet it has been carried to, which `homeDropSlots` decides from the outlet's box.
       */
       const homeSlots = () => {
         if (!declarationFor()[moving]?.home || !carried) return [];
@@ -908,14 +905,13 @@ export function createShellDockDrag(deps: {
           if (outlet.accepts.length > 0 && !outlet.accepts.includes(declaredPanelOf(moving))) return [];
           const drawn = outlet.el.getBoundingClientRect();
           const box = { x: drawn.x, y: drawn.y, w: drawn.width, h: drawn.height };
-          if (overlapArea(carried, grown(box, EDGE_REACH_PX / 2)) <= 0) return [];
           const sections = [...outlet.el.querySelectorAll<HTMLElement>(`[${HOME_SECTION_ATTR}]`)]
             .filter((section) => section.getAttribute(HOME_SECTION_ATTR) !== panelId)
             .map((section) => {
               const at = section.getBoundingClientRect();
               return { x: at.x, y: at.y, w: at.width, h: at.height };
             });
-          return homeDropSlots(outlet.lane, outlet.direction, sections, box);
+          return homeDropSlots(outlet.lane, outlet.direction, sections, box, carried);
         });
       };
 
