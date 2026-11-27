@@ -28,7 +28,7 @@
     },
     {
       "id": "rdf.values-are-json",
-      "note": "props, local state and queries are rdf:JSON literals, expressions and nulls inside them kept as written",
+      "note": "local state and queries are rdf:JSON literals; a prop is a triple of its own: text a literal, an expression a node, a list an rdf:List whose null is a JSON literal",
       "template": {
         "schemaVersion": 1,
         "meta": {
@@ -59,13 +59,23 @@
         "children": []
       },
       "nquads": [
-        "_:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://we.example/ns/template#Column> .",
-        "_:c14n0 <https://we.example/ns/template#children> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
-        "_:c14n0 <https://we.example/ns/template#localState> \"{\\\"open\\\":{\\\"initial\\\":false,\\\"type\\\":\\\"boolean\\\"}}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
-        "_:c14n0 <https://we.example/ns/template#meta> \"{\\\"description\\\":\\\"An RDF case\\\",\\\"icon\\\":\\\"graph\\\",\\\"name\\\":\\\"Case\\\"}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
-        "_:c14n0 <https://we.example/ns/template#props> \"{\\\"gap\\\":\\\"300\\\",\\\"items\\\":[1,null,\\\"a\\\"],\\\"label\\\":{\\\"$\\\":\\\"local.open ? \\\\\\\"Close\\\\\\\" : \\\\\\\"Open\\\\\\\"\\\"}}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
-        "_:c14n0 <https://we.example/ns/template#queries> \"{\\\"posts\\\":{\\\"entity\\\":\\\"Post\\\",\\\"limit\\\":5}}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
-        "_:c14n0 <https://we.example/ns/template#schemaVersion> \"1\"^^<http://www.w3.org/2001/XMLSchema#integer> ."
+        "_:c14n0 <https://we.example/ns/template#expression> \"local.open ? \\\"Close\\\" : \\\"Open\\\"\" .",
+        "_:c14n1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> \"null\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
+        "_:c14n1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n3 .",
+        "_:c14n2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> \"1\"^^<http://www.w3.org/2001/XMLSchema#integer> .",
+        "_:c14n2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n1 .",
+        "_:c14n3 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> \"a\" .",
+        "_:c14n3 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
+        "_:c14n4 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://we.example/ns/template#Column> .",
+        "_:c14n4 <https://we.example/ns/template#children> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
+        "_:c14n4 <https://we.example/ns/template#localState> \"{\\\"open\\\":{\\\"initial\\\":false,\\\"type\\\":\\\"boolean\\\"}}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
+        "_:c14n4 <https://we.example/ns/template#meta> \"{\\\"description\\\":\\\"An RDF case\\\",\\\"icon\\\":\\\"graph\\\",\\\"name\\\":\\\"Case\\\"}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
+        "_:c14n4 <https://we.example/ns/template#props> _:c14n5 .",
+        "_:c14n4 <https://we.example/ns/template#queries> \"{\\\"posts\\\":{\\\"entity\\\":\\\"Post\\\",\\\"limit\\\":5}}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
+        "_:c14n4 <https://we.example/ns/template#schemaVersion> \"1\"^^<http://www.w3.org/2001/XMLSchema#integer> .",
+        "_:c14n5 <https://we.example/ns/template#prop/gap> \"300\" .",
+        "_:c14n5 <https://we.example/ns/template#prop/items> _:c14n2 .",
+        "_:c14n5 <https://we.example/ns/template#prop/label> _:c14n0 ."
       ]
     },
     {
@@ -189,71 +199,77 @@
         ]
       },
       "nquads": [
-        "_:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n26 .",
+        "_:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n30 .",
         "_:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
-        "_:c14n1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://we.example/ns/template#FlipCard> .",
-        "_:c14n1 <https://we.example/ns/template#props> \"{\\\"front\\\":{\\\"children\\\":[\\\"front\\\"],\\\"type\\\":\\\"Card\\\"}}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
+        "_:c14n1 <https://we.example/ns/template#prop/front> _:c14n13 .",
         "_:c14n10 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://we.example/ns/template#Column> .",
-        "_:c14n10 <https://we.example/ns/template#children> _:c14n0 .",
-        "_:c14n10 <https://we.example/ns/template#path> \"/board\" .",
-        "_:c14n10 <https://we.example/ns/template#routes> _:c14n11 .",
-        "_:c14n11 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n3 .",
-        "_:c14n11 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
-        "_:c14n12 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://we.example/ns/template#$ref> .",
-        "_:c14n12 <https://we.example/ns/template#props> \"{\\\"def\\\":\\\"d1\\\"}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
-        "_:c14n13 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://we.example/ns/template#Column> .",
-        "_:c14n13 <https://we.example/ns/template#children> _:c14n15 .",
-        "_:c14n13 <https://we.example/ns/template#defs> _:c14n7 .",
-        "_:c14n13 <https://we.example/ns/template#id> \"root\" .",
-        "_:c14n13 <https://we.example/ns/template#meta> \"{\\\"description\\\":\\\"An RDF case\\\",\\\"icon\\\":\\\"graph\\\",\\\"name\\\":\\\"Case\\\",\\\"panels\\\":[{\\\"id\\\":\\\"side\\\",\\\"node\\\":{\\\"children\\\":[\\\"panel\\\"],\\\"type\\\":\\\"we-text\\\"}}]}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
-        "_:c14n13 <https://we.example/ns/template#routes> _:c14n2 .",
-        "_:c14n13 <https://we.example/ns/template#schemaVersion> \"1\"^^<http://www.w3.org/2001/XMLSchema#integer> .",
-        "_:c14n14 <https://we.example/ns/template#path> \"/old\" .",
-        "_:c14n14 <https://we.example/ns/template#redirect> \"/\" .",
-        "_:c14n15 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n12 .",
-        "_:c14n15 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n25 .",
-        "_:c14n16 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://we.example/ns/template#we-tab> .",
-        "_:c14n16 <https://we.example/ns/template#children> _:c14n17 .",
-        "_:c14n16 <https://we.example/ns/template#slot> \"nav\" .",
-        "_:c14n17 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> \"A\" .",
-        "_:c14n17 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
-        "_:c14n18 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> \"home\" .",
-        "_:c14n18 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
-        "_:c14n19 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n14 .",
-        "_:c14n19 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n20 .",
-        "_:c14n2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n9 .",
-        "_:c14n2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n19 .",
-        "_:c14n20 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n10 .",
+        "_:c14n10 <https://we.example/ns/template#children> _:c14n21 .",
+        "_:c14n10 <https://we.example/ns/template#keepAlive> \"true\"^^<http://www.w3.org/2001/XMLSchema#boolean> .",
+        "_:c14n10 <https://we.example/ns/template#path> \"/\" .",
+        "_:c14n11 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://we.example/ns/template#$ref> .",
+        "_:c14n11 <https://we.example/ns/template#props> _:c14n15 .",
+        "_:c14n12 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://we.example/ns/template#Column> .",
+        "_:c14n12 <https://we.example/ns/template#children> _:c14n0 .",
+        "_:c14n12 <https://we.example/ns/template#path> \"/board\" .",
+        "_:c14n12 <https://we.example/ns/template#routes> _:c14n14 .",
+        "_:c14n13 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://we.example/ns/template#Card> .",
+        "_:c14n13 <https://we.example/ns/template#children> _:c14n22 .",
+        "_:c14n14 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n3 .",
+        "_:c14n14 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
+        "_:c14n15 <https://we.example/ns/template#prop/def> \"d1\" .",
+        "_:c14n16 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://we.example/ns/template#Column> .",
+        "_:c14n16 <https://we.example/ns/template#children> _:c14n18 .",
+        "_:c14n16 <https://we.example/ns/template#defs> _:c14n8 .",
+        "_:c14n16 <https://we.example/ns/template#id> \"root\" .",
+        "_:c14n16 <https://we.example/ns/template#meta> \"{\\\"description\\\":\\\"An RDF case\\\",\\\"icon\\\":\\\"graph\\\",\\\"name\\\":\\\"Case\\\",\\\"panels\\\":[{\\\"id\\\":\\\"side\\\",\\\"node\\\":{\\\"children\\\":[\\\"panel\\\"],\\\"type\\\":\\\"we-text\\\"}}]}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
+        "_:c14n16 <https://we.example/ns/template#routes> _:c14n2 .",
+        "_:c14n16 <https://we.example/ns/template#schemaVersion> \"1\"^^<http://www.w3.org/2001/XMLSchema#integer> .",
+        "_:c14n17 <https://we.example/ns/template#path> \"/old\" .",
+        "_:c14n17 <https://we.example/ns/template#redirect> \"/\" .",
+        "_:c14n18 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n11 .",
+        "_:c14n18 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n25 .",
+        "_:c14n19 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://we.example/ns/template#we-tab> .",
+        "_:c14n19 <https://we.example/ns/template#children> _:c14n20 .",
+        "_:c14n19 <https://we.example/ns/template#slot> \"nav\" .",
+        "_:c14n2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n10 .",
+        "_:c14n2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n28 .",
+        "_:c14n20 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> \"A\" .",
         "_:c14n20 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
-        "_:c14n21 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n16 .",
-        "_:c14n21 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n22 .",
-        "_:c14n22 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n1 .",
-        "_:c14n22 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n23 .",
-        "_:c14n23 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n24 .",
-        "_:c14n23 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
-        "_:c14n24 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://we.example/ns/template#$routes> .",
-        "_:c14n25 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n6 .",
-        "_:c14n25 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n21 .",
-        "_:c14n26 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://we.example/ns/template#$routes> .",
+        "_:c14n21 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> \"home\" .",
+        "_:c14n21 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
+        "_:c14n22 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> \"front\" .",
+        "_:c14n22 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
+        "_:c14n23 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n4 .",
+        "_:c14n23 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n26 .",
+        "_:c14n24 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n19 .",
+        "_:c14n24 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n23 .",
+        "_:c14n25 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n7 .",
+        "_:c14n25 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n24 .",
+        "_:c14n26 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n27 .",
+        "_:c14n26 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
+        "_:c14n27 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://we.example/ns/template#$routes> .",
+        "_:c14n28 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n17 .",
+        "_:c14n28 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n29 .",
+        "_:c14n29 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n12 .",
+        "_:c14n29 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
         "_:c14n3 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://we.example/ns/template#Row> .",
         "_:c14n3 <https://we.example/ns/template#path> \"/\" .",
-        "_:c14n4 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> \"shared\" .",
-        "_:c14n4 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
-        "_:c14n5 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> \"head\" .",
+        "_:c14n30 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://we.example/ns/template#$routes> .",
+        "_:c14n4 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://we.example/ns/template#FlipCard> .",
+        "_:c14n4 <https://we.example/ns/template#props> _:c14n1 .",
+        "_:c14n5 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> \"shared\" .",
         "_:c14n5 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
-        "_:c14n6 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://we.example/ns/template#Card> .",
-        "_:c14n6 <https://we.example/ns/template#key> \"k1\" .",
-        "_:c14n6 <https://we.example/ns/template#slots> _:c14n8 .",
+        "_:c14n6 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> \"head\" .",
+        "_:c14n6 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
         "_:c14n7 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://we.example/ns/template#Card> .",
-        "_:c14n7 <https://we.example/ns/template#children> _:c14n4 .",
-        "_:c14n7 <https://we.example/ns/template#defName> \"d1\" .",
-        "_:c14n8 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://we.example/ns/template#Row> .",
+        "_:c14n7 <https://we.example/ns/template#key> \"k1\" .",
+        "_:c14n7 <https://we.example/ns/template#slots> _:c14n9 .",
+        "_:c14n8 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://we.example/ns/template#Card> .",
         "_:c14n8 <https://we.example/ns/template#children> _:c14n5 .",
-        "_:c14n8 <https://we.example/ns/template#slotName> \"header\" .",
-        "_:c14n9 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://we.example/ns/template#Column> .",
-        "_:c14n9 <https://we.example/ns/template#children> _:c14n18 .",
-        "_:c14n9 <https://we.example/ns/template#keepAlive> \"true\"^^<http://www.w3.org/2001/XMLSchema#boolean> .",
-        "_:c14n9 <https://we.example/ns/template#path> \"/\" ."
+        "_:c14n8 <https://we.example/ns/template#defName> \"d1\" .",
+        "_:c14n9 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://we.example/ns/template#Row> .",
+        "_:c14n9 <https://we.example/ns/template#children> _:c14n6 .",
+        "_:c14n9 <https://we.example/ns/template#slotName> \"header\" ."
       ]
     },
     {
@@ -284,6 +300,133 @@
         "_:c14n0 <https://we.example/ns/template#schemaVersion> \"1\"^^<http://www.w3.org/2001/XMLSchema#integer> .",
         "_:c14n0 <https://we.example/ns/template#styles> \"{\\\"filter\\\":\\\"blur(2px)\\\"}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
         "_:c14n0 <https://we.example/ns/template#theme> \"{\\\"themeName\\\":\\\"dark\\\"}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> ."
+      ]
+    },
+    {
+      "id": "rdf.props-as-triples",
+      "note": "each prop is one triple under we:prop/<name>, a name like a key of the format included; a number and a boolean are typed literals, data and an empty props one JSON literal each, a token a node, and a node in a node prop a node",
+      "template": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "An RDF case",
+          "icon": "graph"
+        },
+        "type": "Column",
+        "props": {
+          "gap": 300,
+          "wrap": false,
+          "type": "email",
+          "id": "field",
+          "options": {
+            "a": [1, 2]
+          }
+        },
+        "children": [
+          {
+            "type": "we-divider",
+            "props": {}
+          },
+          {
+            "type": "$each",
+            "props": {
+              "items": {
+                "$query": {
+                  "entity": "Post",
+                  "limit": 3
+                }
+              },
+              "as": "post"
+            },
+            "children": [
+              {
+                "type": "we-text",
+                "children": [
+                  {
+                    "$": "post.title"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "$if",
+            "props": {
+              "condition": {
+                "$": "local.open"
+              },
+              "then": {
+                "type": "we-text",
+                "props": {
+                  "variant": "caption"
+                },
+                "children": ["open"]
+              }
+            }
+          },
+          {
+            "type": "we-button",
+            "props": {
+              "label": "Go",
+              "onClick": {
+                "$navigate": {
+                  "to": "/board"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "nquads": [
+        "_:c14n0 <https://we.example/ns/template#expression> \"local.open\" .",
+        "_:c14n1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://we.example/ns/template#$if> .",
+        "_:c14n1 <https://we.example/ns/template#props> _:c14n6 .",
+        "_:c14n10 <https://we.example/ns/template#$query> \"{\\\"entity\\\":\\\"Post\\\",\\\"limit\\\":3}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
+        "_:c14n11 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n9 .",
+        "_:c14n11 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
+        "_:c14n12 <https://we.example/ns/template#prop/variant> \"caption\" .",
+        "_:c14n13 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://we.example/ns/template#we-text> .",
+        "_:c14n13 <https://we.example/ns/template#children> _:c14n19 .",
+        "_:c14n14 <https://we.example/ns/template#$navigate> \"{\\\"to\\\":\\\"/board\\\"}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
+        "_:c14n15 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://we.example/ns/template#we-text> .",
+        "_:c14n15 <https://we.example/ns/template#children> _:c14n2 .",
+        "_:c14n15 <https://we.example/ns/template#props> _:c14n12 .",
+        "_:c14n16 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n3 .",
+        "_:c14n16 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n21 .",
+        "_:c14n17 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://we.example/ns/template#Column> .",
+        "_:c14n17 <https://we.example/ns/template#children> _:c14n16 .",
+        "_:c14n17 <https://we.example/ns/template#meta> \"{\\\"description\\\":\\\"An RDF case\\\",\\\"icon\\\":\\\"graph\\\",\\\"name\\\":\\\"Case\\\"}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
+        "_:c14n17 <https://we.example/ns/template#props> _:c14n8 .",
+        "_:c14n17 <https://we.example/ns/template#schemaVersion> \"1\"^^<http://www.w3.org/2001/XMLSchema#integer> .",
+        "_:c14n18 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://we.example/ns/template#$each> .",
+        "_:c14n18 <https://we.example/ns/template#children> _:c14n20 .",
+        "_:c14n18 <https://we.example/ns/template#props> _:c14n5 .",
+        "_:c14n19 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n7 .",
+        "_:c14n19 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
+        "_:c14n2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> \"open\" .",
+        "_:c14n2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
+        "_:c14n20 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n13 .",
+        "_:c14n20 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
+        "_:c14n21 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n18 .",
+        "_:c14n21 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n22 .",
+        "_:c14n22 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n1 .",
+        "_:c14n22 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n11 .",
+        "_:c14n3 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://we.example/ns/template#we-divider> .",
+        "_:c14n3 <https://we.example/ns/template#props> \"{}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
+        "_:c14n4 <https://we.example/ns/template#prop/label> \"Go\" .",
+        "_:c14n4 <https://we.example/ns/template#prop/onClick> _:c14n14 .",
+        "_:c14n5 <https://we.example/ns/template#prop/as> \"post\" .",
+        "_:c14n5 <https://we.example/ns/template#prop/items> _:c14n10 .",
+        "_:c14n6 <https://we.example/ns/template#prop/condition> _:c14n0 .",
+        "_:c14n6 <https://we.example/ns/template#prop/then> _:c14n15 .",
+        "_:c14n7 <https://we.example/ns/template#expression> \"post.title\" .",
+        "_:c14n8 <https://we.example/ns/template#prop/gap> \"300\"^^<http://www.w3.org/2001/XMLSchema#integer> .",
+        "_:c14n8 <https://we.example/ns/template#prop/id> \"field\" .",
+        "_:c14n8 <https://we.example/ns/template#prop/options> \"{\\\"a\\\":[1,2]}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
+        "_:c14n8 <https://we.example/ns/template#prop/type> \"email\" .",
+        "_:c14n8 <https://we.example/ns/template#prop/wrap> \"false\"^^<http://www.w3.org/2001/XMLSchema#boolean> .",
+        "_:c14n9 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://we.example/ns/template#we-button> .",
+        "_:c14n9 <https://we.example/ns/template#props> _:c14n4 ."
       ]
     }
   ]
