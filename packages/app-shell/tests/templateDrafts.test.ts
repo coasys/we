@@ -5,8 +5,9 @@
  * the nodes that changed rather than being handed a new section to remount. And the copy is keyed by
  * the template's origin as well as its id, since an agent's template and a space's can share one.
  *
- * Run over Solid's live documents and over the plain ones on the test port. Only Solid's keeps the
- * very objects a reader holds across an edit; the plain ones hand out the edited tree afresh.
+ * Run over Solid's live documents and over the plain ones on the test port and Vue. Only Solid's
+ * keeps the very objects a reader holds across an edit; the plain ones hand out the edited tree
+ * afresh.
  */
 import type { LiveTemplates } from '@shared/liveTemplate';
 import { plainLiveTemplates } from '@shared/liveTemplate';

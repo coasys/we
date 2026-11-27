@@ -7,8 +7,7 @@
  * disappears until the app is reloaded — which is what happened, because the two events shared a
  * millisecond and the guard compared timestamps with a strict `>`.
  *
- * Plain store tests, run once under each reactivity port: Solid's, and the test port that runs a new
- * effect at once where Solid defers it.
+ * Plain store tests, run once under each engine (Solid, the test port, Vue).
  */
 import type { ReactivityPort } from '@we/reactivity';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

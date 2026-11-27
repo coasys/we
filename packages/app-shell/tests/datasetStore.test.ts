@@ -2,8 +2,7 @@
  * datasetStore: the dataset list, which dataset is on screen, and what a switch publishes — including
  * the switches that must not land, and a re-publish of the space on screen that must wake nobody.
  *
- * Plain store tests, run once under each reactivity port: Solid's, and the test port that runs a new
- * effect at once where Solid defers it.
+ * Plain store tests, run once under each engine (Solid, the test port, Vue).
  */
 import type { DatasetChangeHandlers, DatasetRef } from '@we/backend-shared';
 import { registerEntity } from '@we/entities';

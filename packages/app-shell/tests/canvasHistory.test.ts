@@ -58,8 +58,8 @@ import { createRecordStore, type RecordStore } from '../src/shared/stores/Record
 import { reactivityPorts } from './support/engines';
 
 /*
-  Run once under each reactivity port: Solid's, and the test port, which runs a new effect at once
-  where Solid defers it. Each store is built in a root of its own and disposed after its case.
+  Run once under each engine (Solid, the test port, Vue). Each store is built in a root of its own
+  and disposed after its case.
 */
 let reactivity: ReactivityPort;
 const disposers: (() => void)[] = [];

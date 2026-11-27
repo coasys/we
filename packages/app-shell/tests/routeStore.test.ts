@@ -4,9 +4,8 @@
  * push-vs-replace writes, and the per-path search memory that keeps a
  * kept-alive route's URL truthful after leaving and returning.
  *
- * A plain store test, run once under each reactivity port: Solid's, and the test port that runs a
- * new effect at once where Solid defers it. Nothing is mounted: the address and its history are the
- * test platform's.
+ * A plain store test, run once under each engine (Solid, the test port, Vue). Nothing is mounted:
+ * the address and its history are the test platform's.
  */
 import type { ReactivityPort } from '@we/reactivity';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

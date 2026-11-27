@@ -2,9 +2,8 @@
  * shapeStore: the space's models read and adopted on a switch, the wizard's draft and its guards,
  * a save, and the hint editor.
  *
- * Plain store tests, run once under each reactivity port: Solid's, and the test port that runs a new
- * effect at once where Solid defers it. The backend is a stand-in schema port that keeps models in a
- * map and records what it installs.
+ * Plain store tests, run once under each engine (Solid, the test port, Vue). The backend is a
+ * stand-in schema port that keeps models in a map and records what it installs.
  */
 import type { EntityHintState, EntityManifest, StoredShape } from '@we/backend-shared';
 import type { ReactivityPort, Setter } from '@we/reactivity';

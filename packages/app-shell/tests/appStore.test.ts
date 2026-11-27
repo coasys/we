@@ -1,8 +1,7 @@
 /**
  * The embedded applications this agent has installed, and which one is on screen.
  *
- * A plain store test, run once under each reactivity port: Solid's, and the test port that runs a
- * new effect at once where Solid defers it.
+ * A plain store test, run once under each engine (Solid, the test port, Vue).
  */
 import type { ReactivityPort } from '@we/reactivity';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

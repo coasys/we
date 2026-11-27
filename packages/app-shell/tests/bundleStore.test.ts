@@ -2,8 +2,8 @@
  * bundleStore: an app read from a file, asked about, installed through the stores it writes into,
  * and removed again — and what it keeps for the next reload's first frame.
  *
- * Plain store tests, run once under each reactivity port: Solid's, and the test port that runs a new
- * effect at once where Solid defers it. The stores it writes through are stand-ins that record.
+ * Plain store tests, run once under each engine (Solid, the test port, Vue). The stores it writes
+ * through are stand-ins that record.
  */
 import type { ReactivityPort, Setter } from '@we/reactivity';
 import type { TemplateSchema } from '@we/schema-shared';

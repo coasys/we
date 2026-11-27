@@ -1,9 +1,9 @@
 /**
  * The editor store over the real edit target and live documents, with the stores around it doubled.
  *
- * Plain store tests, run once under each reactivity port: Solid with its nested live documents, and
- * the test port with the plain ones, whose every read of a template wakes on every edit — so a
- * session that ended, a chat list that reloaded or a history that was trimmed on an edit fails there.
+ * Plain store tests, run once under each engine: Solid with its nested live documents, and the test
+ * port and Vue with the plain ones, whose every read of a template wakes on every edit — so a session
+ * that ended, a chat list that reloaded or a history that was trimmed on an edit fails there.
  */
 import type { ReactivityPort } from '@we/reactivity';
 import { createTestReactivity } from '@we/reactivity/testing';

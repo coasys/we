@@ -9,8 +9,7 @@
  * as one naming none.
  *
  * Driven through real signals and effects, because every one of these was an effect hearing too
- * little or too early — under each reactivity port: Solid's, and the test port that runs an effect
- * the moment it is woken where Solid may hold it.
+ * little or too early — under each engine (Solid, the test port, Vue).
  */
 import type { ReactivityPort } from '@we/reactivity';
 import { solidReactivity } from '@we/reactivity-solid';

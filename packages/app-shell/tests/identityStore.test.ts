@@ -2,8 +2,7 @@
  * identityStore and deviceStore: what they read from the backend's identity port, which changes
  * they ask it for, and that they never hold anything but public state.
  *
- * Plain store tests, run once under each reactivity port: Solid's, and the test port that runs a new
- * effect at once where Solid defers it.
+ * Plain store tests, run once under each engine (Solid, the test port, Vue).
  */
 import type {
   DeviceKeyView,

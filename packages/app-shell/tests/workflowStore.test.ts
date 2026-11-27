@@ -6,8 +6,8 @@
  * file crashed the whole app at boot ("Cannot read properties of undefined (reading 'filter')"),
  * and nothing caught it, because nothing built the store. This does.
  *
- * Plain store tests, run once under each reactivity port: Solid's, and the test port that runs a new
- * effect at once where Solid defers it. Each case has a fresh backend and fresh models.
+ * Plain store tests, run once under each engine (Solid, the test port, Vue). Each case has a fresh
+ * backend and fresh models.
  */
 import { createInMemoryWorkflowPort } from '@we/backend-inmemory';
 import type { WorkflowDefinition } from '@we/backend-shared';
