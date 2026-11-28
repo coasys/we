@@ -23,7 +23,7 @@ import type { QueryStateField, SchemaNode, SchemaProp } from '@we/schema-shared'
 export interface MediaGridOptions {
   /** `CollectionBlock.kind` to draw from. Usually `'post'`. */
   kind: string;
-  /** Restrict to one author — a profile grid. Omit for everything in the space. */
+  /** Restrict to one author, or any of a list (`me.dids`) — a profile grid. Omit for everything in the space. */
   author?: SchemaProp;
   /** Id of a parent collection whose children to draw from — a playlist, an album. */
   anchorId?: AnchorId;
@@ -52,8 +52,9 @@ export function mediaGrid(opts: MediaGridOptions): SchemaNode {
         // different arrangement, and a block list that works in one view and not the other is
         // worse than none.
         not: { $: 'spaceStore.mutedDids' },
-        ...(opts.author !== undefined && { eq: opts.author }),
       },
+      // Its own clause: beside `not` on one key it was never read. A list (`me.dids`) matches any.
+      ...(opts.author !== undefined && { AND: [{ author: opts.author }] }),
     },
     order: { createdAt: 'desc' },
     limit: 60,

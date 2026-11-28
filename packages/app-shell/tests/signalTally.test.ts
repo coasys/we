@@ -109,6 +109,53 @@ describe('a reaction drawn before it is stored', () => {
     expect(rows).toEqual([{ author: me, signalTypeId: 'st-like', value: 0 }]);
   });
 
+  it('stands in for the reaction my other computer gave, given every DID that is me', () => {
+    // `upsertSignal` replaces a reaction from any of my devices, so the overlay does too — or the
+    // laptop's heart outlives a withdrawal pressed on the desktop for a round trip.
+    const dids = ['did:desktop', 'did:laptop', 'did:scid:me'];
+    const laptop = [
+      { author: 'did:laptop', signalTypeId: 'st-like', value: 3 },
+      { author: 'did:them', signalTypeId: 'st-like', value: 5 },
+    ];
+    const pending = (value: number | null) => [{ record: 'post-1', type: 'st-like', value }];
+    const changed = reactions({ signals: laptop, record: 'post-1', type: 'st-like', me: dids, pending: pending(4) });
+    expect(changed).toEqual([
+      { author: 'did:them', signalTypeId: 'st-like', value: 5 },
+      { author: 'did:desktop', signalTypeId: 'st-like', value: 4 },
+    ]);
+    const withdrawn = reactions({
+      signals: laptop,
+      record: 'post-1',
+      type: 'st-like',
+      me: dids,
+      pending: pending(null),
+    });
+    expect(withdrawn).toEqual([{ author: 'did:them', signalTypeId: 'st-like', value: 5 }]);
+  });
+
+  it('counts me once, as my newest, where two of my computers each left a reaction', () => {
+    const dids = ['did:desktop', 'did:laptop', 'did:scid:me'];
+    const them = { id: 's0', author: 'did:them', signalTypeId: 'st-like', value: 5 };
+    const older = { id: 's1', author: 'did:desktop', signalTypeId: 'st-like', value: 3, createdAt: 1000 };
+    const newer = { id: 's2', author: 'did:laptop', signalTypeId: 'st-like', value: 4, createdAt: 2000 };
+    for (const signals of [
+      [them, older, newer],
+      [newer, them, older],
+    ]) {
+      const read = reactions({ signals, record: 'post-1', type: 'st-like', me: dids, pending: [] });
+      expect(read).toHaveLength(2);
+      expect(read).toContain(newer);
+    }
+    // Written at the same moment, the larger id wins, whatever order the backend listed them in.
+    const tieA = { ...older, createdAt: 2000 };
+    for (const signals of [
+      [tieA, newer],
+      [newer, tieA],
+    ]) {
+      expect(reactions({ signals, record: 'post-1', type: 'st-like', me: dids })).toEqual([newer]);
+    }
+  });
+
   it('leaves everybody else’s alone', () => {
     const others = [
       { author: 'did:a', signalTypeId: 'st-like', value: 1 },
@@ -138,5 +185,39 @@ describe('a reaction drawn before it is stored', () => {
     expect(reactions({ signals: 'nonsense', record: 'post-1', type: 'st-like', me, pending: held(1) })).toEqual([
       { author: me, signalTypeId: 'st-like', value: 1 },
     ]);
+  });
+});
+
+describe('reactions across everybody’s computers', () => {
+  // Ana liked from both of her computers and both reactions stand; Ben liked once.
+  const ana = { did: 'did:scid:ana', devices: ['did:ana-phone', 'did:ana-laptop'] };
+  const ben = { did: 'did:scid:ben', devices: ['did:ben-desktop'] };
+  const profiles = [ana, ben];
+  const signals = [
+    { id: 's1', author: 'did:ana-laptop', signalTypeId: 'st-like', value: 1, createdAt: 1000 },
+    { id: 's2', author: 'did:ana-phone', signalTypeId: 'st-like', value: 1, createdAt: 2000 },
+    { id: 's3', author: 'did:ben-desktop', signalTypeId: 'st-like', value: 1, createdAt: 500 },
+  ];
+  const count = (me: string[]) =>
+    signalTally({ signals: reactions({ signals, record: 'post-1', type: 'st-like', me, profiles }), type: like });
+
+  it('counts somebody else’s two computers once, as their newest', () => {
+    const read = reactions({ signals, record: 'post-1', type: 'st-like', me: ['did:ben-desktop'], profiles });
+    expect(read).toHaveLength(2);
+    expect(read).toContain(signals[1]);
+    expect(read).not.toContain(signals[0]);
+  });
+
+  it('gives two readers the same count', () => {
+    const asAna = count(['did:ana-phone', 'did:ana-laptop', 'did:scid:ana']);
+    expect(asAna).toBe(2);
+    expect(count(['did:ben-desktop', 'did:scid:ben'])).toBe(asAna);
+    expect(count(['did:carol'])).toBe(asAna);
+  });
+
+  it('counts a key no profile lists as its own person', () => {
+    expect(reactions({ signals, record: 'post-1', type: 'st-like', me: ['did:carol'], profiles: [ben] })).toHaveLength(
+      3,
+    );
   });
 });

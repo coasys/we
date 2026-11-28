@@ -368,7 +368,7 @@ function replyBody(
             {
               type: '$if',
               props: {
-                condition: { $: `${as}.author == me.did` },
+                condition: { $: `${as}.author in me.dids` },
                 then: {
                   type: 'Row',
                   props: {

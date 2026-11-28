@@ -8,6 +8,7 @@
  * the backend. See `SeedSource.derive`.
  */
 import type { GraphValue } from '@we/graph-protocol';
+import { compareWritten, type Written } from '@we/optimism';
 
 /** One person's answer on one card: who, and what they gave. */
 export type Vote = [author: string, value: number];
@@ -39,6 +40,47 @@ export function effectiveAggregate(aggregate?: string, mode?: string): Aggregate
   return aggregate === 'sum' || aggregate === 'mean' || aggregate === 'median' ? aggregate : 'count';
 }
 
+/** The reader's DIDs — `me.dids`, this device first and their person last — or one DID, as a list. */
+function selvesOf(me: string | readonly string[] | undefined): readonly string[] {
+  return typeof me === 'string' ? (me ? [me] : []) : (me ?? []).filter((did) => typeof did === 'string' && did);
+}
+
+/**
+ * The key the reader's own voice is kept under: their person, the last of `me.dids` — the one entry
+ * that does not depend on which of their computers is reading. Weights and mutes for it are written
+ * under it too (`voicesParam`), so what is stored means the same on every device. Undefined for nobody.
+ */
+export function ownVoice(me: string | readonly string[] | undefined): string | undefined {
+  const selves = selvesOf(me);
+  return selves[selves.length - 1];
+}
+
+/**
+ * A setting held per voice — a weight, a mute — for one author.
+ *
+ * Another person's is under their key, exactly. The reader's own may be under any of their DIDs: one set
+ * from another computer before voices were kept under the person, or before this one knew its person.
+ * The person's entry wins, then the rest in sorted order — a fixed order, never this device's, so every
+ * computer of theirs resolves the same entry.
+ */
+export function voiceSetting<V>(
+  table: ReadonlyMap<string, V>,
+  author: string,
+  me: string | readonly string[] | undefined,
+): V | undefined {
+  const selves = selvesOf(me);
+  if (!selves.includes(author)) return table.get(author);
+  const own = ownVoice(me)!;
+  for (const did of [own, ...selves.filter((d) => d !== own).sort()]) if (table.has(did)) return table.get(did);
+  return undefined;
+}
+
+/** Whether a voice is muted — the reader's own when any of their DIDs is. */
+function mutedVoice(muted: ReadonlySet<string>, author: string, me: string | readonly string[] | undefined) {
+  const selves = selvesOf(me);
+  return selves.includes(author) ? selves.some((did) => muted.has(did)) : muted.has(author);
+}
+
 /**
  * Each person's newest answer of one type, from a card's reaction rows — or null where the rows were not
  * read at all, which is not the same as nobody having answered.
@@ -49,22 +91,29 @@ export function effectiveAggregate(aggregate?: string, mode?: string): Aggregate
  *
  * An unattributed reaction is left out: nothing can be said about it — not whose it is, not whether the
  * reader has muted them, not whether it duplicates one already counted.
+ *
+ * The reader's own devices are one voice, kept under {@link ownVoice} — their person, the same key on
+ * whichever of their computers is reading, so a weight or a mute set on one means the same on another.
  */
-export function readVotes(rows: unknown, type: string): Vote[] | null {
+export function readVotes(rows: unknown, type: string, me?: string | readonly string[]): Vote[] | null {
   if (!type || !Array.isArray(rows)) return null;
-  const latest = new Map<string, { value: number; at: string }>();
+  const selves = selvesOf(me);
+  const own = ownVoice(me);
+  const latest = new Map<string, Written & { value: number }>();
   for (const row of rows) {
     if (!row || typeof row !== 'object') continue;
     const signal = row as Record<string, unknown>;
     if (signal.signalTypeId !== type) continue;
-    const author = typeof signal.author === 'string' ? signal.author : '';
-    if (!author) continue;
+    const raw = typeof signal.author === 'string' ? signal.author : '';
+    if (!raw) continue;
+    const author = own && selves.includes(raw) ? own : raw;
     const value = Number(signal.value);
-    const at = typeof signal.createdAt === 'string' ? signal.createdAt : '';
+    const candidate = { id: signal.id, createdAt: signal.createdAt, value: Number.isFinite(value) ? value : 0 };
     const held = latest.get(author);
-    // `>=` so a pair with no timestamps at all still settles on one of them rather than on neither.
-    if (held && held.at >= at) continue;
-    latest.set(author, { value: Number.isFinite(value) ? value : 0, at });
+    // The newest by `compareWritten` — the order every other reader of one person's records uses, so
+    // this keeps the same one whatever order the rows came in, and whatever form the time is in.
+    if (held && compareWritten(candidate, held) <= 0) continue;
+    latest.set(author, candidate);
   }
   return [...latest].map(([author, entry]) => [author, entry.value]);
 }
@@ -99,8 +148,8 @@ export interface WeighSettings {
   mode?: string;
   /** DIDs whose reactions are ignored — a reader's muted list. */
   excludeAuthors?: string[];
-  /** Whose answer is the reader's own — what `weightMine` reports. */
-  me?: string;
+  /** Whose answer is the reader's own — what `weightMine` reports. One DID, or all of theirs (`me.dids`). */
+  me?: string | readonly string[];
   /** How much each person's voice counts — see {@link parseWeights}. */
   weights?: unknown;
 }
@@ -125,12 +174,14 @@ export function weighVotes(votes: readonly Vote[], settings: WeighSettings): Rec
   const muted = new Set(settings.excludeAuthors ?? []);
   const weights = parseWeights(settings.weights);
 
-  const mine = settings.me ? votes.find(([author]) => author === settings.me) : undefined;
+  const selves = selvesOf(settings.me);
+  const mine = votes.find(([author]) => selves.includes(author));
   if (mine) about.weightMine = mine[1];
 
+  // The reader's own voice through any of their DIDs, so it weighs the same on every computer of theirs.
   const heard = votes
-    .filter(([author]) => !muted.has(author))
-    .map(([author, value]) => ({ value, weight: weights.get(author) ?? 1 }));
+    .filter(([author]) => !mutedVoice(muted, author, settings.me))
+    .map(([author, value]) => ({ value, weight: voiceSetting(weights, author, settings.me) ?? 1 }));
   // Somebody who answered this card counts for less than a whole voice — what a badge says as "weighted".
   if (heard.some((vote) => vote.weight < 1)) about.weightAdjusted = true;
   const counted = heard.filter((vote) => vote.weight > 0);
@@ -174,7 +225,7 @@ function weightedMedian(votes: { value: number; weight: number }[]): number {
 
 /** The whole of the old single-step API: a card's rows read and weighed at once. */
 export function weighSignals(rows: unknown, settings: WeighSettings): Record<string, GraphValue> {
-  const votes = readVotes(rows, settings.signalTypeId);
+  const votes = readVotes(rows, settings.signalTypeId, settings.me);
   return votes ? weighVotes(votes, settings) : {};
 }
 
@@ -261,13 +312,18 @@ export interface Voice {
 }
 
 /** Everybody who answered on any card, the busiest first — what a reader turns up or down. */
-export function voicesOf(votes: readonly Vote[][], muted: readonly string[], pretend?: Pretend): Voice[] {
+export function voicesOf(
+  votes: readonly Vote[][],
+  muted: readonly string[],
+  pretend?: Pretend,
+  me?: string | readonly string[],
+): Voice[] {
   const quiet = new Set(muted);
   const names = new Map((pretend?.people ?? []).map((person) => [person.id, person.name]));
   const tally = new Map<string, { cards: number; total: number }>();
   for (const card of votes) {
     for (const [author, value] of card) {
-      if (quiet.has(author)) continue;
+      if (mutedVoice(quiet, author, me)) continue;
       const held = tally.get(author) ?? { cards: 0, total: 0 };
       held.cards += 1;
       held.total += value;

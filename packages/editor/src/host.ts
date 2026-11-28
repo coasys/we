@@ -210,7 +210,8 @@ export interface EditorAssistantStatus {
 
 /** Who the user is, and which dataset the editor is working against. */
 export interface EditorIdentityPort {
-  me: () => { did?: string } | undefined;
+  /** `did` is this device's key; `dids` every DID that is me, this device first. */
+  me: () => { did?: string; dids?: string[] } | undefined;
   currentPerspective: () => unknown;
   orderedSidebarItems: () => { uuid: string; name: string; avatar?: string; spaceId: string }[];
   marketplaceJoined: () => boolean;

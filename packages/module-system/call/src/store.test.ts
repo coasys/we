@@ -27,10 +27,13 @@ function makeStore() {
     let value = initial;
     return [() => value, (next: T) => (value = next)];
   };
-  return createCallStore({ signal, state: markState, action: markAction, kernels: {} }) as ReturnType<
-    typeof createCallStore
-  > &
-    Record<string, () => unknown>;
+  return createCallStore({
+    signal,
+    state: markState,
+    action: markAction,
+    selfIds: () => [],
+    kernels: {},
+  }) as ReturnType<typeof createCallStore> & Record<string, () => unknown>;
 }
 
 /**

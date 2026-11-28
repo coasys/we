@@ -70,6 +70,7 @@ export {
 } from './backendPortsAdapter';
 export { type Ad4mHttpConnection, createAd4mLanguageModelPort } from './languageModelPort';
 export type { Ad4mCustodyHost, Ad4mCustodyState } from './identityPort';
+export { createAd4mPersonPort } from './personPort';
 export { connectToLocalExecutor, createLocalAd4mConnector, type LocalExecutorConnection } from './localExecutor';
 export { createAd4mTranscriptionPort } from './transcriptionAdapter';
 export {

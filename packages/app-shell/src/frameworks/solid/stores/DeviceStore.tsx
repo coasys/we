@@ -1,9 +1,9 @@
 /**
- * DeviceStore — the device keys that speak for the person, and adding or revoking one.
+ * DeviceStore — the device keys that speak for the person, and adding, unlinking or revoking one.
  *
  * Reads `IdentityPort.devices` (the device keys the key log lists). Adding and revoking are changes
  * like any other (`IdentityPort.change`): the backend asks the person wherever it keeps the master
- * key, and signs the change there. The device list is read again when either ends.
+ * key, and signs the change there. The device list is read again when one ends.
  *
  * Chrome tier only (`devices` in `templateSurface.ts`): a space template never sees a person's
  * devices.
@@ -29,9 +29,9 @@ export interface DeviceStore {
   /** The device keys, valid first, this computer at the top. */
   devices: Accessor<DeviceRow[]>;
   devicesLoaded: Accessor<boolean>;
-  /** How many keys are valid. */
+  /** How many keys are active: neither unlinked nor revoked. */
   validCount: Accessor<number>;
-  /** Add and revoke can be offered: this computer keeps the master key of the identity. */
+  /** Add, unlink and revoke can be offered: this computer keeps the master key of the identity. */
   canManage: Accessor<boolean>;
   /** Why the last read failed, or empty. */
   error: Accessor<string>;
@@ -39,7 +39,9 @@ export interface DeviceStore {
   refresh: () => Promise<void>;
   /** Adds a device to the identity. */
   addDevice: () => Promise<IdentityChangeOutcome>;
-  /** Revokes the device key `keyId`. */
+  /** Unlinks the device key `keyId`: it signs nothing new, and what it signed before stays valid. */
+  unlink: (keyId: string) => Promise<IdentityChangeOutcome>;
+  /** Revokes the device key `keyId`, lost or stolen; the person says since when, where they unlock. */
   revoke: (keyId: string) => Promise<IdentityChangeOutcome>;
 }
 
@@ -101,7 +103,7 @@ export function DeviceStoreProvider(props: ParentProps) {
   const store: DeviceStore = {
     devices: rows,
     devicesLoaded,
-    validCount: () => rows().filter((d) => !d.revoked).length,
+    validCount: () => rows().filter((d) => !d.revoked && !d.unlinked).length,
     canManage: () =>
       session.identityCapabilities().linkDevice &&
       identity.canChange() &&
@@ -110,6 +112,7 @@ export function DeviceStoreProvider(props: ParentProps) {
     error,
     refresh,
     addDevice: () => step(() => identity.open({ kind: 'add-device' })),
+    unlink: (keyId: string) => step(() => identity.open({ kind: 'unlink', keyId })),
     revoke: (keyId: string) => step(() => identity.open({ kind: 'revoke', keyId })),
   };
 

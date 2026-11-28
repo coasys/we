@@ -2,6 +2,8 @@ import { peopleTooltip } from '@we/schema-kit';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
 
+import { profileOf } from './profileOf.ts';
+
 export interface PeopleRowOptions {
   /** The people. Profile objects by default; bare DIDs when `dids` is set. */
   items: SchemaProp;
@@ -60,7 +62,7 @@ export function peopleRow(opts: PeopleRowOptions): SchemaNode {
    * join runs in two scopes: the stack's comprehension addresses a person as `m`, the roster rows
    * as `<as>`.
    */
-  const lookup = (did: string, field: string) => `find(profileStore.profiles, { did: ${did} }).${field}`;
+  const lookup = (did: string, field: string) => `${profileOf(did)}.${field}`;
   const count = expr`count(${opts.items})`;
 
   return peopleTooltip({

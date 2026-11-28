@@ -1,7 +1,7 @@
 /**
  * The identity window's screens, as the custody service sends them (`we_custody::Screen`), and the
  * words each one says: the recovery phrase, the identity being ready, the passphrase fallback where
- * there is no keychain, linking a device, and revoking one.
+ * there is no keychain, linking a device, unlinking one, and revoking one.
  *
  * Pure, so the wording is tested without a window (`screens.test.ts`). `window.ts` draws them.
  */
@@ -15,6 +15,8 @@ export type Screen =
   | { screen: 'offer'; link: string; qrSvg: string; expires: number }
   | { screen: 'match'; code: string; hint: string | null }
   | { screen: 'linked'; seq: number }
+  | { screen: 'unlink-confirm'; keyId: string; passphrase: boolean; error: string | null }
+  | { screen: 'unlinked'; keyId: string; seq: number }
   | { screen: 'revoke-confirm'; keyId: string; passphrase: boolean; error: string | null }
   | { screen: 'revoked'; keyId: string; seq: number }
   | { screen: 'pending-refused'; did: string; message: string }
@@ -27,13 +29,28 @@ export type StepInput =
   | { kind: 'passphrase'; passphrase: string; confirm?: string }
   | { kind: 'wait-claim' }
   | { kind: 'confirm' }
-  | { kind: 'revoke'; passphrase?: string }
+  | { kind: 'unlink'; passphrase?: string }
+  | { kind: 'revoke'; passphrase?: string; since?: number }
   | { kind: 'discard' };
 
 /** "4:52" — how long an offer still works. */
 export function remaining(expires: number, nowSeconds: number): string {
   const left = Math.max(0, Math.floor(expires - nowSeconds));
   return `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+}
+
+/**
+ * The time a "lost or stolen" key stopped being trusted, in ms since the epoch, from the picker's
+ * value (`2026-11-21T09:30`, the person's local time). `undefined` for an empty field: now, which
+ * the custody service reads as no `since` at all. `null` for a time the person did not finish
+ * (`badInput`: the picker then reports an empty value) or that does not parse: never sent as now,
+ * because a revocation cannot be redone.
+ */
+export function sinceMs(picked: string, badInput = false): number | undefined | null {
+  if (badInput) return null;
+  if (!picked) return undefined;
+  const at = new Date(picked).getTime();
+  return Number.isFinite(at) ? at : null;
 }
 
 /** "01" … "12", as the words grid numbers them. */
@@ -81,13 +98,20 @@ export function heading(screen: Screen): { title: string; lead: string } {
       };
     case 'linked':
       return { title: 'Device linked', lead: `It's entry #${screen.seq} in your key log.` };
+    case 'unlink-confirm':
+      return {
+        title: `Unlink ${screen.keyId}?`,
+        lead: "Do this for a device you replaced or no longer use. It can't act as you after this entry in your key log, and what it did before stays yours. A computer that's offline learns this when it reconnects.",
+      };
+    case 'unlinked':
+      return { title: `${screen.keyId} unlinked`, lead: `It's entry #${screen.seq} in your key log.` };
     case 'revoke-confirm':
       return {
-        title: `Remove ${screen.keyId}?`,
-        lead: "Do this for a device you lost or no longer use. It loses access to your identity and can't be linked again. A computer that's offline learns this when it reconnects. Some things it added before may no longer show as yours.",
+        title: `Revoke ${screen.keyId}?`,
+        lead: "Do this for a device that was lost or stolen. It loses access to your identity and can't be linked again. Say since when it was missing: anything from it that arrives from then on may no longer show as yours, even if it was made earlier. A computer that's offline learns this when it reconnects.",
       };
     case 'revoked':
-      return { title: `${screen.keyId} removed`, lead: `It's entry #${screen.seq} in your key log.` };
+      return { title: `${screen.keyId} revoked`, lead: `It's entry #${screen.seq} in your key log.` };
     case 'pending-refused':
       return {
         title: "Couldn't publish your identity",
@@ -100,5 +124,5 @@ export function heading(screen: Screen): { title: string; lead: string } {
 
 /** Whether the screen is the step's last: the window offers Done and closes. */
 export function isLast(screen: Screen): boolean {
-  return ['identity-ready', 'linked', 'revoked', 'failed'].includes(screen.screen);
+  return ['identity-ready', 'linked', 'unlinked', 'revoked', 'failed'].includes(screen.screen);
 }

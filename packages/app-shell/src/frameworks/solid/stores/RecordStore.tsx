@@ -3210,7 +3210,7 @@ export function RecordStoreProvider(props: ParentProps) {
         item,
         {
           hereKey,
-          me: session.me()?.did,
+          me: session.me()?.dids ?? session.me()?.did,
           held: (key) => {
             const ds = heldDataset(key);
             return ds ? { handle: ds.handle, name: ds.name } : null;

@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 // The policy as `vite.js` writes it into the built page.
 import policy from '../csp.txt?raw';
 import indexSource from './index.ts?raw';
-import { heading, isLast, remaining, wordNumber } from './screens';
+import { heading, isLast, remaining, sinceMs, wordNumber } from './screens';
 import screensSource from './screens.ts?raw';
 import windowSource from './window.ts?raw';
 
@@ -19,6 +19,25 @@ describe('the identity window', () => {
     expect(lead).toContain("A computer that's offline learns this when it reconnects");
     expect(lead).toContain('may no longer show as yours');
     expect(lead).not.toContain('stays valid');
+  });
+
+  it('says an unlink keeps what the device did before, and a revoke asks since when', () => {
+    const unlink = heading({ screen: 'unlink-confirm', keyId: 'd2', passphrase: false, error: null });
+    expect(unlink.title).toBe('Unlink d2?');
+    expect(unlink.lead).toContain('what it did before stays yours');
+    const revoke = heading({ screen: 'revoke-confirm', keyId: 'd2', passphrase: false, error: null });
+    expect(revoke.title).toBe('Revoke d2?');
+    expect(revoke.lead).toContain('lost or stolen');
+    expect(revoke.lead).toContain('since when');
+    expect(heading({ screen: 'unlinked', keyId: 'd2', seq: 2 }).title).toBe('d2 unlinked');
+  });
+
+  it("reads the picked time as the person's local time, an empty one as now, and never a half-filled one as now", () => {
+    expect(sinceMs('2026-11-21T09:30')).toBe(new Date(2026, 10, 21, 9, 30).getTime());
+    expect(sinceMs('')).toBeUndefined();
+    // A half-filled picker reports an empty value with `badInput`.
+    expect(sinceMs('', true)).toBeNull();
+    expect(sinceMs('not a time')).toBeNull();
   });
 
   it('asks for the two words the custody service chose', () => {
@@ -57,6 +76,7 @@ describe('the identity window', () => {
   it('ends on the screens that end a step', () => {
     expect(isLast({ screen: 'identity-ready', did: 'did:scid:coasys:1:Qm', keyId: 'd1' })).toBe(true);
     expect(isLast({ screen: 'revoked', keyId: 'd2', seq: 2 })).toBe(true);
+    expect(isLast({ screen: 'unlinked', keyId: 'd2', seq: 2 })).toBe(true);
     expect(isLast({ screen: 'show-words', words: [] })).toBe(false);
     expect(isLast({ screen: 'offer', link: '', qrSvg: '', expires: 0 })).toBe(false);
   });

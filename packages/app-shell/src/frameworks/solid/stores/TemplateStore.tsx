@@ -13,6 +13,7 @@ import { appSpaceTemplate, followedTemplateId } from '@shared/bundles/display';
 import { displaySourceOf, readInstalledBundles } from '@shared/bundles/installedBundles';
 import { bootScreenTemplate, placesCredentialField } from '@shared/bundles/judgeBundle';
 import { offeredInPickers } from '@shared/devOnlyOffers';
+import { selfDids } from '@shared/personProfile';
 import {
   appChoiceToKeep,
   appTemplateRegistry,
@@ -1779,7 +1780,7 @@ export function TemplateStoreProvider(props: ParentProps) {
 
     const decision = remoteUpdateFor({
       author: (fresh as { author?: string }).author,
-      me: session.me()?.did,
+      me: session.me()?.dids ?? session.me()?.did,
       editing: editing.isEditing(current),
       followOthers: followTemplateUpdates(),
     });
@@ -1801,7 +1802,9 @@ export function TemplateStoreProvider(props: ParentProps) {
     updateTemplate(fresh);
     if (decision === 'apply-editing') {
       editing.replaced(fresh);
-      const mine = (fresh as { author?: string }).author === session.me()?.did;
+      // Saved by any of my devices: mine, from another one.
+      const author = (fresh as { author?: string }).author;
+      const mine = !!author && selfDids(session.me()?.dids ?? session.me()?.did).has(author);
       toastService.info(
         mine
           ? 'You changed this template on another device, and that change is now here too. Undo starts again from this point.'
@@ -2366,7 +2369,8 @@ export function TemplateStoreProvider(props: ParentProps) {
     const slug = (options.slug || localId).trim().toLowerCase().replace(/\s+/g, '-');
 
     const existing = await Template.findOne(marketplacePerspective, { where: { slug } });
-    if (existing && existing.author !== session.me()?.did) {
+    // Published from any of my devices is mine to update.
+    if (existing && !selfDids(session.me()?.dids ?? session.me()?.did).has(existing.author)) {
       toastService.error(`A template with slug "${slug}" already exists in the marketplace by a different author`);
       return false;
     }

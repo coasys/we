@@ -112,6 +112,7 @@ export function readKeyLogEvent(raw: unknown, hash: string | null = null): KeyLo
     added: devices
       .filter((d): d is Raw => !!d && typeof d === 'object')
       .map((d) => ({ id: text(d.id) ?? '', sign: text(d.sign) ?? '' })),
+    unlinked: typeof event.unlink === 'string' ? [event.unlink] : [],
     revoked: Array.isArray(event.revoke) ? event.revoke.map(String) : [],
   };
 }
@@ -154,14 +155,26 @@ export function readKeyLog(value: unknown): KeyLogView {
   return { did: text(log.did) ?? '', events, head, fork: readFork(log.fork) };
 }
 
+/**
+ * The DID a device's links carry in `author`: the key log lists the key as a bare multikey, and the
+ * executor signs as that key's `did:key`.
+ */
+export function deviceAuthor(sign: string): string {
+  if (!sign) return '';
+  return sign.startsWith('did:') ? sign : `did:key:${sign}`;
+}
+
 export function readDevices(value: unknown): DeviceKeyView[] {
   return (Array.isArray(value) ? value : []).map((item) => {
     const device = record(item);
+    const sign = text(device.sign) ?? '';
     return {
       keyId: text(device.keyId) ?? '',
-      sign: text(device.sign) ?? '',
+      sign,
+      author: deviceAuthor(sign),
       thisDevice: device.thisDevice === true,
       addedSeq: count(device.addedSeq) ?? 0,
+      unlinkedSeq: count(device.unlinkedSeq),
       revokedSeq: count(device.revokedSeq),
     };
   });

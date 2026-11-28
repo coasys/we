@@ -33,7 +33,8 @@ export const personRoute: RouteSchema = {
             {
               type: '$if',
               props: {
-                condition: { $: 'person.did == me.did' },
+                // `me.dids`: whichever of my computers the address was made on, this page is mine.
+                condition: { $: 'person.did in me.dids' },
                 then: {
                   type: 'we-button',
                   props: {

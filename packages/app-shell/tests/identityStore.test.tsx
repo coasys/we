@@ -17,11 +17,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const [ports, setPorts] = createSignal<{ identity?: IdentityPort } | null>(null);
 const [bootState, setBootState] = createSignal('ready');
+const refreshMe = vi.fn(async () => {});
 
 vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
   useSessionStore: () => ({
     backendPorts: ports,
     bootState,
+    refreshMe,
     // As the session reads them from the port: linking a device needs a way to sign changes.
     identityCapabilities: () => ({
       ...NO_IDENTITY_CAPABILITIES,
@@ -58,6 +60,7 @@ const incept: KeyLogView['events'][number] = {
   op: 'incept',
   hash: 'QmHash0',
   added: [{ id: 'd1', sign: 'z6MkOne' }],
+  unlinked: [],
   revoked: [],
 };
 const add: KeyLogView['events'][number] = {
@@ -65,11 +68,28 @@ const add: KeyLogView['events'][number] = {
   op: 'add',
   hash: 'QmHash1',
   added: [{ id: 'd2', sign: 'z6MkTwo' }],
+  unlinked: [],
   revoked: [],
 };
 const devices: DeviceKeyView[] = [
-  { keyId: 'd2', sign: 'z6MkTwo', thisDevice: false, addedSeq: 1, revokedSeq: null },
-  { keyId: 'd1', sign: 'z6MkOne', thisDevice: true, addedSeq: 0, revokedSeq: null },
+  {
+    keyId: 'd2',
+    sign: 'z6MkTwo',
+    author: 'did:key:z6MkTwo',
+    thisDevice: false,
+    addedSeq: 1,
+    unlinkedSeq: null,
+    revokedSeq: null,
+  },
+  {
+    keyId: 'd1',
+    sign: 'z6MkOne',
+    author: 'did:key:z6MkOne',
+    thisDevice: true,
+    addedSeq: 0,
+    unlinkedSeq: null,
+    revokedSeq: null,
+  },
 ];
 
 /** A backend whose identity is whatever the test says, and which counts what it was asked. */
@@ -410,7 +430,7 @@ describe('deviceStore', () => {
         if (change.kind === 'revoke') {
           b.state.events = [
             ...b.state.events,
-            { seq: 2, op: 'revoke', hash: 'QmHash2', added: [], revoked: [change.keyId] },
+            { seq: 2, op: 'revoke', hash: 'QmHash2', added: [], unlinked: [], revoked: [change.keyId] },
           ];
           b.state.devices = b.state.devices.map((d) => (d.keyId === change.keyId ? { ...d, revokedSeq: 2 } : d));
         }
@@ -427,10 +447,44 @@ describe('deviceStore', () => {
     expect(c.changes).toEqual([{ kind: 'revoke', keyId: 'd2' }]);
     expect(deviceStore.devices().find((d) => d.keyId === 'd2')).toMatchObject({
       revoked: true,
-      status: 'Removed at #2',
+      status: 'Revoked',
     });
     expect(deviceStore.validCount()).toBe(1);
     expect(identity.keyLog()[0].title).toBe('Revoked d2');
+  });
+
+  it('unlink asks for that key, keeps it listed as Unlinked, and offers a revoke after it', async () => {
+    const b = backend({ did: DID, events: [incept, add], devices });
+    const c = custody(
+      b.port,
+      (change) => {
+        if (change.kind === 'unlink') {
+          b.state.events = [
+            ...b.state.events,
+            { seq: 2, op: 'unlink', hash: 'QmHash2', added: [], unlinked: [change.keyId], revoked: [] },
+          ];
+          b.state.devices = b.state.devices.map((d) => (d.keyId === change.keyId ? { ...d, unlinkedSeq: 2 } : d));
+        }
+      },
+      true,
+    );
+    setPorts({ identity: c.identity });
+    const { identity, devices: deviceStore } = mount();
+    await flush();
+    await flush();
+    expect(await deviceStore.unlink('d2')).toBe('done');
+    await flush();
+    await flush();
+    expect(c.changes).toEqual([{ kind: 'unlink', keyId: 'd2' }]);
+    expect(deviceStore.devices().find((d) => d.keyId === 'd2')).toMatchObject({
+      unlinked: true,
+      revoked: false,
+      status: 'Unlinked',
+      canUnlink: false,
+      canRevoke: true,
+    });
+    expect(deviceStore.validCount()).toBe(1);
+    expect(identity.keyLog()[0].title).toBe('Unlinked d2');
   });
 
   it('add asks for add-device', async () => {
@@ -438,7 +492,11 @@ describe('deviceStore', () => {
     setPorts({ identity: c.identity });
     const { devices: deviceStore } = mount();
     await flush();
+    refreshMe.mockClear();
     await deviceStore.addDevice();
     expect(c.changes).toEqual([{ kind: 'add-device' }]);
+    // A new device is a new key that writes as this person: the session reads `me.dids` again, so a
+    // post from it is "mine" without a restart.
+    expect(refreshMe).toHaveBeenCalledTimes(1);
   });
 });

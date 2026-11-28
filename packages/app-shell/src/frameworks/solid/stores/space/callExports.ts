@@ -22,7 +22,7 @@ export interface CallExportDeps {
   /** The dataset of the space the call is in, or nothing outside a space. */
   dataset: () => { handle: DatasetProxy } | null | undefined;
   interpretation: () => InterpretationPort | undefined;
-  profileStore: Pick<ProfileStore, 'fetchProfile' | 'profiles'>;
+  profileStore: Pick<ProfileStore, 'fetchProfile' | 'profileFor'>;
   /**
    * The space's name and the call's extraction answers — what this call interprets, what the space
    * extracts, and whether this call is interpreted as it grows — read for the dataset named rather
@@ -67,7 +67,7 @@ export function createCallExports(deps: CallExportDeps) {
   async function labelsFor(dids: string[]): Promise<(did: string) => string> {
     await Promise.all([...new Set(dids)].map((did) => profileStore.fetchProfile(did).catch(() => undefined)));
     return (did: string): string => {
-      const profile = profileStore.profiles().find((entry) => entry.did === did.replace('did://', ''));
+      const profile = profileStore.profileFor(did.replace('did://', ''));
       return profile ? displayName(profile, did) : did;
     };
   }

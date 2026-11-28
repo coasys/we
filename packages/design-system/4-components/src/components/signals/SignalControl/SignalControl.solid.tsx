@@ -1,6 +1,7 @@
 export type * from './SignalControl.types';
 
 import { POPOVER_DISMISS } from '@we/design-types';
+import { newestWritten } from '@we/optimism';
 import { createSignal, For, Match, Show, Switch } from 'solid-js';
 
 import { Row } from '../../../frameworks/solid';
@@ -42,11 +43,28 @@ export function SignalControl(props: SignalControlProps) {
   /** Draft value while the slider thumb is being dragged — not persisted until release */
   const [sliderDraft, setSliderDraft] = createSignal<number | null>(null);
 
-  /** The current user's signal value derived from the signals array */
+  /**
+   * The signals as one per row of mine: everybody else's as given, and of mine only the newest.
+   *
+   * A device writes its own row and then removes my others, and that removal can be refused or not yet
+   * synced — so my old reaction from another computer may still be in the list. The selection already
+   * read past it; the aggregate has to as well, or one person's change of mind counts as two people.
+   * Other people's duplicates are left as given: whose keys are one person is only known for me.
+   */
+  const counted = () => {
+    const signals = props.signals ?? [];
+    const dids = props.myDids ?? [];
+    const mine = signals.filter((s) => dids.includes(s.author));
+    if (mine.length < 2) return signals;
+    const newest = newestWritten(mine);
+    return signals.filter((s) => !dids.includes(s.author) || s === newest);
+  };
+
+  /** The current user's signal value: their newest, whichever of their devices gave it */
   const myValue = () => {
     if (props.preview) return previewValue();
-    const mine = props.signals?.find((s) => s.author === props.myDid);
-    return mine !== undefined ? mine.value : null;
+    const dids = props.myDids ?? [];
+    return counted().find((s) => dids.includes(s.author))?.value ?? null;
   };
 
   /** Unified reactive value */
@@ -145,7 +163,7 @@ export function SignalControl(props: SignalControlProps) {
    *
    * 0 with nothing to read, which is what an untouched control shows.
    */
-  const aggregate = () => (props.preview ? (previewValue() ?? 0) : tallySignals(props.signalType, props.signals ?? []));
+  const aggregate = () => (props.preview ? (previewValue() ?? 0) : tallySignals(props.signalType, counted()));
 
   /**
    * Taking a reaction back, as a control of its own.

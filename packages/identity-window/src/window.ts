@@ -12,7 +12,7 @@ import '@we/tokens/css/color';
 import 'virtual:we-identity-theme.css';
 import './identity.css';
 
-import { heading, isLast, remaining, type Screen, type StepInput, wordNumber } from './screens';
+import { heading, isLast, remaining, type Screen, sinceMs, type StepInput, wordNumber } from './screens';
 
 /**
  * How the window reaches the custody service: the four calls the host's main process answers for
@@ -30,6 +30,12 @@ export interface IdentityTransport {
 let host: IdentityTransport;
 let root: HTMLElement;
 let offerTimer: number | undefined;
+/**
+ * The "missing since" the person last sent for a revoke, drawn again when the custody service
+ * answers with the same key's confirm screen (a wrong passphrase, a refused time): a retry without
+ * it would revoke from now, and a revocation cannot be redone.
+ */
+let picked: { keyId: string; value: string } | undefined;
 
 type Child = Node | string;
 
@@ -200,13 +206,36 @@ function body(screen: Screen): Child[] {
           button('Deny', cancel),
         ),
       ];
-    case 'revoke-confirm': {
+    case 'unlink-confirm': {
       const p = screen.passphrase ? secretField('Passphrase') : null;
-      const go = () => step({ kind: 'revoke', ...(p ? { passphrase: p.input.value } : {}) }, p ? [p.input] : []);
+      const go = () => step({ kind: 'unlink', ...(p ? { passphrase: p.input.value } : {}) }, p ? [p.input] : []);
       return [
         ...(p ? [p.label] : []),
         ...errorLine(screen.error),
-        el('div', { className: 'row' }, button('Remove', go, 'danger'), button('Cancel', cancel)),
+        el('div', { className: 'row' }, button('Unlink', go, 'primary'), button('Cancel', cancel)),
+      ];
+    }
+    case 'revoke-confirm': {
+      const p = screen.passphrase ? secretField('Passphrase') : null;
+      const since = el('input', { type: 'datetime-local' });
+      if (picked?.keyId === screen.keyId) since.value = picked.value;
+      const go = () => {
+        const at = sinceMs(since.value, since.validity.badInput);
+        if (at === null) {
+          draw({ ...screen, error: 'Enter the whole date and time, or clear it to revoke from now.' });
+          return;
+        }
+        picked = { keyId: screen.keyId, value: since.value };
+        void step(
+          { kind: 'revoke', ...(p ? { passphrase: p.input.value } : {}), ...(at === undefined ? {} : { since: at }) },
+          p ? [p.input] : [],
+        );
+      };
+      return [
+        el('label', {}, 'Missing since (leave empty for now)', since),
+        ...(p ? [p.label] : []),
+        ...errorLine(screen.error),
+        el('div', { className: 'row' }, button('Revoke', go, 'danger'), button('Cancel', cancel)),
       ];
     }
     case 'pending-refused':
@@ -225,6 +254,7 @@ function body(screen: Screen): Child[] {
         el('p', { className: 'note', textContent: `Listed as ${screen.keyId} in your key log.` }),
       ];
     case 'linked':
+    case 'unlinked':
     case 'revoked':
     case 'failed':
       return [];

@@ -33,6 +33,7 @@ const add = {
   coSig: 's',
 };
 const revoke = { format: 'coasys-kel/1', scid: 'QmScid', seq: 2, prev: 'QmHash1', op: 'revoke', revoke: ['d2'] };
+const unlink = { format: 'coasys-kel/1', scid: 'QmScid', seq: 3, prev: 'QmHash2', op: 'unlink', unlink: 'd3' };
 const head: SignedHead = {
   scid: 'QmScid',
   seq: 2,
@@ -67,6 +68,14 @@ describe('the AD4M identity port', () => {
     expect(log.head).toMatchObject({ seq: 2, store: 'did:key:z6MkStore' });
   });
 
+  it('reads an unlink as the key it retires', async () => {
+    const port = createAd4mIdentityPort(
+      client({ log: { did: DID, events: [incept, unlink], head, fork: null } satisfies IdentityLog }),
+    );
+    const log = await port.log!(DID);
+    expect(log.events[1]).toMatchObject({ op: 'unlink', unlinked: ['d3'], revoked: [] });
+  });
+
   it('asks the executor to refresh the log from the store', async () => {
     const c = client({ log: { did: DID, events: [], head: null } });
     await createAd4mIdentityPort(c).log!(DID);
@@ -83,14 +92,43 @@ describe('the AD4M identity port', () => {
           deviceEnc: 'z6LS',
           keyId: 'd1',
           revoked: null,
+          unlinked: null,
           head,
           fork: null,
           storeBehind: { since: 1_700_000_000, seq: 0 },
           store: { url: 'https://store.example', trusted: true },
         } satisfies IdentityStatus,
         devices: [
-          { keyId: 'd1', sign: 'z6MkOne', bot: null, expires: null, addedSeq: 0, revokedSeq: null, thisDevice: true },
-          { keyId: 'd2', sign: 'z6MkTwo', bot: null, expires: null, addedSeq: 1, revokedSeq: 2, thisDevice: false },
+          {
+            keyId: 'd1',
+            sign: 'z6MkOne',
+            bot: null,
+            expires: null,
+            addedSeq: 0,
+            unlinkedSeq: null,
+            revokedSeq: null,
+            thisDevice: true,
+          },
+          {
+            keyId: 'd2',
+            sign: 'z6MkTwo',
+            bot: null,
+            expires: null,
+            addedSeq: 1,
+            unlinkedSeq: null,
+            revokedSeq: 2,
+            thisDevice: false,
+          },
+          {
+            keyId: 'd3',
+            sign: 'z6MkThree',
+            bot: null,
+            expires: null,
+            addedSeq: 3,
+            unlinkedSeq: 4,
+            revokedSeq: null,
+            thisDevice: false,
+          },
         ] satisfies DeviceView[],
       }),
     );
@@ -101,10 +139,13 @@ describe('the AD4M identity port', () => {
       storeBehind: { since: 1_700_000_000, seq: 0 },
     });
     const devices = await port.devices!();
-    expect(devices.map((d) => [d.keyId, d.thisDevice, d.revokedSeq])).toEqual([
-      ['d1', true, null],
-      ['d2', false, 2],
+    expect(devices.map((d) => [d.keyId, d.thisDevice, d.unlinkedSeq, d.revokedSeq])).toEqual([
+      ['d1', true, null, null],
+      ['d2', false, null, 2],
+      ['d3', false, 4, null],
     ]);
+    // Each device carries the DID its links are authored under, so the shell never builds one.
+    expect(devices.map((d) => d.author)).toEqual(['did:key:z6MkOne', 'did:key:z6MkTwo', 'did:key:z6MkThree']);
   });
 
   it('turns the key log and devices on against an executor that answers', async () => {
@@ -160,6 +201,8 @@ describe('the AD4M identity port with a custody service', () => {
     expect(await port.capabilities()).toMatchObject({ masterKey: true, linkDevice: true });
     expect(await port.change!({ kind: 'revoke', keyId: 'd2' })).toBe('done');
     expect(host.open).toHaveBeenCalledWith({ kind: 'revoke', keyId: 'd2' });
+    expect(await port.change!({ kind: 'unlink', keyId: 'd2' })).toBe('done');
+    expect(host.open).toHaveBeenCalledWith({ kind: 'unlink', keyId: 'd2' });
     // An empty reason is no reason: nothing blocks the change.
     expect(await port.custody!()).toEqual({ did: DID, holdsMaster: true, unlock: 'os', blocked: null });
   });

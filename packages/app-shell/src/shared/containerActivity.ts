@@ -10,7 +10,7 @@
  * and it declares none, so a backend that insists on a target refuses the whole read as soon as one
  * node mentions somebody.
  */
-import type { TypedEntityQuery } from '@we/backend-shared';
+import type { AuthorVerdict, TypedEntityQuery } from '@we/backend-shared';
 import type { CollectionBlock } from '@we/entities';
 
 /**
@@ -85,18 +85,42 @@ export function unreadContainerIds(
 }
 
 /**
- * Nodes naming `did`, newest first.
+ * A message naming this agent. `author` is the device that signed it; `verdict` is the backend's word
+ * on that signature where it could not confirm it (`cantCheck`, `flagged`), absent where it could.
+ */
+export interface MentionRow {
+  id: string;
+  author: string;
+  createdAt: number;
+  verdict?: AuthorVerdict;
+}
+
+/**
+ * Nodes naming `did` — or any of `did`, given a list (`me.dids`: this device, the person's other
+ * devices and the person) — newest first, each once.
  *
  * Filtered here rather than pushed down: matching on the contents of a to-many relation is a
  * relation filter, which both adapters declare they cannot do (`AdapterCapabilities.relationFilters`).
  * `createdAt` is the backend's comparable timestamp, compared as a number here.
  */
-export function mentionsOf(
-  containers: readonly ContainerActivity[],
-  did: string,
-): { id: string; author: string; createdAt: number }[] {
+export function mentionsOf(containers: readonly ContainerActivity[], did: string | readonly string[]): MentionRow[] {
+  const named = new Set(typeof did === 'string' ? [did] : did);
   return containers
-    .filter((node) => (Array.isArray(node.mentions) ? node.mentions : []).includes(did))
+    .filter((node) =>
+      (Array.isArray(node.mentions) ? (node.mentions as unknown[]) : []).some(
+        (m) => typeof m === 'string' && named.has(m),
+      ),
+    )
     .map((node) => ({ id: node.id, author: String(node.author ?? ''), createdAt: Number(node.createdAt) }))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+}
+
+/**
+ * The answers to one mentions lookup per DID that is this agent, as one list: newest first, a message
+ * naming two of them (my device and my person) once, and the first fifty — what one lookup returned.
+ */
+export function mergeMentions(answers: readonly (readonly MentionRow[])[], limit = 50): MentionRow[] {
+  const byId = new Map<string, MentionRow>();
+  for (const rows of answers) for (const row of rows) if (!byId.has(row.id)) byId.set(row.id, row);
+  return [...byId.values()].sort((a, b) => b.createdAt - a.createdAt).slice(0, limit);
 }

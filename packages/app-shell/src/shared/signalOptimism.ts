@@ -27,8 +27,10 @@
  * count instead would have left the heart unfilled beside a number that had moved, which reads as
  * somebody else's reaction arriving rather than as your own registering.
  */
-import { createOptimism, keyOf, sameValue } from '@we/optimism';
+import { createOptimism, keyOf, newestWritten, sameValue, type Written } from '@we/optimism';
 import { createSignal } from 'solid-js';
+
+import { selfDids } from './personProfile';
 
 /** One reaction held: which record, which type, and what this agent's value for it now is. */
 export interface PendingSignal {
@@ -78,10 +80,14 @@ export const signalOptimism = {
    * where nobody has reacted with that type at all, a withdrawal stands until the backstop, drawing
    * what was written — which is also what the data says.
    */
-  settleFromSignals(record: string, type: string, me: string, signals: unknown): void {
-    if (!record || !type || !me || !Array.isArray(signals) || !signals.length) return;
-    const mine = (signals as { author?: unknown; signalTypeId?: unknown; value?: unknown }[]).find(
-      (row) => row?.author === me && row?.signalTypeId === type,
+  settleFromSignals(record: string, type: string, me: string | readonly string[], signals: unknown): void {
+    const selves = selfDids(me);
+    if (!record || !type || !selves.size || !Array.isArray(signals) || !signals.length) return;
+    // `me.dids` or one DID; of my rows, the newest — the one every reader shows.
+    const mine = newestWritten(
+      (signals as (Written & { author?: unknown; signalTypeId?: unknown; value?: unknown })[]).filter(
+        (row) => selves.has(row?.author as string) && row?.signalTypeId === type,
+      ),
     );
     // No row of this type from this agent is `null` — the same absence a withdrawal holds, so a
     // withdrawal settles the moment the row is gone. A row holding 0 is a reaction and reads as 0.

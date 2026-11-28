@@ -22,6 +22,9 @@
   "files": [
     "dist"
   ],
+  "dependencies": {
+    "@we/optimism": "workspace:*"
+  },
   "peerDependencies": {
     "@we/graph-protocol": "workspace:*"
   },

@@ -618,6 +618,13 @@ export interface ModuleIdentity {
   avatar?: string;
   /** `bot` when the agent's own profile says it is one; absent when it says nothing. */
   kind?: 'bot' | 'person';
+  /**
+   * The person this id speaks for, when it is one of their devices: a record's author is the device
+   * that signed it, and one person writing from two computers is two authors and one person. Absent
+   * when the id is its own person. Group or compare by `person ?? id`; `name` and `avatar` are
+   * already the person's.
+   */
+  person?: string;
 }
 
 /**
@@ -704,8 +711,21 @@ export interface ModuleStoreDeps {
   datasetUri?: () => string | null;
   /** How the current dataset is named inside a record reference — `n:<cid>` or `p:<uuid>`. Empty while none is open. */
   datasetRefKey?: () => string;
-  /** This agent's id in the host's identity scheme. `null` before login. */
+  /**
+   * This device's key in the host's identity scheme — the `author` of everything it writes. `null`
+   * before login. For what is *this device's*: a peer in a call, a presence, a line this device spoke.
+   */
   selfId?: () => string | null;
+  /**
+   * Every id that is this agent — this device's key first (`selfId`), then the agent's other
+   * devices, then the person. Empty before login.
+   *
+   * For what is one per *person*: a record any of my computers wrote is mine (`author` in this list),
+   * and where two of mine stand, the newest is the one (`newestWritten` in `@we/optimism`). A vote, an
+   * answer, a reaction — reading them by `selfId` alone shows my laptop's as somebody else's and lets
+   * me add a second.
+   */
+  selfIds: () => string[];
   /** The call record the address names, when the interface on screen is about one. `null` otherwise. */
   callOnScreen?: () => string | null;
   /**

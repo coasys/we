@@ -12,6 +12,8 @@
  */
 import type { TemplateSchema } from '@we/schema-shared';
 
+import { selfDids } from './personProfile';
+
 /**
  * Whether two copies of a template are the same design, setting aside what saving stamps on — the
  * version, the author, and where it was read from. A save that changed nothing else is not news.
@@ -101,13 +103,14 @@ export type RemoteUpdate = 'apply' | 'apply-editing' | 'offer';
 export function remoteUpdateFor(change: {
   /** Who saved the version that arrived, as the saved template records it. */
   author: string | undefined;
-  me: string | undefined;
+  /** Every DID that is me (`me.dids`), or this device's alone: a save from my laptop is mine too. */
+  me: string | readonly string[] | undefined;
   /** An editing session is open on this template here. */
   editing: boolean;
   /** This agent's setting: apply others' changes as they arrive. */
   followOthers: boolean;
 }): RemoteUpdate {
   if (change.editing) return 'apply-editing';
-  if (change.author && change.author === change.me) return 'apply';
+  if (change.author && selfDids(change.me).has(change.author)) return 'apply';
   return change.followOthers ? 'apply' : 'offer';
 }

@@ -703,14 +703,11 @@ export default function TemplateProvider() {
         which dropped a withdrawal hold the instant any other type on the same record drew: the heart
         came back on until the real data caught up. See `settleFromSignals`.
       */
-      if (typeof given.record === 'string' && typeof given.type === 'string' && typeof given.me === 'string') {
+      // `me` is `me.dids` from a template, or one DID.
+      const me = typeof given.me === 'string' || Array.isArray(given.me) ? (given.me as string | string[]) : null;
+      if (typeof given.record === 'string' && typeof given.type === 'string' && me) {
         queueMicrotask(() =>
-          signalOptimism.settleFromSignals(
-            given.record as string,
-            given.type as string,
-            given.me as string,
-            given.signals,
-          ),
+          signalOptimism.settleFromSignals(given.record as string, given.type as string, me, given.signals),
         );
       }
       return list;
@@ -868,7 +865,7 @@ export default function TemplateProvider() {
         stores: chromeBag,
         registry: chromeComponentRegistry,
         agent: (did) => {
-          const profile = profileStore.profiles().find((p) => p.did === did);
+          const profile = profileStore.profileFor(did);
           return profile ? { name: profile.name ?? '', avatar: profile.avatar ?? '' } : undefined;
         },
         // The same handle `BlockHostProvider` hands the composer — a ghost renders outside it.
@@ -1586,13 +1583,13 @@ export default function TemplateProvider() {
       // A quote names whose words it holds. A person not yet cached is fetched, and the name arrives
       // through the same reactive cache a byline reads.
       personName={(did) => {
-        const profile = profileStore.profiles().find((entry) => entry.did === did);
+        const profile = profileStore.profileFor(did);
         if (!profile) void profileStore.fetchProfile(did);
         return profile?.name || undefined;
       }}
       // Who a mention names, for its hover card: the face beside the name, by the same cache.
       person={(did) => {
-        const profile = profileStore.profiles().find((entry) => entry.did === did);
+        const profile = profileStore.profileFor(did);
         if (!profile) void profileStore.fetchProfile(did);
         return profile ? { name: profile.name || undefined, avatar: profile.avatar || undefined } : undefined;
       }}

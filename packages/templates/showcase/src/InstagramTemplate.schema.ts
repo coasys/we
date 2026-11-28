@@ -247,7 +247,7 @@ export const instagramTemplate: TemplateSchema = {
           children: [
             { type: 'we-text', props: { variant: 'heading-md' }, children: ['Your photos'] },
             grid({
-              author: { $: 'sessionStore.me.did' },
+              author: { $: 'sessionStore.me.dids' },
               empty: emptyState({ icon: 'user', label: 'photos of your own', delay: 0 }),
             }),
           ],

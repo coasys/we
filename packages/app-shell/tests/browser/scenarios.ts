@@ -2058,7 +2058,7 @@ const profilePages = (): Scenario => {
       {
         type: '$agent',
         props: { did, as: 'person' },
-        children: [profilePage({ as: 'person', editable: 'person.did == me.did' })],
+        children: [profilePage({ as: 'person', editable: 'person.did in me.dids' })],
       },
     ],
   });

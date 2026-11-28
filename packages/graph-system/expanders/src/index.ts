@@ -60,6 +60,7 @@ export { canvasSeed, type CanvasSeedOptions, PLACEMENT_UNSET, placementPosition,
 export {
   type Aggregate,
   effectiveAggregate,
+  ownVoice,
   parseWeights,
   type Pretend,
   pretendVotes,
@@ -67,6 +68,7 @@ export {
   type Voice,
   voicesOf,
   type Vote,
+  voiceSetting,
   weighSignals,
   weighVotes,
 } from './weighing';

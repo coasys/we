@@ -11,7 +11,7 @@ export const storeEntries: StoreEntry[] = [
   {
     name: 'sessionStore',
     state: {
-      me: { type: 'object', properties: ['did', 'perspective', 'directMessageLanguage'] },
+      me: { type: 'object', properties: ['did', 'person', 'dids', 'perspective', 'directMessageLanguage'] },
       bootState: { type: 'string' },
       signInStep: { type: 'string' },
       bootError: { type: 'string' },
@@ -311,7 +311,7 @@ export const storeEntries: StoreEntry[] = [
       pendingAvatar: { type: 'string' },
       profiles: {
         type: 'array',
-        properties: ['did', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
+        properties: ['did', 'devices', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
       },
       ownProfile: {
         type: 'object',
@@ -451,7 +451,7 @@ export const storeEntries: StoreEntry[] = [
       memberDids: { type: 'array', properties: ['did'] },
       members: {
         type: 'array',
-        properties: ['did', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
+        properties: ['did', 'devices', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
       },
       spaceDefaultTemplateId: { type: 'string' },
       spaceDefaultThemeId: { type: 'string' },
@@ -514,7 +514,7 @@ export const storeEntries: StoreEntry[] = [
       rolesLoaded: { type: 'boolean' },
       policy: { type: 'object', properties: ['loaded', 'preset', 'permissions', 'frozen', 'me', 'roles', 'sentences'] },
       unreadNodeIds: { type: 'array' },
-      myMentions: { type: 'array', properties: ['id', 'author', 'createdAt'] },
+      myMentions: { type: 'array', properties: ['id', 'author', 'createdAt', 'verdict'] },
     },
     actions: [
       'createSpace',
@@ -837,14 +837,25 @@ export const storeEntries: StoreEntry[] = [
     state: {
       devices: {
         type: 'array',
-        properties: ['keyId', 'label', 'subtitle', 'icon', 'thisDevice', 'revoked', 'status', 'canRevoke'],
+        properties: [
+          'keyId',
+          'label',
+          'subtitle',
+          'icon',
+          'thisDevice',
+          'unlinked',
+          'revoked',
+          'status',
+          'canUnlink',
+          'canRevoke',
+        ],
       },
       devicesLoaded: { type: 'boolean' },
       validCount: { type: 'number' },
       canManage: { type: 'boolean' },
       error: { type: 'string' },
     },
-    actions: ['refresh', 'addDevice', 'revoke'],
+    actions: ['refresh', 'addDevice', 'unlink', 'revoke'],
   },
   {
     name: 'clockStore',
@@ -888,7 +899,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
   sessionStore: {
     state: {
       client: 'the backend client handle | undefined',
-      me: 'Agent | undefined — the authenticated identity; prefer the $me token in schemas',
+      me: "Agent | undefined — the authenticated identity; prefer the $me token in schemas. `did` is this computer's device key, the author of what it writes; `person` is the person it speaks for (the person’s id, or `did` without a key log) and `dids` every device key that writes as them, then the person itself. 'Is this me' is always `X in me.dids`: a record's author (`post.author in me.dids` — a post from my other computer is mine), a presence peer (`p.did in me.dids`), a member or a profile entry (`m.did in me.dids`, since those are persons), and inside $agent `author.did in me.dids`",
       bootState: "string — 'initialising' | 'login' | 'createAgent' | 'finishing' | 'ready' | 'error'",
       signInStep:
         "string — which step of signing in the screen is on: 'switching' | 'setUpAi' | 'settingUp' | 'starting' | 'preparing' | 'unlock' | 'create' | 'failed' | 'ready'. One answer, in that order of precedence — a sign-in screen draws the step this names rather than working it out from bootState and the account flags",
@@ -1188,7 +1199,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
   profileStore: {
     state: {
       profiles:
-        'AgentProfileSummary[] — cache of all fetched profiles (did, firstName, lastName, handle, bio, avatar, coverImage, location)',
+        "AgentProfileSummary[] — everybody whose profile has been fetched, ONE ENTRY PER PERSON (did, devices, firstName, lastName, handle, bio, avatar, coverImage, location). `did` is the person (the person’s id where they have a key log) and `devices` the device keys seen for them. A record's author is a device key, so look its author up with `profileStore.profiles.find(p, p.did == post.author || post.author in p.devices)` — `find(profileStore.profiles, { did: post.author })` misses somebody writing from a computer whose key is not the entry's did",
       ownProfile:
         'AgentProfileSummary | undefined — reactive accessor for the current user\'s own profile (derived from the cache). Note `name` is assembled for display and falls back to "Anonymous", so it is never empty — test firstName/lastName/handle to ask whether somebody has a name',
       ownProfileLoaded:
@@ -1435,7 +1446,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       unreadNodeIds:
         "string[] — ids of the containers in this space holding something newer than this agent's marker for them, or never read. What an unread dot reads: { $: 'channel.id in spaceStore.unreadNodeIds' }. Ids rather than counts, since a count needs every child's timestamp",
       myMentions:
-        '{ id, author, createdAt }[] — messages in this space that mention this agent — posts and transcript or Feed lines alike — newest first, the fifty most recent. createdAt is the backend’s comparable timestamp. Asked from the agent’s end through the backend’s references, one lookup per space',
+        "{ id, author, createdAt, verdict? }[] — messages in this space that mention this agent — posts and transcript or Feed lines alike — newest first, the fifty most recent. createdAt is the backend’s comparable timestamp. verdict is present only where the backend could not confirm the signing device spoke for its person: 'cantCheck' or 'flagged', drawn as a quiet mark beside the byline. Asked from the agent’s end through the backend’s references, one lookup per space",
       root: "string — the id of this space's collection: the one CollectionBlock (kind 'space') everything top-level hangs off — calls, loose messages, posts, channels, interpreted items, the canvas. Scope a top-level read through it: { anchor: 'CollectionBlock', via: 'children', anchorId: spaceStore.root }. Empty outside a space, and in a space made before spaces had one",
       rootLoaded:
         "boolean — root has answered for the space on screen. Until then an empty root is not yet an answer, so gate anything that compares an address with root on it — { $: 'spaceStore.rootLoaded' } around an $if on `channel == spaceStore.root` — or the wrong branch mounts, reads, and is torn down when root arrives",
@@ -1475,7 +1486,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       orderedSidebarItems:
         'array of sidebar items in user-defined order (uuid, name, avatar, spaceId) — personal + shared spaces merged',
       memberDids: 'string[] — DIDs of all members in the current space (includes own DID)',
-      members: 'AgentProfileSummary[] — cached profiles for all memberDids',
+      members:
+        "AgentProfileSummary[] — the space's members, ONE ENTRY PER PERSON: `did` is the person and `devices` the member keys that joined for them, so somebody on two computers is one member. 'You' is `m.did in me.dids`. A member whose profile has not arrived is left out until it does",
       spaceDefaultTemplateId: "string — the current space's default template ID (empty string when no space is active)",
       spaceDefaultThemeId:
         "string — the current space's default theme ID (empty string when no space is active). The counterpart to spaceDefaultTemplateId; compare against it to mark which theme a space is currently on",
@@ -1656,7 +1668,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       unreadNodeIds:
         'string[] — ids of containers in this space holding something newer than your read marker. The read side of `ReadMarker`: use it for unread dots with `{ "$": "channel.id in spaceStore.unreadNodeIds" }` rather than recomputing a `$latestChild` projection and a comparison per row',
       myMentions:
-        '{ id, author, createdAt }[] — nodes in this space that name you, newest first. The read side of `WeNode.mentions`, which the composer writes from the @mentions in a post',
+        "{ id, author, createdAt, verdict? }[] — nodes in this space that name you, newest first. verdict ('cantCheck' | 'flagged') appears only where the author's signature could not be confirmed. The read side of `WeNode.mentions`, which the composer writes from the @mentions in a post",
       uploadFile:
         '(file: File, name?: string): stores a file and returns the URL to reference it by, or null. Images are compressed on the way through. For a template doing its own media UI — without it, only the block composer could accept an upload',
       upsertSignal:
@@ -2155,7 +2167,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
     state: {
       peers:
         'PresentAgent[] — every peer known in the current space, offline included, each joined to its cached profile (did, name, avatar, tone, focus, activities, availability). Sorted by liveness',
-      online: 'PresentAgent[] — peers in the current space who are not offline — the "who is here" list',
+      online:
+        'PresentAgent[] — peers in the current space who are not offline — the "who is here" list. Presence is per device: `did` is the computer that is present and `person` the person it speaks for, so leave yourself out with `!(p.did in me.dids)` (which also leaves out your own other computer) and seed a face on `p.person`',
       onlineHere: "PresentAgent[] — peers at this agent's exact route path, for a per-page presence strip",
       calls: 'Map<callId, PresentAgent[]> — the calls running in this space right now and who is in each',
       available:
@@ -2212,7 +2225,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
     },
     actions: {
       refresh: '(): reads the status, the key log and the custody state again',
-      open: "(change: { kind: 'create' } | { kind: 'add-device' } | { kind: 'revoke', keyId }): runs a change and resolves with its outcome once it ends; the backend asks the person itself, wherever it keeps the master key, and everything is read again then. Words, passphrases and keys never reach the app",
+      open: "(change: { kind: 'create' } | { kind: 'add-device' } | { kind: 'unlink', keyId } | { kind: 'revoke', keyId }): runs a change and resolves with its outcome once it ends; the backend asks the person itself, wherever it keeps the master key, and everything is read again then. Words, passphrases and keys never reach the app",
       makeIdentity: '(): "Make my identity here" — runs `create`',
       startWithoutIdentity:
         '(): "Start now" — use this account without an identity; remembered for it on this computer, so the first-run question stops',
@@ -2221,18 +2234,21 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
   deviceStore: {
     state: {
       devices:
-        "{ keyId, addedSeq, revokedSeq, label, subtitle, icon, thisDevice, revoked, status, canRevoke }[] — the device keys of the person's key log, valid first and this computer on top. `label` is 'This computer' or 'Device d2' (devices have no names yet); `status` 'Active' or 'Removed at #2'; `canRevoke` is a valid key that is not this computer's",
+        "{ keyId, addedSeq, unlinkedSeq, revokedSeq, label, subtitle, icon, thisDevice, unlinked, revoked, status, canUnlink, canRevoke }[] — the device keys of the person's key log, active first and this computer on top. `label` is 'This computer' or 'Device d2' (devices have no names yet); `status` 'Active', 'Unlinked' or 'Revoked'; `canUnlink` is an active key that is not this computer's; `canRevoke` is a key not yet revoked (an unlinked one included) that is not this computer's",
       devicesLoaded: 'boolean — the list has been read once',
-      validCount: 'number — how many keys are valid',
-      canManage: 'boolean — Link a device or Remove can be offered: this computer keeps the master key of the identity',
+      validCount: 'number — how many keys are active: neither unlinked nor revoked',
+      canManage:
+        'boolean — Link a device, Unlink device or Lost or stolen can be offered: this computer keeps the master key of the identity',
       error: 'string — why the last read failed, or empty',
     },
     actions: {
       refresh: '(): reads the device list again',
       addDevice:
         '(): adds a device — the backend asks the person wherever it keeps the master key (on the desktop: the offer link and QR code, then the match code, then the confirmation that signs it). Resolves with the outcome; the list is read again',
+      unlink:
+        '(keyId: string): unlinks that device key — a device the person replaced or retired. It signs nothing new, and what it signed before stays valid. Confirmed where the master key is kept. Resolves with the outcome',
       revoke:
-        '(keyId: string): revokes that device key, once the person confirms it where the master key is kept. Resolves with the outcome',
+        '(keyId: string): revokes that device key as lost or stolen, once the person confirms it where the master key is kept; there they also say since when it was missing (default now). Resolves with the outcome',
     },
   },
   workflowStore: {

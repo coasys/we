@@ -51,7 +51,7 @@ export function identityFile(url, dir) {
 /** The steps the main window may ask for, as `we_custody::IdentityStep` reads them. */
 function isIdentityStep(step) {
   if (step?.kind === 'create' || step?.kind === 'add-device') return true;
-  return step?.kind === 'revoke' && typeof step.keyId === 'string';
+  return (step?.kind === 'unlink' || step?.kind === 'revoke') && typeof step.keyId === 'string';
 }
 
 /**

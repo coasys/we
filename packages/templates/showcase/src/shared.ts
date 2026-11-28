@@ -209,7 +209,7 @@ export function signalRow(nodeRef: string): SchemaNode {
                     props: {
                       signalType: { $: 'sig' },
                       signals: { $: `filter(${nodeRef}.signals, { signalTypeId: sig.id })` },
-                      myDid: { $: 'me.did' },
+                      myDids: { $: 'me.dids' },
                       onSignal: {
                         $invoke: 'spaceStore.upsertSignal',
                         args: [{ $: `${nodeRef}.id` }, { $: 'sig.id' }, { $: 'arg' }],

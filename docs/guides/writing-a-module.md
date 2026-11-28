@@ -204,11 +204,11 @@ or into another part.
 ## The store, and what a template may reach
 
 ```ts
-createStore: ({ signal, state, action, kernels, selfId, notify }) => {
+createStore: ({ signal, state, action, kernels, selfIds, notify }) => {
   const records = kernels.records;
   const [voting, setVoting] = signal('');
   async function vote(pollId: string, option: string) {
-    /* find mine, update or create */
+    /* find mine across my devices, write this device's, remove what loses to it */
   }
   return {
     voting: state(voting, 'The id of the poll a vote is being written for, or empty.'),
@@ -221,6 +221,12 @@ createStore: ({ signal, state, action, kernels, selfId, notify }) => {
 Reactivity is **injected** — `signal`, `effect` — so a store never imports a framework. That is not
 tidiness: a module bundle importing its own copy of a reactive framework gets a second runtime, and
 reactivity silently stops crossing the boundary.
+
+**"Me" is two questions.** `deps.selfId()` is this device's key — the `author` of what it writes, the
+peer it is in a call. `deps.selfIds()` is every id that is this person, this device first: what one of
+my other computers wrote is mine too. Anything that is one per _person_ — a vote, an answer — reads by
+`selfIds`, picks my newest with `newestWritten` and replaces it with `keepNewestAcrossDevices` (both in
+`@we/optimism`); the polls module is the worked example.
 
 **Members are private by default.** `deps.state(accessor, doc)` and `deps.action(fn, doc)` publish a
 member with a required one-sentence description; everything else is visible only to your own panels

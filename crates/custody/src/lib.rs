@@ -6,7 +6,7 @@
 //!   the build lacks the keychain entitlement.
 //! - [`pending`] keeps the incept of an identity made here until its publish is confirmed, so a
 //!   create the app did not see finish is completed on the next start rather than stranded.
-//! - [`service`] runs the identity client's flows — create, add a device, revoke — for the identity
+//! - [`service`] runs the identity client's flows — create, add a device, unlink or revoke one — for the identity
 //!   window, and reaches the executor only over its RPC with the admin credential.
 //! - [`window`] says which Tauri window may call which command.
 //! - [`host`] is what every desktop host starts the service with: the custody folder. Which

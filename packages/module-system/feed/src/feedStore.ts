@@ -25,12 +25,14 @@ import { lineContent, TYPED } from '@we/messages';
 import type { InterpretationKernel, ModuleStoreDeps, RecordsKernel } from '@we/module-shared';
 
 import {
+  arrangeFeedWindow,
   CALL_FIELDS,
   FEED_FIRST_PAGE,
   FEED_PAGE,
   type FeedLine,
   FeedReadStopped,
   type FeedRow,
+  type FeedWindowParts,
   markPending,
   readFeedWindow,
 } from './feed';
@@ -59,6 +61,8 @@ export interface FeedDeps {
   rootTitle?: string;
   records: RecordsKernel | undefined;
   interpretation: InterpretationKernel | undefined;
+  /** Who wrote what — read here for the person a device key writes as, so activity groups by person. */
+  identities?: ModuleStoreDeps['identities'];
   /** The host's first screen — see `ModuleStoreDeps.firstScreen` and `firstPageReported` below. */
   firstScreen?: ModuleStoreDeps['firstScreen'];
   /**
@@ -135,6 +139,17 @@ export function createFeed(deps: FeedDeps) {
     return [...rows(), ...mine.map((entry) => entry.line)].sort((a, b) => sign * (Date.parse(a.at) - Date.parse(b.at)));
   };
   const [loaded, setLoaded] = signal(false);
+  /**
+   * The person each author on screen was grouped under when the window was read — see "Grouping by
+   * person" below.
+   */
+  const [groupedAs, setGroupedAs] = signal<Record<string, string>>({});
+  /**
+   * What the last read drawn found, before grouping — what a person arriving is regrouped from. Its
+   * lines are already the ones that read's `showSpoken` drew; flipping the setting re-reads and
+   * replaces it.
+   */
+  let drawnParts: FeedWindowParts | undefined;
   /*
     The last read failed, readable without subscribing: the looking effect asks it to owe a read on
     the next look, and reading a signal there would re-run that effect on every read's outcome. The
@@ -164,6 +179,8 @@ export function createFeed(deps: FeedDeps) {
     if (ds === datasetWas && now === rootWas) return;
     datasetWas = ds;
     setRows([]);
+    drawnParts = undefined;
+    setGroupedAs({});
     setSent([]);
     setLoaded(false);
     setAnswered(false);
@@ -266,6 +283,7 @@ export function createFeed(deps: FeedDeps) {
       fromStart() === anchoredAtStart &&
       showSpoken() === spoken;
     const activityTypes = (deps.interpretation?.targets(activityRoot) ?? []).map((t) => t.entity);
+    const used: Record<string, string> = {};
     // Sent lines whose record this read starts after: it is the answer on them, found or not.
     const askedAfter = new Set(
       sent()
@@ -283,8 +301,10 @@ export function createFeed(deps: FeedDeps) {
         activityTypes,
         pending: new Set(unconfirmed()),
         stopped: () => !same() || !looking(),
+        personOf: (author) => (used[author] = deps.identities?.get(author)?.person ?? author),
       });
       if (same()) {
+        drawnParts = result.parts;
         // Marked with the suggestions as they are now, which may have settled while it ran.
         setRows(markPending(result.rows, new Set(unconfirmed())));
         const read = new Set(result.rows.map((row) => row.id));
@@ -292,6 +312,9 @@ export function createFeed(deps: FeedDeps) {
         setHasMore(result.hasMore);
         setLoaded(true);
         setAnswered(true);
+        // After the rows: this wakes the regroup effect at once, and a person who landed since the rows
+        // were grouped (a cached answer lands in a microtask) must find them drawn, not be drawn over.
+        setGroupedAs(used);
         firstPageAnswered();
       }
     } catch (error) {
@@ -374,6 +397,34 @@ export function createFeed(deps: FeedDeps) {
       else changed();
     };
   };
+
+  /*
+    ## Grouping by person
+
+    Activity is grouped by the person an author speaks for, and the host learns that in the background:
+    a device's person arrives after its profile, which may be after the read that grouped it. So the
+    authors a read grouped are watched, and when one's person is no longer what it was grouped under
+    the window is arranged again from what that read found (`drawnParts`) — the two devices' rows
+    become one with no query to the backend, which would cost seconds of the backend's time per space. A
+    person arriving for an author not on screen, or the same person again, redraws nothing. An author
+    nobody has fetched is fetched here.
+  */
+  effect?.(() => {
+    const identities = deps.identities;
+    if (!identities) return;
+    const personOf = (author: string) => identities.get(author)?.person ?? author;
+    let moved = false;
+    for (const [author, person] of Object.entries(groupedAs())) {
+      if (!identities.get(author)) identities.fetch(author);
+      if (personOf(author) !== person) moved = true;
+    }
+    if (!moved || !drawnParts) return;
+    const used: Record<string, string> = {};
+    const result = arrangeFeedWindow(drawnParts, new Set(unconfirmed()), (author) => (used[author] = personOf(author)));
+    setGroupedAs(used);
+    setRows(result.rows);
+    setHasMore(result.hasMore);
+  });
 
   // Read when the window moves, and when somebody starts looking at one that is owed a read.
   effect?.(() => {

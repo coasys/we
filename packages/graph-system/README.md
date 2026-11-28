@@ -18,7 +18,7 @@ source of nodes writes an expander and nothing in the core changes.
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
 | `@we/graph-protocol`  | Contracts only — addressing, expanders, layouts, renderers, behaviours, style rules, the JSON spec. Erases at build time. | nothing                      |
 | `@we/graph-core`      | The engine: store, expansion state, viewport, spatial index, styling, behaviours. No framework, no backend.               | protocol                     |
-| `@we/graph-expanders` | First-party expanders and seed sources.                                                                                   | protocol                     |
+| `@we/graph-expanders` | First-party expanders and seed sources.                                                                                   | protocol, optimism           |
 | `@we/graph-layouts`   | Force (d3-force), tree, radial, grid, manual.                                                                             | protocol, d3-force           |
 | `@we/graph-solid`     | The Solid adapter — DOM nodes, SVG edges, pointer plumbing.                                                               | core, expanders, layouts     |
 | `@we/module-graph`    | The feature module: placeable fragments and the plugin catalog.                                                           | module-shared, schema-shared |

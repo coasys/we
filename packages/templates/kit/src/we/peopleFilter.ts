@@ -1,5 +1,7 @@
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
+import { isMe, profileOf } from './profileOf.ts';
+
 export interface PeopleFilterOptions {
   /** The `array` local holding the chosen DIDs. Declared by the caller, since what it filters reads it too. */
   people: string;
@@ -78,18 +80,19 @@ export function peopleFilter(opts: PeopleFilterOptions): SchemaNode {
   const max = opts.max ?? 6;
   const faces = expression(opts.faces);
   const inline = `filter(${faces}, {}, ${max})`;
-  const profile = (did: string) => `find(profileStore.profiles, { did: ${did} })`;
+  // Faces and members are persons; a chip from an older address may still be a device key.
+  const profile = (did: string) => profileOf(did);
 
   /** One face: press to choose or let go, ringed while chosen, faded while somebody else is. */
   const faceToggle = (did: string): SchemaNode => ({
     type: 'we-tooltip',
-    props: { content: { $: `${did} == me.did ? 'You' : ${profile(did)}.name` } },
+    props: { content: { $: `${isMe(did)} ? 'You' : ${profile(did)}.name` } },
     children: [
       {
         type: 'we-button',
         props: {
           variant: 'bare',
-          label: { $: `${did} == me.did ? 'You' : ${profile(did)}.name` },
+          label: { $: `${isMe(did)} ? 'You' : ${profile(did)}.name` },
           opacity: { $: `${chosen} && !(${did} in ${people}) ? 0.45 : 1` },
           transition: 'opacity 150 ease-in-out',
           hoverProps: { opacity: 1 },
@@ -154,7 +157,7 @@ export function peopleFilter(opts: PeopleFilterOptions): SchemaNode {
                       searchable: true,
                       searchPlaceholder: 'Find a member',
                       items: {
-                        $: `spaceStore.members.map(m, { type: 'toggle', id: m.did, label: m.did == me.did ? m.name + ' (you)' : m.name, checked: m.did in ${people}, avatar: { image: m.avatar, hash: m.did } })`,
+                        $: `spaceStore.members.map(m, { type: 'toggle', id: m.did, label: m.did in me.dids ? m.name + ' (you)' : m.name, checked: m.did in ${people}, avatar: { image: m.avatar, hash: m.did } })`,
                       },
                       // A toggle reports before its tick changes; `$toggleLocalIn` adds what is absent and removes what is present.
                       onSelect: { $toggleLocalIn: opts.people, value: { $: 'arg.id' } },
