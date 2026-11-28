@@ -5,6 +5,7 @@
 import { render } from '@solidjs/testing-library';
 import type {
   DeviceKeyView,
+  DeviceNameView,
   IdentityChange,
   IdentityChangeOutcome,
   IdentityCustodyView,
@@ -41,6 +42,7 @@ vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
       keyLog: true,
       devices: true,
       linkDevice: !!ports()?.identity?.change,
+      recoveryWords: !!ports()?.identity?.change,
     }),
   }),
 }));
@@ -671,6 +673,19 @@ describe('deviceStore', () => {
         expect(b.calls.filter((call) => call === 'unlinkSelf')).toHaveLength(1);
       });
 
+      it('opens no identity step (replace the master key, restore, remove it) until it settles', async () => {
+        const { devices: deviceStore, release } = inFlight();
+        await flush();
+        await flush();
+        await deviceStore.unlink('d1');
+        const first = deviceStore.unlinkThisComputer();
+        expect(await deviceStore.replaceMaster()).toBe('cancelled');
+        expect(await deviceStore.restore()).toBe('cancelled');
+        expect(await deviceStore.removeMaster()).toBe('cancelled');
+        release();
+        expect(await first).toBe('done');
+      });
+
       it('cannot be raised again, and cancelling after the submit does nothing', async () => {
         const { b, devices: deviceStore, release } = inFlight();
         await flush();
@@ -839,6 +854,32 @@ describe('deviceStore', () => {
     ]);
   });
 
+  it('on a computer that lost its enc key: still warns of a revoked holder from the key log, and offers the words', async () => {
+    const revokedD2 = devices.map((d) => (d.keyId === 'd2' ? { ...d, revokedSeq: 2 } : d));
+    const revoke = { seq: 2, op: 'revoke', hash: 'QmHash2', added: [], unlinked: [], revoked: ['d2'] };
+    const b = backend({ did: DID, events: [incept, add, revoke], devices: revokedD2 });
+    const state: IdentityCustodyView = {
+      ...NO_CUSTODY,
+      did: DID,
+      unlock: 'os',
+      // The record's word that d2 took the master key cannot be read here; the key log's can.
+      devices: [{ keyId: 'd2', name: 'Laptop', kind: 'desktop-app', holdsMaster: 'yes' }],
+      endedHolders: ['d2'],
+      encMismatch: true,
+    };
+    setPorts({ identity: signing(b.port, { custody: async () => state, change: async () => 'done' }) });
+    const { devices: deviceStore } = mount();
+    await flush();
+    await flush();
+    const d2 = deviceStore.devices().find((d) => d.keyId === 'd2')!;
+    expect(d2.label).toBe('Device d2');
+    expect(d2.master).toBe('May still have your master key. Replace it to lock this device out.');
+    expect(d2.replaceMaster).toBe(true);
+    // The words sign a rotation, and the new key is kept here: nothing sent to this computer is needed.
+    expect(deviceStore.canReplaceMaster()).toBe(true);
+    expect(deviceStore.canAskMaster()).toBe(false);
+  });
+
   it('offers "Show code" on a computer of no identity, and reads the identity once it joined', async () => {
     const b = backend({ did: null, events: [], devices: [] });
     const changes: IdentityChange[] = [];
@@ -863,5 +904,129 @@ describe('deviceStore', () => {
     expect(changes).toEqual([{ kind: 'show-code' }]);
     expect(identity.did()).toBe(DID);
     expect(deviceStore.canShowCode()).toBe(false);
+  });
+
+  it('offers "Restore with recovery phrase" beside "Show code", and reads the identity it restored', async () => {
+    const b = backend({ did: null, events: [], devices: [] });
+    const changes: IdentityChange[] = [];
+    let state: IdentityCustodyView = { ...NO_CUSTODY, unlock: 'os' };
+    setPorts({
+      identity: signing(b.port, {
+        custody: async () => state,
+        async change(change) {
+          changes.push(change);
+          b.state.did = DID;
+          b.state.events = [incept, add];
+          b.state.devices = devices;
+          state = { ...state, did: DID, holdsMaster: true };
+          return 'done';
+        },
+      }),
+    });
+    const { identity, devices: deviceStore } = mount();
+    await flush();
+    await flush();
+    expect(deviceStore.canRestore()).toBe(true);
+    expect(deviceStore.canShowCode()).toBe(true);
+    // Nothing to replace or remove before there is an identity here.
+    expect(deviceStore.canReplaceMaster()).toBe(false);
+    expect(deviceStore.canRemoveMaster()).toBe(false);
+    expect(await deviceStore.restore()).toBe('done');
+    await flush();
+    expect(changes).toEqual([{ kind: 'restore' }]);
+    expect(identity.did()).toBe(DID);
+    expect(deviceStore.canRestore()).toBe(false);
+    // The only copy of the master key is here: sign out does not offer to remove it.
+    expect(deviceStore.canRemoveMaster()).toBe(false);
+  });
+
+  it('offers to remove the master key on sign out only where another active device keeps it', async () => {
+    const b = backend({ did: DID, events: [incept, add], devices });
+    let laptop: DeviceNameView['holdsMaster'] = 'offered';
+    setPorts({
+      identity: signing(b.port, {
+        custody: async () => ({
+          ...NO_CUSTODY,
+          did: DID,
+          holdsMaster: true,
+          unlock: 'os',
+          devices: [{ keyId: 'd2', name: 'Laptop', kind: 'desktop-app', holdsMaster: laptop }],
+        }),
+        change: async () => 'done',
+      }),
+    });
+    const { identity, devices: deviceStore } = mount();
+    await flush();
+    await flush();
+    // Sent and not yet taken: this is still the only copy the custody service counts.
+    expect(deviceStore.canRemoveMaster()).toBe(false);
+    laptop = 'yes';
+    await identity.refresh();
+    expect(deviceStore.canRemoveMaster()).toBe(true);
+    // A holder that is no longer linked keeps no copy the identity can use.
+    b.state.devices = devices.map((d) => (d.keyId === 'd2' ? { ...d, unlinkedSeq: 2 } : d));
+    await deviceStore.refresh();
+    await identity.refresh();
+    expect(deviceStore.canRemoveMaster()).toBe(false);
+  });
+
+  it('offers no words without a custody service to take them', async () => {
+    setPorts({ identity: backend({ did: null, events: [], devices: [] }).port });
+    const { devices: deviceStore } = mount();
+    await flush();
+    await flush();
+    expect(deviceStore.canRestore()).toBe(false);
+    expect(deviceStore.canReplaceMaster()).toBe(false);
+  });
+
+  it('replaces the master key on a device that does not keep it, and the revoked holder stops warning', async () => {
+    const revokedD2 = devices.map((d) => (d.keyId === 'd2' ? { ...d, revokedSeq: 2 } : d));
+    const revoke = { seq: 2, op: 'revoke', hash: 'QmHash2', added: [], unlinked: [], revoked: ['d2'] };
+    const b = backend({ did: DID, events: [incept, add, revoke], devices: revokedD2 });
+    let state: IdentityCustodyView = { ...NO_CUSTODY, did: DID, unlock: 'os', endedHolders: ['d2'] };
+    const changes: IdentityChange[] = [];
+    setPorts({
+      identity: signing(b.port, {
+        custody: async () => state,
+        async change(change) {
+          changes.push(change);
+          if (change.kind === 'replace-master') {
+            b.state.events = [
+              ...b.state.events,
+              { seq: 3, op: 'rotate', hash: 'QmHash3', added: [], unlinked: [], revoked: [] },
+            ];
+            // The record may still list the old holder: the rotation, not the record, settles it.
+            state = {
+              ...state,
+              holdsMaster: true,
+              endedHolders: [],
+              devices: [{ keyId: 'd2', name: 'Laptop', kind: 'desktop-app', holdsMaster: 'yes' }],
+            };
+          }
+          if (change.kind === 'remove-master') state = { ...state, holdsMaster: false };
+          return 'done';
+        },
+      }),
+    });
+    const { devices: deviceStore } = mount();
+    await flush();
+    await flush();
+    const d2 = () => deviceStore.devices().find((d) => d.keyId === 'd2')!;
+    expect(d2().master).toContain('Replace it to lock this device out');
+    expect(d2().replaceMaster).toBe(true);
+    // Not keeping the master key is the point: the lost device kept it.
+    expect(deviceStore.canManage()).toBe(false);
+    expect(deviceStore.canReplaceMaster()).toBe(true);
+    expect(deviceStore.canRemoveMaster()).toBe(false);
+
+    expect(await deviceStore.replaceMaster()).toBe('done');
+    await flush();
+    await flush();
+    expect(d2()).toMatchObject({ master: '', replaceMaster: false });
+    // The revoked laptop keeps no copy the identity can use, so the new key here is the only one.
+    expect(deviceStore.canRemoveMaster()).toBe(false);
+    expect(await deviceStore.removeMaster()).toBe('done');
+    await flush();
+    expect(changes).toEqual([{ kind: 'replace-master' }, { kind: 'remove-master' }]);
   });
 });

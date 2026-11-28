@@ -6,7 +6,8 @@
  *
  * Plain DOM with `textContent` only — no template engine, no `innerHTML` — so the window's CSP can
  * forbid every script but its own and every string sink (`require-trusted-types-for 'script'`).
- * Fields are cleared once their call returns.
+ * Fields are cleared once their call returns, except the 12 words: a refused phrase stays in its
+ * fields so the person corrects the word named, and they are cleared once any other screen comes.
  */
 import '@we/tokens/css/color';
 import 'virtual:we-identity-theme.css';
@@ -18,10 +19,12 @@ import {
   heading,
   isLast,
   oneAtATime,
+  refusedField,
   remaining,
   type Screen,
   screenTurns,
   sinceMs,
+  spreadWords,
   type StepInput,
   targetLine,
   wordNumber,
@@ -47,12 +50,60 @@ export interface IdentityTransport {
 let host: IdentityTransport;
 let root: HTMLElement;
 let offerTimer: number | undefined;
+/** The 12 word fields while the words entry is up, so a refusal keeps what was typed. */
+let wordFields: HTMLInputElement[] | null = null;
 /**
- * The "missing since" the person last sent for a revoke, drawn again when the custody service
- * answers with the same key's confirm screen (a wrong passphrase, a refused time): a retry without
- * it would revoke from now, and a revocation cannot be redone.
+ * The "missing since" the person last sent, and for which devices, drawn again when the custody
+ * service answers with a screen that revokes the same devices (a wrong passphrase, a refused time,
+ * the retry of a revoke a rotation left): a retry without it would revoke from now, and a revocation
+ * cannot be redone. Kept under the devices (`devicesKey`) on every screen, a revoke's and a
+ * restore's alike, so the retry finds it.
  */
-let picked: { keyId: string; value: string } | undefined;
+let picked: { key: string; value: string } | undefined;
+
+/** Where a time picked for revoking the device keys `keyIds` is kept: the same set, in any order. */
+function devicesKey(keyIds: string[]): string {
+  return [...keyIds].sort().join(' ');
+}
+
+/**
+ * The "missing since" picker, filled with what the person sent last for `key` when it is drawn again.
+ * "Leave empty for now" is said only while it starts empty: a filled one is a time to correct.
+ */
+function sincePicker(key: string): { label: HTMLLabelElement; input: HTMLInputElement } {
+  const input = el('input', { type: 'datetime-local' });
+  if (picked?.key === key) input.value = picked.value;
+  const text = input.value ? 'Missing since' : 'Missing since (leave empty for now)';
+  return { label: el('label', {}, text, input), input };
+}
+
+/** The picker's time in ms: `undefined` for now, `null` (after saying so) for a time not finished. */
+function pickedSince(input: HTMLInputElement, key: string, again: () => void): number | undefined | null {
+  const at = sinceMs(input.value, input.validity.badInput);
+  if (at === null) again();
+  else picked = { key, value: input.value };
+  return at;
+}
+
+/** What a time not finished says. */
+const HALF_TIME = 'Enter the whole date and time, or clear it to revoke from now.';
+
+/**
+ * An error line a screen sets in place. A time not finished is said here and the form is never drawn
+ * again for it: a redraw would rebuild every tick, the name and the passphrase from the screen the
+ * service sent, and a device the person unticked would be ticked again.
+ */
+function errorSlot(text: string | null): { line: HTMLParagraphElement; show: (message: string) => void } {
+  const line = el('p', { className: 'error', textContent: text ?? '' });
+  line.hidden = !text;
+  return {
+    line,
+    show: (message) => {
+      line.textContent = message;
+      line.hidden = false;
+    },
+  };
+}
 /** Marked at each screen drawn and each step sent: a wait's answer is drawn only while it holds. */
 const turn = screenTurns();
 
@@ -182,6 +233,50 @@ function waitFor(input: StepInput) {
 
 function errorLine(error: string | null): Child[] {
   return error ? [el('p', { className: 'error', textContent: error })] : [];
+}
+
+/**
+ * The 12 word fields, numbered as the words grid numbers them. A whole phrase pasted into any field
+ * spreads over the fields from there. The words never leave the fields but in the step that sends
+ * them.
+ */
+function wordsEntry(position: number | null): { fields: HTMLInputElement[]; grid: HTMLElement } {
+  const fields =
+    wordFields ??
+    Array.from({ length: 12 }, (_, i) => {
+      const input = el('input', { type: 'text', autocomplete: 'off' });
+      input.spellcheck = false;
+      input.setAttribute('autocapitalize', 'none');
+      input.setAttribute('aria-label', `Word ${i + 1}`);
+      return input;
+    });
+  fields.forEach((input, i) => {
+    input.onpaste = (event) => {
+      const spread = spreadWords(event.clipboardData?.getData('text') ?? '', i);
+      if (!spread.length) return;
+      event.preventDefault();
+      for (const [at, word] of spread) fields[at].value = word;
+    };
+    // `aria-invalid` is a token, not a boolean attribute: present and empty would mean "true" to some
+    // readers and nothing to others, so the refused field says "true" and the others carry none.
+    if (refusedField(position, i)) input.setAttribute('aria-invalid', 'true');
+    else input.removeAttribute('aria-invalid');
+  });
+  wordFields = fields;
+  const grid = el(
+    'div',
+    { className: 'words' },
+    ...fields.map((input, i) =>
+      el('label', { className: 'word' }, el('span', { className: 'n', textContent: wordNumber(i) }), input),
+    ),
+  );
+  return { fields, grid };
+}
+
+/** Empties the word fields and lets them go. */
+function forgetWords() {
+  for (const input of wordFields ?? []) input.value = '';
+  wordFields = null;
 }
 
 /** Who asks, as both devices show it: the request's code, and the asking key from the key log. */
@@ -364,27 +459,131 @@ function body(screen: Screen): Child[] {
     }
     case 'revoke-confirm': {
       const p = screen.passphrase ? secretField('Passphrase') : null;
-      const since = el('input', { type: 'datetime-local' });
-      if (picked?.keyId === screen.keyId) since.value = picked.value;
+      const since = sincePicker(devicesKey([screen.keyId]));
+      const problem = errorSlot(screen.error);
+      const rotate = el('input', { type: 'checkbox' });
+      rotate.checked = screen.rotate;
+      // With "Also replace master key" the rotation comes first and the revoke follows it, from the
+      // same time: the picker stays.
       const go = () => {
-        const at = sinceMs(since.value, since.validity.badInput);
-        if (at === null) {
-          draw({ ...screen, error: 'Enter the whole date and time, or clear it to revoke from now.' });
-          return;
-        }
-        picked = { keyId: screen.keyId, value: since.value };
+        const at = pickedSince(since.input, devicesKey([screen.keyId]), () => problem.show(HALF_TIME));
+        if (at === null) return;
         void step(
-          { kind: 'revoke', ...(p ? { passphrase: p.input.value } : {}), ...(at === undefined ? {} : { since: at }) },
+          {
+            kind: 'revoke',
+            rotate: rotate.checked,
+            ...(p ? { passphrase: p.input.value } : {}),
+            ...(at === undefined ? {} : { since: at }),
+          },
           p ? [p.input] : [],
         );
       };
+      // What replacing the master key adds, said only while it is ticked: unticked, no phrase is asked.
+      const rotateNote = el('p', {
+        className: 'note',
+        textContent:
+          "Any copy this device has stops working. You'll enter your recovery phrase next, and the device is revoked from the time above after your master key is replaced.",
+      });
+      rotateNote.hidden = !rotate.checked;
+      rotate.addEventListener('change', () => (rotateNote.hidden = !rotate.checked));
       return [
-        el('label', {}, 'Missing since (leave empty for now)', since),
+        since.label,
+        el('label', { className: 'check' }, rotate, 'Also replace master key'),
+        rotateNote,
         ...(p ? [p.label] : []),
-        ...errorLine(screen.error),
+        problem.line,
         el('div', { className: 'row' }, button('Revoke', go, 'danger'), button('Cancel', cancel)),
       ];
     }
+    case 'enter-words': {
+      const { fields, grid } = wordsEntry(screen.position);
+      const go = () => step({ kind: 'twelve-words', words: fields.map((f) => f.value.trim()).join(' ') });
+      return [
+        grid,
+        ...errorLine(screen.error),
+        el('div', { className: 'row' }, button('Continue', go, 'primary'), button('Cancel', cancel)),
+      ];
+    }
+    case 'restore-devices': {
+      const ticks = screen.devices.map((d) => {
+        const box = el('input', { type: 'checkbox' });
+        box.checked = d.lockOut;
+        return { keyId: d.keyId, box, label: d.name ? `${d.name} (${d.keyId})` : d.keyId };
+      });
+      const name = textField('Name for this computer', '', 'Home desktop');
+      // Drawn for the devices ticked to start with, which is how the service sends the screen again.
+      const since = sincePicker(devicesKey(screen.devices.filter((d) => d.lockOut).map((d) => d.keyId)));
+      const problem = errorSlot(null);
+      const go = () => {
+        const keyIds = ticks.filter((t) => t.box.checked).map((t) => t.keyId);
+        const at = pickedSince(since.input, devicesKey(keyIds), () => problem.show(HALF_TIME));
+        if (at === null) return;
+        void step({
+          kind: 'lock-out',
+          keyIds,
+          name: typed(name.input),
+          ...(at === undefined ? {} : { since: at }),
+        });
+      };
+      return [
+        el('div', { className: 'link', textContent: screen.did }),
+        ...ticks.map((t) => el('label', { className: 'check' }, t.box, `Remove ${t.label}`)),
+        since.label,
+        name.label,
+        problem.line,
+        el('div', { className: 'row' }, button('Restore', go, 'primary'), button('Cancel', cancel)),
+      ];
+    }
+    case 'remove-master':
+      return [
+        ...errorLine(screen.error),
+        el(
+          'div',
+          { className: 'row' },
+          button('Remove', () => step({ kind: 'remove' }), 'danger'),
+          button('Cancel', cancel),
+        ),
+      ];
+    case 'master-not-kept':
+      // The rotation stands: closing leaves it, and trying again needs the words once more.
+      return [
+        el(
+          'div',
+          { className: 'row' },
+          button('Enter recovery phrase', () => step({ kind: 'try-again' }), 'primary'),
+          button('Close', cancel),
+        ),
+      ];
+    case 'rotated-not-revoked': {
+      // The rotation stands: closing leaves it; trying again publishes only the revoke.
+      const since = sincePicker(devicesKey(screen.keyIds));
+      const problem = errorSlot(null);
+      const go = () => {
+        const at = pickedSince(since.input, devicesKey(screen.keyIds), () => problem.show(HALF_TIME));
+        if (at === null) return;
+        void step({ kind: 'retry-revoke', ...(at === undefined ? {} : { since: at }) });
+      };
+      return [
+        since.label,
+        problem.line,
+        el('div', { className: 'row' }, button('Revoke now', go, 'primary'), button('Close', cancel)),
+      ];
+    }
+    case 'restore-not-linked':
+      return [
+        el('div', { className: 'link', textContent: screen.did }),
+        el(
+          'div',
+          { className: 'row' },
+          button('Try again', () => step({ kind: 'try-again' }), 'primary'),
+          button('Close', cancel),
+        ),
+      ];
+    case 'restored':
+      return [el('div', { className: 'link', textContent: screen.did })];
+    case 'master-replaced':
+    case 'master-removed':
+      return [];
     case 'pending-refused':
       return [
         el('div', { className: 'link', textContent: screen.did }),
@@ -421,11 +620,16 @@ function draw(screen: Screen) {
     window.clearInterval(offerTimer);
     offerTimer = undefined;
   }
+  if (screen.screen !== 'enter-words') forgetWords();
   const { title, lead } = heading(screen);
   const parts: Child[] = [el('h1', { textContent: title }), el('p', { textContent: lead }), ...body(screen)];
   if (isLast(screen)) parts.push(el('div', { className: 'row' }, button('Done', finish, 'primary')));
   root.replaceChildren(...parts);
-  root.querySelector<HTMLInputElement>('input:not([type=checkbox])')?.focus();
+  // A refused word's field first, else the first field.
+  (
+    root.querySelector<HTMLInputElement>('input[aria-invalid="true"]') ??
+    root.querySelector<HTMLInputElement>('input:not([type=checkbox])')
+  )?.focus();
 }
 
 /** Draws the window into this page and starts its step. */

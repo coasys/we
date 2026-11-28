@@ -3,20 +3,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Screen, StepInput } from './screens';
 
-const confirm = (error: string | null = null): Screen => ({
+const confirm = (error: string | null = null, rotate = false): Screen => ({
   screen: 'revoke-confirm',
   keyId: 'd2',
+  name: null,
   mayHoldMaster: false,
+  rotate,
   passphrase: true,
   error,
 });
 
-async function openOn(answers: Screen[]) {
+async function openOn(answers: Screen[], first: Screen = confirm()) {
   vi.resetModules();
   const { runIdentityWindow } = await import('./window');
   const sent: StepInput[] = [];
   runIdentityWindow({
-    start: () => Promise.resolve(confirm()),
+    start: () => Promise.resolve(first),
     step: (input) => {
       sent.push(input);
       return Promise.resolve(answers.shift() ?? { screen: 'failed', message: 'no more answers' });
@@ -52,8 +54,8 @@ describe('the revoke confirm screen', () => {
 
     const at = new Date(2026, 10, 20, 8, 0).getTime();
     expect(sent).toEqual([
-      { kind: 'revoke', passphrase: 'wrong', since: at },
-      { kind: 'revoke', passphrase: 'right', since: at },
+      { kind: 'revoke', rotate: false, passphrase: 'wrong', since: at },
+      { kind: 'revoke', rotate: false, passphrase: 'right', since: at },
     ]);
   });
 
@@ -67,13 +69,225 @@ describe('the revoke confirm screen', () => {
     expect(document.body.textContent).toContain('Enter the whole date and time');
   });
 
+  it('keeps "Also replace master key" and the passphrase as set across a half-filled time', async () => {
+    const sent = await openOn([{ screen: 'failed', message: 'stop here' }]);
+    const rotate = document.querySelector<HTMLInputElement>('input[type=checkbox]')!;
+    rotate.checked = true;
+    passphrase().value = 'right';
+    Object.defineProperty(picker(), 'validity', { value: { badInput: true }, configurable: true });
+    revoke();
+
+    expect(sent).toEqual([]);
+    expect(document.body.textContent).toContain('Enter the whole date and time');
+    expect(document.querySelector<HTMLInputElement>('input[type=checkbox]')).toBe(rotate);
+    expect(rotate.checked).toBe(true);
+    expect(passphrase().value).toBe('right');
+  });
+
   it('sends no time for an empty picker: the store takes its own', async () => {
     const sent = await openOn([{ screen: 'revoked', keyId: 'd2', seq: 3 }]);
     passphrase().value = 'right';
     revoke();
     await vi.waitFor(() => expect(sent).toHaveLength(1));
 
-    expect(sent[0]).toEqual({ kind: 'revoke', passphrase: 'right' });
+    expect(sent[0]).toEqual({ kind: 'revoke', rotate: false, passphrase: 'right' });
+  });
+
+  it('sends the picked time with "Also replace master key": the revoke after the rotation carries it', async () => {
+    const sent = await openOn([{ screen: 'failed', message: 'stop here' }]);
+    picker().value = '2026-11-20T08:00';
+    const rotate = document.querySelector<HTMLInputElement>('input[type=checkbox]')!;
+    rotate.checked = true;
+    rotate.dispatchEvent(new Event('change'));
+
+    expect(picker().disabled).toBe(false);
+    passphrase().value = 'right';
+    revoke();
+    await vi.waitFor(() => expect(sent).toHaveLength(1));
+
+    expect(sent[0]).toEqual({
+      kind: 'revoke',
+      rotate: true,
+      passphrase: 'right',
+      since: new Date(2026, 10, 20, 8, 0).getTime(),
+    });
+  });
+
+  it('says "leave empty for now" only on a picker that starts empty', async () => {
+    await openOn([]);
+    expect(picker().closest('label')?.textContent).toBe('Missing since (leave empty for now)');
+  });
+
+  it('after the rotation without its revoke, retries only the revoke, with a time the person may correct', async () => {
+    const sent = await openOn([
+      {
+        screen: 'rotated-not-revoked',
+        index: 1,
+        keyIds: ['d2'],
+        names: [null],
+        reason: 'That is before this device was added. Pick a later time.',
+        needsWords: true,
+      },
+      { screen: 'master-replaced', index: 1, revoked: ['d2'], note: null },
+    ]);
+    picker().value = '2026-11-20T08:00';
+    passphrase().value = 'right';
+    revoke();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Device not revoked yet'));
+    expect(document.body.textContent).toContain('Pick a later time.');
+    // The field starts filled, so it is a time to correct, not one to leave empty.
+    expect(picker().closest('label')?.textContent).toBe('Missing since');
+    // The time sent is still there to correct.
+    expect(picker().value).toBe('2026-11-20T08:00');
+    picker().value = '2026-11-20T09:00';
+    Array.from(document.querySelectorAll('button'))
+      .find((b) => b.textContent === 'Revoke now')!
+      .click();
+    await vi.waitFor(() => expect(sent).toHaveLength(2));
+
+    expect(sent[1]).toEqual({ kind: 'retry-revoke', since: new Date(2026, 10, 20, 9, 0).getTime() });
+  });
+
+  it('asks since when the lost devices were missing on a restore, and sends it with the lock-out', async () => {
+    const sent = await openOn([{ screen: 'failed', message: 'stop here' }], {
+      screen: 'restore-devices',
+      did: 'did:scid:coasys:1:Qm',
+      devices: [{ keyId: 'd2', name: 'Phone', kind: 'app', lockOut: true }],
+      note: null,
+    });
+    picker().value = '2026-11-20T08:00';
+    Array.from(document.querySelectorAll('button'))
+      .find((b) => b.textContent === 'Restore')!
+      .click();
+    await vi.waitFor(() => expect(sent).toHaveLength(1));
+
+    expect(sent[0]).toMatchObject({
+      kind: 'lock-out',
+      keyIds: ['d2'],
+      since: new Date(2026, 10, 20, 8, 0).getTime(),
+    });
+  });
+
+  it('keeps the ticks and the name across a half-filled time, so a device still held is never locked out', async () => {
+    const sent = await openOn([{ screen: 'failed', message: 'stop here' }], {
+      screen: 'restore-devices',
+      did: 'did:scid:coasys:1:Qm',
+      devices: [
+        { keyId: 'd2', name: 'Phone', kind: 'app', lockOut: true },
+        { keyId: 'd3', name: 'Laptop', kind: 'app', lockOut: true },
+      ],
+      note: null,
+    });
+    const boxes = Array.from(document.querySelectorAll<HTMLInputElement>('input[type=checkbox]'));
+    // The laptop is still in hand: it stays.
+    boxes[1].checked = false;
+    document.querySelector<HTMLInputElement>('input[placeholder="Home desktop"]')!.value = 'Desk';
+    Object.defineProperty(picker(), 'validity', { value: { badInput: true }, configurable: true });
+    const restore = () =>
+      Array.from(document.querySelectorAll('button'))
+        .find((b) => b.textContent === 'Restore')!
+        .click();
+    restore();
+
+    expect(sent).toEqual([]);
+    expect(document.body.textContent).toContain('Enter the whole date and time');
+    // The form stands as it was: the same boxes, with the ticks the person left.
+    expect(Array.from(document.querySelectorAll('input[type=checkbox]'))).toEqual(boxes);
+    expect(boxes.map((b) => b.checked)).toEqual([true, false]);
+
+    Object.defineProperty(picker(), 'validity', { value: { badInput: false }, configurable: true });
+    picker().value = '2026-11-20T08:00';
+    restore();
+    await vi.waitFor(() => expect(sent).toHaveLength(1));
+
+    expect(sent[0]).toEqual({
+      kind: 'lock-out',
+      keyIds: ['d2'],
+      name: 'Desk',
+      since: new Date(2026, 10, 20, 8, 0).getTime(),
+    });
+  });
+});
+
+describe('the time a revoke is retried from', () => {
+  beforeEach(() => document.body.replaceChildren());
+
+  const restoreThen = (keyIds: string[]) =>
+    openOn(
+      [
+        {
+          screen: 'rotated-not-revoked',
+          index: 1,
+          keyIds,
+          names: keyIds.map(() => null),
+          reason: 'The device list could not be written.',
+          needsWords: false,
+        },
+        { screen: 'failed', message: 'stop here' },
+      ],
+      {
+        screen: 'restore-devices',
+        did: 'did:scid:coasys:1:Qm',
+        devices: [
+          { keyId: 'd2', name: 'Phone', kind: 'app', lockOut: true },
+          { keyId: 'd3', name: 'Laptop', kind: 'app', lockOut: true },
+        ],
+        note: null,
+      },
+    );
+  const press = (label: string) =>
+    Array.from(document.querySelectorAll('button'))
+      .find((b) => b.textContent === label)!
+      .click();
+
+  it("after a restore, starts from the restore's time for the devices it locked out", async () => {
+    const sent = await restoreThen(['d3', 'd2']);
+    picker().value = '2026-11-20T08:00';
+    press('Restore');
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Devices not revoked yet'));
+
+    expect(picker().value).toBe('2026-11-20T08:00');
+    press('Revoke now');
+    await vi.waitFor(() => expect(sent).toHaveLength(2));
+    expect(sent[1]).toEqual({ kind: 'retry-revoke', since: new Date(2026, 10, 20, 8, 0).getTime() });
+  });
+
+  it('starts empty for devices the time was not picked for', async () => {
+    await restoreThen(['d4']);
+    picker().value = '2026-11-20T08:00';
+    press('Restore');
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Device not revoked yet'));
+
+    expect(picker().value).toBe('');
+  });
+});
+
+describe('"Also replace master key"', () => {
+  beforeEach(() => document.body.replaceChildren());
+
+  const note = () =>
+    Array.from(document.querySelectorAll<HTMLElement>('p.note')).find((p) =>
+      p.textContent?.includes('recovery phrase next'),
+    )!;
+
+  it('says the recovery phrase comes next only while it is ticked', async () => {
+    await openOn([]);
+    const rotate = document.querySelector<HTMLInputElement>('input[type=checkbox]')!;
+    expect(rotate.checked).toBe(false);
+    expect(note().hidden).toBe(true);
+
+    rotate.checked = true;
+    rotate.dispatchEvent(new Event('change'));
+    expect(note().hidden).toBe(false);
+
+    rotate.checked = false;
+    rotate.dispatchEvent(new Event('change'));
+    expect(note().hidden).toBe(true);
+  });
+
+  it('says it from the start on a screen sent with it ticked', async () => {
+    await openOn([], confirm(null, true));
+    expect(note().hidden).toBe(false);
   });
 });
 

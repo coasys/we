@@ -53,27 +53,44 @@ pub fn device(events: &[Event], key_id: &str) -> Option<LoggedDevice> {
     })
 }
 
-/// The revoked or unlinked keys that may still hold a valid master key: the log let them keep it
-/// (see [`device`]), and no rotation since replaced the master key. Neither a revoke nor an unlink
-/// changes the master key, so a copy such a device took stays valid until the master key is
-/// replaced. The private record cannot say this: its write drops the entries of ended keys.
+/// The ended (unlinked or revoked) keys that may still hold a valid master key: the log let them
+/// keep it (see [`device`]), and their first end came after the last rotation. A key's first end
+/// is the one that counts, its unlink or its revoke, whichever the log has first. Neither an
+/// unlink nor a revoke changes the master key, so a copy such a device took stays valid until the
+/// master key is replaced; a rotation after the end replaced it. A key ended at or before the last
+/// rotation was never sent the new master key: a rotation that unlinks a key ends it at the
+/// rotation ("revoke and replace master key" and a restore's lock-out do), and a revoke after that
+/// does not put the device back on the list. A key first ended after the last rotation is listed:
+/// the log cannot say whether it was sent the new key. The private record cannot say either: its
+/// write drops the entries of ended keys.
 pub fn ended_holders(events: &[Event]) -> Vec<String> {
-    let mut ended: Vec<String> = Vec::new();
-    for event in events {
+    let mut last_rotation: Option<usize> = None;
+    // Each key with the position of the event that first ended it.
+    let mut first_end: Vec<(String, usize)> = Vec::new();
+    let mut end = |id: &str, at: usize| {
+        if !first_end.iter().any(|(known, _)| known == id) {
+            first_end.push((id.to_string(), at));
+        }
+    };
+    for (at, event) in events.iter().enumerate() {
         match &event.op {
-            Op::Revoke { revoke, .. } => {
-                ended.extend(revoke.iter().map(|k| k.as_str().to_string()))
+            Op::Revoke { revoke, .. } => revoke.iter().for_each(|k| end(k.as_str(), at)),
+            Op::Unlink { unlink } => end(unlink.as_str(), at),
+            Op::Rotate { unlink, .. } => {
+                last_rotation = Some(at);
+                unlink.iter().for_each(|k| end(k.as_str(), at));
             }
-            Op::Unlink { unlink } => ended.push(unlink.as_str().to_string()),
-            // A new master key: no copy of the old one acts any more.
-            Op::Rotate { .. } => ended.clear(),
             _ => {}
         }
     }
-    ended.retain(|id| device(events, id).is_some_and(|d| d.may_keep_master));
-    ended.sort();
-    ended.dedup();
-    ended
+    let mut holders: Vec<String> = first_end
+        .into_iter()
+        .filter(|(_, ended)| last_rotation.is_none_or(|rotated| *ended > rotated))
+        .map(|(id, _)| id)
+        .filter(|id| device(events, id).is_some_and(|d| d.may_keep_master))
+        .collect();
+    holders.sort();
+    holders
 }
 
 /// Whether the log lists device `key_id` as one that may keep the master key, not revoked, with an
@@ -134,7 +151,13 @@ pub(crate) mod tests {
     use ad4m_identity_client::vault::KeySigner;
     use ad4m_identity_core::build::{add_unsigned, cosign, incept_human, Signer};
     use ad4m_identity_core::link::make_claim;
-    use ad4m_identity_core::{encode_x25519_multikey, fold, DeviceKey};
+    use ad4m_identity_core::{
+        encode_x25519_multikey, fold, x25519_multikey_of, DeviceKey, X25519Secret,
+    };
+
+    /// `d1`'s X25519 secret in [`log_with_d2`]: a test's executor opens the record keys sealed
+    /// to `d1` with it, as the real executor's wallet does.
+    pub(crate) const D1_ENC_SECRET: [u8; 32] = [3u8; 32];
 
     /// A log made by device `d1`, which adds `d2` from a claim that said `can_keep_master`.
     pub(crate) fn log_with_d2(can_keep_master: bool) -> (Vec<Event>, KeySigner) {
@@ -151,7 +174,7 @@ pub(crate) mod tests {
         let d1 = DeviceKey {
             id: "d1".into(),
             sign: Signer::key(&d1_signer),
-            enc: encode_x25519_multikey(&[3u8; 32]),
+            enc: x25519_multikey_of(&X25519Secret::from(D1_ENC_SECRET)),
             life: KeyLife::Standing,
         };
         let mut incept = incept_human(&master, next, vec![d1]).unwrap();
@@ -279,5 +302,103 @@ pub(crate) mod tests {
             unlinked.push(revoke(&chain, &master, &[KeyId::from("d2")], None).unwrap());
             assert_eq!(ended_holders(&unlinked), expected);
         }
+    }
+
+    /// `events` with a rotation to master `n` (the seed's), unlinking `unlink` in the same event.
+    fn rotate_to(events: &mut Vec<Event>, n: u32, unlink: &[&str]) {
+        use ad4m_identity_core::build::rotate;
+        use ad4m_identity_core::{words, KeyId};
+        let seed = words::seed(&words::from_entropy(&[41u8; 16]));
+        let revealed = words::master_key(&seed, n).unwrap();
+        let (_, salt) = words::next_commitment(&seed, n).unwrap();
+        let (next, _) = words::next_commitment(&seed, n + 1).unwrap();
+        let unlink: Vec<KeyId> = unlink.iter().map(|k| KeyId::from(*k)).collect();
+        let event = rotate(
+            &fold(events).unwrap(),
+            &revealed,
+            &salt,
+            Some(next),
+            &unlink,
+        )
+        .unwrap();
+        events.push(event);
+        fold(events).unwrap();
+    }
+
+    /// `events` with `key` revoked by master `n`.
+    fn revoke_by(events: &mut Vec<Event>, n: u32, key: &str) {
+        use ad4m_identity_core::build::revoke;
+        use ad4m_identity_core::{words, KeyId};
+        let seed = words::seed(&words::from_entropy(&[41u8; 16]));
+        let master = words::master_key(&seed, n).unwrap();
+        let event = revoke(&fold(events).unwrap(), &master, &[KeyId::from(key)], None).unwrap();
+        events.push(event);
+        fold(events).unwrap();
+    }
+
+    #[test]
+    fn a_device_the_rotation_never_sent_the_new_master_key_is_not_listed_as_holding_it() {
+        // Revoke and replace the master key: the rotation unlinks d2, the next event revokes it.
+        let (mut events, _) = log_with_d2(true);
+        rotate_to(&mut events, 1, &["d2"]);
+        assert!(
+            ended_holders(&events).is_empty(),
+            "unlinked by the rotation"
+        );
+        revoke_by(&mut events, 1, "d2");
+        assert!(ended_holders(&events).is_empty(), "then revoked");
+
+        // Revoked first, replaced later: the rotation took the master key from its copy.
+        let (mut events, _) = log_with_d2(true);
+        revoke_by(&mut events, 0, "d2");
+        assert_eq!(ended_holders(&events), vec!["d2".to_string()]);
+        rotate_to(&mut events, 1, &[]);
+        assert!(ended_holders(&events).is_empty());
+    }
+
+    #[test]
+    fn a_device_ended_after_the_last_rotation_is_listed_if_the_log_let_it_keep_the_master_key() {
+        // A rotation, then a separate revoke of d2 (it may keep the master key) and an unlink of
+        // d3 (it may not): only d2 may hold the new one.
+        let (mut events, _) = log_with_d2(true);
+        add_d3(&mut events, false);
+        rotate_to(&mut events, 1, &[]);
+        let chain = fold(&events).unwrap();
+        // The unlink of d3 between the rotation and the revoke makes the revoke a separate act.
+        let unlink = ad4m_identity_core::build::unlink(
+            &chain,
+            &ad4m_identity_core::words::master_key(
+                &ad4m_identity_core::words::seed(&ad4m_identity_core::words::from_entropy(
+                    &[41u8; 16],
+                )),
+                1,
+            )
+            .unwrap(),
+            &ad4m_identity_core::KeyId::from("d3"),
+        )
+        .unwrap();
+        events.push(unlink);
+        fold(&events).unwrap();
+        revoke_by(&mut events, 1, "d2");
+        assert_eq!(ended_holders(&events), vec!["d2".to_string()]);
+
+        // A rotation that unlinks only d3 leaves a later separate unlink of d2 listed.
+        let (mut events, _) = log_with_d2(true);
+        rotate_to(&mut events, 1, &[]);
+        let chain = fold(&events).unwrap();
+        let master = ad4m_identity_core::words::master_key(
+            &ad4m_identity_core::words::seed(&ad4m_identity_core::words::from_entropy(&[41u8; 16])),
+            1,
+        )
+        .unwrap();
+        events.push(
+            ad4m_identity_core::build::unlink(
+                &chain,
+                &master,
+                &ad4m_identity_core::KeyId::from("d2"),
+            )
+            .unwrap(),
+        );
+        assert_eq!(ended_holders(&events), vec!["d2".to_string()]);
     }
 }

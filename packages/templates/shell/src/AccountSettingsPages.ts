@@ -20,7 +20,9 @@ import {
   keyLogSummary,
   makeIdentityCard,
   masterKeyCards,
+  replaceMasterButton,
   requestList,
+  restoreButton,
   unlinkThisComputerConfirm,
 } from './IdentitySettingsPages.ts';
 import { profileEditor } from './Profile.schema.ts';
@@ -160,6 +162,7 @@ export const securityPage: SchemaNode = {
       title: 'Master key',
       description: 'Links and removes your devices. Keep it on a device you trust.',
       preview: [actions('Send to a device', 'Replace')],
+      children: [{ type: 'Row', props: { gap: '200', wrap: true }, children: [replaceMasterButton] }],
     }),
     comingSoon({
       available: can('recoveryWords'),
@@ -167,6 +170,7 @@ export const securityPage: SchemaNode = {
       title: 'Recovery phrase',
       description: 'Restores your identity if you lose every device.',
       preview: [actions('Show recovery phrase')],
+      children: [{ type: 'Row', props: { gap: '200', wrap: true }, children: [restoreButton] }],
     }),
     comingSoon({
       available: can('keyLog'),
@@ -235,10 +239,18 @@ export const planPage: SchemaNode = {
  * One-way for a guest — see the sidebar's logout, which says why. Told before it happens, not
  * refused: a guest may genuinely want to leave. The flag sits on this node so the button and the
  * dialog share it.
+ *
+ * Where this computer keeps the master key and another device keeps it too, log out asks whether to
+ * remove it here. Where this is the only copy, which the custody service would refuse to remove, it
+ * signs out without asking. A removal refused anyway is said in the custody window ("Nothing was
+ * removed"), and log out still goes ahead, keeping the key; only closing that window stays signed in.
  */
 export const logOutAction: SchemaNode = {
   type: 'Column',
-  $localState: { confirmGuestLogout: { type: 'boolean', initial: false } },
+  $localState: {
+    confirmGuestLogout: { type: 'boolean', initial: false },
+    confirmMasterLogout: { type: 'boolean', initial: false },
+  },
   children: [
     {
       type: 'we-button',
@@ -251,7 +263,13 @@ export const logOutAction: SchemaNode = {
           $if: {
             condition: { $: 'sessionStore.isGuest' },
             then: { $setLocal: 'confirmGuestLogout', value: true },
-            else: { $invoke: 'sessionStore.logout' },
+            else: {
+              $if: {
+                condition: { $: 'deviceStore.canRemoveMaster' },
+                then: { $setLocal: 'confirmMasterLogout', value: true },
+                else: { $invoke: 'sessionStore.logout' },
+              },
+            },
           },
         },
       },
@@ -269,6 +287,28 @@ export const logOutAction: SchemaNode = {
       confirmLabel: 'Sign out anyway',
       cancelLabel: 'Stay signed in',
       confirm: { $invoke: 'sessionStore.logout' },
+    }),
+    confirmModal({
+      open: { $: 'local.confirmMasterLogout' },
+      close: { $setLocal: 'confirmMasterLogout', value: false },
+      title: 'Remove master key from this computer?',
+      body: 'Your other devices with the master key, and your recovery phrase, can still add and remove devices.',
+      detail: "Keep it if this is your computer and you'll sign in here again.",
+      tone: 'accent',
+      confirmLabel: 'Remove and sign out',
+      confirm: {
+        $invoke: 'deviceStore.removeMaster',
+        onSuccess: [
+          {
+            $if: {
+              condition: { $: "result != 'cancelled'" },
+              then: { $invoke: 'sessionStore.logout' },
+            },
+          },
+        ],
+      },
+      cancelLabel: 'Keep and sign out',
+      cancel: [{ $setLocal: 'confirmMasterLogout', value: false }, { $invoke: 'sessionStore.logout' }],
     }),
   ],
 };

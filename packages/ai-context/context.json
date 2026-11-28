@@ -6449,7 +6449,8 @@
             "canRevoke",
             "name",
             "holdsMaster",
-            "master"
+            "master",
+            "replaceMaster"
           ]
         },
         "devicesLoaded": {
@@ -6465,6 +6466,15 @@
           "type": "boolean"
         },
         "canAskMaster": {
+          "type": "boolean"
+        },
+        "canReplaceMaster": {
+          "type": "boolean"
+        },
+        "canRestore": {
+          "type": "boolean"
+        },
+        "canRemoveMaster": {
           "type": "boolean"
         },
         "masterWaiting": {
@@ -6502,7 +6512,10 @@
         "unlink",
         "cancelUnlink",
         "unlinkThisComputer",
-        "revoke"
+        "revoke",
+        "replaceMaster",
+        "restore",
+        "removeMaster"
       ],
       "ambient": ["refresh", "cancelUnlink"],
       "needsArgs": ["answerRequest", "rename", "unlink", "revoke"]

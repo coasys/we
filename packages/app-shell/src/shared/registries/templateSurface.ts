@@ -1536,6 +1536,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     canManage: state('devices'),
     canShowCode: state('devices'),
     canAskMaster: state('devices'),
+    canReplaceMaster: state('devices'),
+    canRestore: state('devices'),
+    canRemoveMaster: state('devices'),
     masterWaiting: state('devices'),
     encMismatch: state('devices'),
     requests: state('devices'),
@@ -1555,6 +1558,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     cancelUnlink: ambient('devices'),
     unlinkThisComputer: action('devices'),
     revoke: action('devices'),
+    replaceMaster: action('devices'),
+    restore: action('devices'),
+    removeMaster: action('devices'),
   },
 
   /*

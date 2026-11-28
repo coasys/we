@@ -71,6 +71,8 @@ export interface DeviceRow {
    * took (or the key log let take) the master key, a warning that its copy is still valid.
    */
   master: string;
+  /** Whether its row leads to "Replace master key": a revoked device whose copy is still valid. */
+  replaceMaster: boolean;
 }
 
 /** One request of another device, waiting for an answer. */
@@ -170,6 +172,7 @@ const MASTER_WORDS = { yes: 'Has master key', offered: 'Master key sent', no: ''
  * master key, so the copy stays valid. Known from the record when it still lists the device; else
  * the key log says the device was let keep the master key (`IdentityCustodyView.endedHolders`), not
  * that it took it. A revoked device is lost or stolen; an unlinked one the person may still have.
+ * A rotation at or after the key ended replaced the master key, so the copy no longer counts.
  */
 const ENDED_MASTER_WORDS = {
   revoked: {
@@ -194,6 +197,8 @@ export function deviceRows(
   devices: DeviceKeyView[],
   names: DeviceNameView[] = [],
   endedHolders: string[] = [],
+  /** The seq of the key log's last rotation, or `null` when the master key was never replaced. */
+  masterReplacedSeq: number | null = null,
 ): DeviceRow[] {
   const ended = (d: DeviceKeyView) => Number(d.revokedSeq !== null || d.unlinkedSeq !== null);
   return devices
@@ -210,13 +215,16 @@ export function deviceRows(
       // tone warns).
       const words = revoked ? ENDED_MASTER_WORDS.revoked : unlinked ? ENDED_MASTER_WORDS.unlinked : null;
       const holdsMaster = words ? 'no' : listed;
-      const endedMaster = !words
-        ? ''
-        : listed !== 'no'
-          ? words.held
-          : endedHolders.includes(device.keyId)
-            ? words.may
-            : '';
+      const endedSeq = Math.min(device.unlinkedSeq ?? Infinity, device.revokedSeq ?? Infinity);
+      const replacedSince = masterReplacedSeq !== null && endedSeq <= masterReplacedSeq;
+      const endedMaster =
+        !words || replacedSince
+          ? ''
+          : listed !== 'no'
+            ? words.held
+            : endedHolders.includes(device.keyId)
+              ? words.may
+              : '';
       const fallback = device.thisDevice ? THIS_COMPUTER : `Device ${device.keyId}`;
       return {
         keyId: device.keyId,
@@ -239,8 +247,17 @@ export function deviceRows(
         name,
         holdsMaster,
         master: endedMaster || MASTER_WORDS[holdsMaster],
+        replaceMaster: endedMaster !== '',
       };
     });
+}
+
+/** The seq of the last rotation in `events`, or `null` when the master key was never replaced. */
+export function lastRotation(events: { seq: number; op: string }[]): number | null {
+  return events.reduce<number | null>(
+    (last, e) => (e.op === 'rotate' && (last === null || e.seq > last) ? e.seq : last),
+    null,
+  );
 }
 
 /** The requests of other devices, each named by the device that asked. */

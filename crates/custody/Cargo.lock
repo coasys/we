@@ -5,7 +5,7 @@ version = 4
 [[package]]
 name = "ad4m-client"
 version = "0.13.1-staging.21"
-source = "git+https://github.com/coasys/ad4m?rev=2fcc730caf4b8f68e6e3525afa0a8021c6031ba9#2fcc730caf4b8f68e6e3525afa0a8021c6031ba9"
+source = "git+https://github.com/coasys/ad4m?rev=20a5ffe2aad65018b6a07510ad941dd332533b91#20a5ffe2aad65018b6a07510ad941dd332533b91"
 dependencies = [
  "anyhow",
  "chrono",
@@ -29,7 +29,7 @@ dependencies = [
 [[package]]
 name = "ad4m-hash-chain"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=2fcc730caf4b8f68e6e3525afa0a8021c6031ba9#2fcc730caf4b8f68e6e3525afa0a8021c6031ba9"
+source = "git+https://github.com/coasys/ad4m?rev=20a5ffe2aad65018b6a07510ad941dd332533b91#20a5ffe2aad65018b6a07510ad941dd332533b91"
 dependencies = [
  "bs58",
  "ed25519-dalek",
@@ -42,7 +42,7 @@ dependencies = [
 [[package]]
 name = "ad4m-identity-client"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=2fcc730caf4b8f68e6e3525afa0a8021c6031ba9#2fcc730caf4b8f68e6e3525afa0a8021c6031ba9"
+source = "git+https://github.com/coasys/ad4m?rev=20a5ffe2aad65018b6a07510ad941dd332533b91#20a5ffe2aad65018b6a07510ad941dd332533b91"
 dependencies = [
  "ad4m-client",
  "ad4m-hash-chain",
@@ -62,7 +62,7 @@ dependencies = [
 [[package]]
 name = "ad4m-identity-core"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=2fcc730caf4b8f68e6e3525afa0a8021c6031ba9#2fcc730caf4b8f68e6e3525afa0a8021c6031ba9"
+source = "git+https://github.com/coasys/ad4m?rev=20a5ffe2aad65018b6a07510ad941dd332533b91#20a5ffe2aad65018b6a07510ad941dd332533b91"
 dependencies = [
  "ad4m-hash-chain",
  "base64 0.22.1",
@@ -86,7 +86,7 @@ dependencies = [
 [[package]]
 name = "ad4m-ldk"
 version = "0.13.0-test-1"
-source = "git+https://github.com/coasys/ad4m?rev=2fcc730caf4b8f68e6e3525afa0a8021c6031ba9#2fcc730caf4b8f68e6e3525afa0a8021c6031ba9"
+source = "git+https://github.com/coasys/ad4m?rev=20a5ffe2aad65018b6a07510ad941dd332533b91#20a5ffe2aad65018b6a07510ad941dd332533b91"
 dependencies = [
  "ad4m-model-derive",
  "futures",
@@ -101,7 +101,7 @@ dependencies = [
 [[package]]
 name = "ad4m-model-derive"
 version = "0.13.0-test-1"
-source = "git+https://github.com/coasys/ad4m?rev=2fcc730caf4b8f68e6e3525afa0a8021c6031ba9#2fcc730caf4b8f68e6e3525afa0a8021c6031ba9"
+source = "git+https://github.com/coasys/ad4m?rev=20a5ffe2aad65018b6a07510ad941dd332533b91#20a5ffe2aad65018b6a07510ad941dd332533b91"
 dependencies = [
  "proc-macro2",
  "quote",

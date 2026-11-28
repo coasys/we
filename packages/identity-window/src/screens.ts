@@ -2,7 +2,10 @@
  * The identity window's screens, as the custody service sends them (`we_custody::Screen`), and the
  * words each one says: the recovery phrase, the identity being ready, the passphrase fallback where
  * there is no keychain, linking a device from either side (a code shown, a code scanned or pasted),
- * taking, asking for and sending the master key, naming a device, unlinking one, and revoking one.
+ * taking, asking for and sending the master key, naming a device, unlinking one, revoking one, and
+ * the 12 words typed back in: replacing the master key, restoring the identity on a computer that has
+ * none, and removing the master key from this computer. The words typed are never sent back: no
+ * screen after the words entry carries them, and a refused word is named by its place only.
  *
  * Pure, so the wording is tested without a window (`screens.test.ts`). `window.ts` draws them.
  */
@@ -57,17 +60,65 @@ export type Screen =
   | {
       screen: 'revoke-confirm';
       keyId: string;
+      /** The record's name of the device, when it names it. */
+      name: string | null;
       /** The key log let the device keep the master key, so it may still hold a valid one. */
       mayHoldMaster: boolean;
+      /** Whether "Also replace master key" starts ticked: when the device may hold a copy. */
+      rotate: boolean;
       passphrase: boolean;
       error: string | null;
     }
+  | {
+      screen: 'enter-words';
+      purpose: WordsPurpose;
+      error: string | null;
+      /** The refused word's place, from 1. */
+      position: number | null;
+    }
+  | { screen: 'restore-devices'; did: string; devices: RestoreDevice[]; note: string | null }
+  | { screen: 'master-replaced'; index: number; revoked: string[]; note: string | null }
+  /**
+   * The master key is replaced (master `index` is current) but the devices `keyIds` are not revoked
+   * yet: not a last screen. `names` are the record's names of `keyIds`, in order (null where it
+   * names none). `reason` is why (the store's refusal of the time, when that was it).
+   * Retrying publishes only the revoke, from a time the person may correct; `needsWords` says the 12
+   * words are asked again first (a restore still holds them).
+   */
+  | {
+      screen: 'rotated-not-revoked';
+      index: number;
+      keyIds: string[];
+      names: Array<string | null>;
+      reason: string;
+      needsWords: boolean;
+    }
+  /** The rotation is published but this computer could not keep the new key: not a last screen. */
+  | { screen: 'master-not-kept'; index: number; revoked: string[]; reason: string; note: string | null }
+  /** The restore's rotation is published but this computer is not linked yet: not a last screen. */
+  | { screen: 'restore-not-linked'; did: string; revoked: string[]; reason: string }
+  | { screen: 'restored'; did: string; name: string; keyId: string; revoked: string[]; note: string | null }
+  | { screen: 'remove-master'; error: string | null }
+  | { screen: 'master-removed' }
   | { screen: 'revoked'; keyId: string; seq: number }
   | { screen: 'pending-refused'; did: string; message: string }
   | { screen: 'failed'; message: string };
 
 /** What another device asks of the one holding the master key. */
 export type RequestKind = 'send-master' | 'confirm-revoke';
+
+/** What the 12 words are typed for: replacing the master key, restoring the identity, a revoke or an
+ *  answered request that also replaces the master key. */
+export type WordsPurpose = 'replace' | 'restore' | 'revoke' | 'answer';
+
+/** A device of the identity the words restore, ticked to lock out when it may be lost. */
+export interface RestoreDevice {
+  keyId: string;
+  /** The record's name, when the record could be read and names it. */
+  name: string | null;
+  kind: string | null;
+  lockOut: boolean;
+}
 
 /**
  * A key a revoke request asks to revoke (`we_custody::RevokeTarget`): its key id and its signing
@@ -79,10 +130,11 @@ export type RevokeTarget = { keyId: string; fingerprint: string; recordName: str
 
 /**
  * Why revoking a device the log let keep the master key does not take that key from it: `who` may
- * still hold it, and only replacing the master key stops it adding and removing devices.
+ * still hold it, and only replacing the master key stops it adding and removing devices. `fix` says
+ * how to replace it from where the person is.
  */
-function mayHoldMaster(who: string): string {
-  return `${who} may still have your master key, and this doesn't take it back. Replace your master key afterwards.`;
+function mayHoldMaster(who: string, fix = 'Replace your master key afterwards.'): string {
+  return `${who} may still have your master key, and this doesn't take it back. ${fix}`;
 }
 
 /** One key of a revoke request, as its card lists it. */
@@ -108,8 +160,13 @@ export type StepInput =
   | { kind: 'answer'; passphrase?: string }
   | { kind: 'name'; name: string }
   | { kind: 'unlink'; passphrase?: string }
-  | { kind: 'revoke'; passphrase?: string; since?: number }
-  | { kind: 'discard' };
+  | { kind: 'revoke'; passphrase?: string; rotate?: boolean; since?: number }
+  | { kind: 'twelve-words'; words: string }
+  | { kind: 'lock-out'; keyIds: string[]; name?: string; since?: number }
+  | { kind: 'retry-revoke'; since?: number }
+  | { kind: 'remove' }
+  | { kind: 'discard' }
+  | { kind: 'try-again' };
 
 /** "4:52" — how long an offer still works. */
 export function remaining(expires: number, nowSeconds: number): string {
@@ -136,13 +193,28 @@ export function wordNumber(i: number): string {
   return String(i + 1).padStart(2, '0');
 }
 
+/** Whether word field `i` (from 0) is the one refused at `position` (from 1, or none). */
+export function refusedField(position: number | null, i: number): boolean {
+  return position === i + 1;
+}
+
+/**
+ * Where a pasted phrase goes when pasted into word field `at` (from 0): each word to the field it
+ * fills, from that field on, stopping at the twelfth. A single word is the browser's to paste.
+ */
+export function spreadWords(pasted: string, at: number): Array<[number, string]> {
+  const words = pasted.trim().split(/\s+/).filter(Boolean);
+  if (words.length < 2) return [];
+  return words.slice(0, 12 - at).map((word, i) => [at + i, word]);
+}
+
 /** The lead of each screen: its title and the sentence under it. */
 export function heading(screen: Screen): { title: string; lead: string } {
   switch (screen.screen) {
     case 'show-words':
       return {
         title: 'Save your recovery phrase',
-        lead: "Write down these 12 words in order. They make your master key, which links and removes your devices, and they're the only way to restore your identity. Only you see them, and only now.",
+        lead: 'Write down these 12 words in order. They make your master key, which links and removes your devices. You need them to restore your identity or replace your master key. Only you see them, and only now.',
       };
     case 'confirm-words':
       return {
@@ -247,12 +319,85 @@ export function heading(screen: Screen): { title: string; lead: string } {
       return { title: `${screen.keyId} unlinked`, lead: `It's entry #${screen.seq} in your key log.` };
     case 'revoke-confirm':
       return {
-        title: `Revoke ${screen.keyId}?`,
+        title: `Revoke ${screen.name || screen.keyId}?`,
         lead: [
           "Do this for a device that was lost or stolen. It loses access to your identity and can't be linked again. Say since when it was missing: anything from it that arrives from then on may no longer show as yours, even if it was made earlier. A computer that's offline learns this when it reconnects.",
-          ...(screen.mayHoldMaster ? [mayHoldMaster('This device')] : []),
+          ...(screen.mayHoldMaster
+            ? [mayHoldMaster('This device', 'Replace your master key to stop it adding and removing devices.')]
+            : []),
         ].join(' '),
       };
+    case 'enter-words':
+      return wordsHeading(screen.purpose);
+    case 'restore-devices':
+      return {
+        title: 'Remove lost devices',
+        lead: [
+          'Select each device you lost or no longer use. Your master key is replaced, and this computer gets the new one. Say since when they were missing: anything from them that arrives from then on may no longer show as yours, even if it was made earlier.',
+          ...(screen.note ? [screen.note] : []),
+        ].join(' '),
+      };
+    case 'master-replaced':
+      return {
+        title: 'Master key replaced',
+        lead: [
+          'This computer has the new master key. The old one no longer works on any device.',
+          ...(screen.revoked.length ? [`Also removed: ${screen.revoked.join(', ')}.`] : []),
+          ...(screen.note ? [screen.note] : []),
+        ].join(' '),
+      };
+    case 'master-not-kept':
+      return {
+        title: 'New master key not saved',
+        lead: [
+          `Your master key was replaced and the old one no longer works, but this computer couldn't save the new one. ${screen.reason}`,
+          ...(screen.revoked.length ? [`Also removed: ${screen.revoked.join(', ')}.`] : []),
+          ...(screen.note ? [screen.note] : []),
+          'Enter your recovery phrase again to replace it with one this computer saves.',
+        ].join(' '),
+      };
+    case 'restore-not-linked':
+      return {
+        title: "This computer isn't linked yet",
+        lead: [
+          `Your identity was restored and your master key replaced. ${screen.reason}`,
+          ...(screen.revoked.length ? [`Removed: ${screen.revoked.join(', ')}.`] : []),
+          "Try again to link this computer. You don't need your recovery phrase again.",
+        ].join(' '),
+      };
+    case 'restored':
+      return {
+        title: 'Identity restored',
+        lead: [
+          `This computer is linked as ${screen.name} and has the new master key.`,
+          ...(screen.revoked.length ? [`Removed: ${screen.revoked.join(', ')}.`] : []),
+          ...(screen.note ? [screen.note] : []),
+        ].join(' '),
+      };
+    case 'remove-master':
+      return {
+        title: 'Remove master key from this computer?',
+        lead: 'This computer stays linked. Your other devices with the master key, and your recovery phrase, can still add and remove devices.',
+      };
+    case 'master-removed':
+      return {
+        title: 'Master key removed',
+        lead: 'This computer stays linked. To add or remove devices, use a device with the master key or your recovery phrase.',
+      };
+    case 'rotated-not-revoked': {
+      const one = screen.keyIds.length === 1;
+      const who = screen.keyIds.map((id, i) => screen.names[i] || id).join(', ');
+      return {
+        title: one ? 'Device not revoked yet' : 'Devices not revoked yet',
+        lead: [
+          `Your master key was replaced (master #${screen.index}), but ${who} ${one ? 'is' : 'are'} not revoked yet. ${screen.reason}`,
+          screen.needsWords
+            ? 'Try again to revoke now. You will enter your recovery phrase.'
+            : 'Try again to revoke now.',
+          `Closing this window ends the retry. ${one ? 'The device stays' : 'The devices stay'} unlinked. To revoke ${one ? 'it' : 'them'} later, use Devices > Revoke with "Also replace master key" unticked.`,
+        ].join(' '),
+      };
+    }
     case 'revoked':
       return { title: `${screen.keyId} revoked`, lead: `It's entry #${screen.seq} in your key log.` };
     case 'pending-refused':
@@ -262,6 +407,29 @@ export function heading(screen: Screen): { title: string; lead: string } {
       };
     case 'failed':
       return { title: 'Something went wrong', lead: screen.message };
+  }
+}
+
+/** The words entry's lead, by what the words are for. */
+function wordsHeading(purpose: WordsPurpose): { title: string; lead: string } {
+  const type = 'Enter your 12 words in order.';
+  switch (purpose) {
+    case 'replace':
+      return {
+        title: 'Replace master key',
+        lead: `${type} This computer gets the new master key, and the old one stops working on every device.`,
+      };
+    case 'restore':
+      return {
+        title: 'Restore with recovery phrase',
+        lead: `${type} This computer is then linked to your identity.`,
+      };
+    case 'revoke':
+    case 'answer':
+      return {
+        title: 'Enter recovery phrase',
+        lead: `This also replaces your master key. ${type}`,
+      };
   }
 }
 
@@ -338,6 +506,9 @@ export function isLast(screen: Screen): boolean {
     'request-answered',
     'asked',
     'renamed',
+    'master-replaced',
+    'restored',
+    'master-removed',
     'failed',
   ].includes(screen.screen);
 }
