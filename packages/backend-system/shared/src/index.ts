@@ -200,6 +200,7 @@ export type {
   ExecutorConfig,
   ExecutorConfigEntry,
   ExecutorConfigWrite,
+  ExecutorRestartRefused,
   InstalledLanguage,
   PeerRecords,
   RuntimeAdminPort,
@@ -278,7 +279,7 @@ export type {
   Proposal,
 } from './workflows';
 export type { CallPort, CallSessionOptions } from './call';
-export { NO_IDENTITY_CAPABILITIES } from './identity';
+export { NO_IDENTITY_CAPABILITIES, THIS_COMPUTER_ID } from './identity';
 export { SELF_PERSONS } from './persons';
 export {
   actionOf,
@@ -322,6 +323,10 @@ export type {
   KeyLogHead,
   KeyLogStoreBehind,
   KeyLogView,
+  AddServerOutcome,
+  ServingDeviceView,
+  ServingSessionEnded,
+  ServingView,
 } from './identity';
 export type { TranscriptionRecord, TranscriptionPort, TranscriptionSetup, TranscriptionStream } from './transcription';
 export type {

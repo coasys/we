@@ -10,7 +10,14 @@ import { Ad4mClient, type AgentStatus } from '@coasys/ad4m';
 import type { BackendPortsContext } from '@we/backend-shared';
 
 import { createAd4mBackendPorts } from './backendPortsAdapter';
-import type { Ad4mCustodyHost } from './identityPort';
+import { type Ad4mCustodyHost, type Ad4mServerHost, type Ad4mServing, CANT_LOAD_HOSTS } from './identityPort';
+import {
+  type ConnectRemote,
+  type KeySession,
+  KeySessionError,
+  type KeySessionSigner,
+  openKeySession,
+} from './keySession';
 import type { Ad4mLifecycleOptions } from './lifecycleAdapter';
 
 /** Poll the executor until it answers — it is spawned alongside the window and needs a moment. */
@@ -54,6 +61,11 @@ export interface LocalExecutorConnection {
  * transport, wait out the executor's startup, connect, and build the ports.
  * Returns the shape the shell's `BackendConnector.initialize` expects
  * (structurally — this package deliberately doesn't import the shell).
+ *
+ * Where the host keeps a list of the person's servers (`servers`) and one is chosen, the app is served
+ * from that server instead: this computer's executor still comes up first, because it holds the
+ * device key that signs the login there (see `keySession.ts`). A server that will not let this
+ * computer in leaves the app on this computer, with the reason in the identity port's `serving()`.
  */
 export function createLocalAd4mConnector(
   getConnection: () => Promise<LocalExecutorConnection>,
@@ -61,6 +73,12 @@ export function createLocalAd4mConnector(
     startupDelayMs?: number;
     /** The host's custody service, where it runs one beside the executor. See `identityPort.ts`. */
     custody?: Ad4mCustodyHost;
+    /** The servers this account can be served by, where the host keeps them. See `identityPort.ts`. */
+    servers?: Ad4mServerHost;
+    /** How a client on a server is opened; the SDK's, outside tests. */
+    connectRemote?: ConnectRemote;
+    /** How this computer's executor is reached once its port is known; the SDK's, outside tests. */
+    connectLocal?: (port: number, token: string) => Promise<{ client: unknown; status?: AgentStatus }>;
   } & Ad4mLifecycleOptions = {},
 ) {
   return {
@@ -74,21 +92,88 @@ export function createLocalAd4mConnector(
       const delay = options.startupDelayMs ?? 1000;
       if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
 
-      const { client, status } = await connectToLocalExecutor(port, token);
+      const { client, status } = await (options.connectLocal ?? connectToLocalExecutor)(port, token);
+      const local = { url: `http://localhost:${port}`, token };
+      const shared = {
+        linkServerUrl: options.linkServerUrl,
+        devLinkLanguageBundle: options.devLinkLanguageBundle,
+        custody: options.custody,
+      };
 
+      const served = options.servers ? await serveFromChosen(client, options.servers, options.connectRemote) : null;
+      if (!served?.current) {
+        return {
+          client,
+          ports: createAd4mBackendPorts(client, ctx, {
+            ...shared,
+            connection: () => local,
+            ...(served ? { serving: served } : {}),
+            // The status the connection waited for is the session's first: asking again was a second request.
+            unlockedAtConnect: Boolean(status?.isInitialized && status?.isUnlocked),
+          }),
+          // Forwarded to hosted app iframes by the embed bridge.
+          connection: { port, token },
+        };
+      }
+
+      const { session, name } = served.current;
+      const remote = new URL(session.address);
       return {
-        client,
-        ports: createAd4mBackendPorts(client, ctx, {
-          linkServerUrl: options.linkServerUrl,
-          devLinkLanguageBundle: options.devLinkLanguageBundle,
-          connection: () => ({ url: `http://localhost:${port}`, token }),
-          custody: options.custody,
-          // The status the connection waited for is the session's first: asking again was a second request.
-          unlockedAtConnect: Boolean(status.isInitialized && status.isUnlocked),
+        client: session.client,
+        ports: createAd4mBackendPorts(session.client, ctx, {
+          ...shared,
+          connection: () => ({ url: session.address, token: session.token() }),
+          serving: served,
+          identityClient: client,
+          // The server's own settings are for the person who runs it; an agent it serves gets none.
+          administersNode: session.role === 'operator',
+          onThisMachine: false,
+          // No `unlockedAtConnect`: the status the connection waited for is this computer's agent, not
+          // the one the server serves, so the session asks the server on its first `status()`.
         }),
-        // Forwarded to hosted app iframes by the embed bridge.
-        connection: { port, token },
+        connection: {
+          port: Number(remote.port) || (remote.protocol === 'https:' ? 443 : 80),
+          // A getter, because the session renews its token about hourly: whoever reads this later
+          // (the embed bridge, handing it to a hosted app) gets the current one.
+          get token() {
+            return session.token();
+          },
+          url: session.address,
+        },
+        host: { id: session.address, name, url: session.address },
       };
     },
   };
+}
+
+/**
+ * Logs in to the server the person chose, if they chose one. Never throws: a server that cannot be
+ * reached or refuses this computer leaves the session here, with why.
+ */
+async function serveFromChosen(signer: unknown, host: Ad4mServerHost, connect?: ConnectRemote): Promise<Ad4mServing> {
+  const keySigner = signer as KeySessionSigner;
+  let chosen: { address: string; name: string } | undefined;
+  try {
+    const { servers, serving } = await host.list();
+    chosen = serving ? servers.find((server) => server.address === serving) : undefined;
+  } catch {
+    return { host, signer: keySigner, current: null, problem: CANT_LOAD_HOSTS, connect };
+  }
+  if (!chosen) return { host, signer: keySigner, current: null, problem: null, connect };
+
+  let session: KeySession;
+  try {
+    session = await openKeySession(keySigner, chosen.address, connect ? { connect } : {});
+  } catch (error) {
+    // A refusal's message is written for the person (`describeRefusal`); anything else is not.
+    const why = error instanceof KeySessionError ? error.message : "The host didn't let you sign in.";
+    return {
+      host,
+      signer: keySigner,
+      current: null,
+      problem: `Can't use ${chosen.name}, so this computer is in use. ${why}`,
+      connect,
+    };
+  }
+  return { host, signer: keySigner, current: { session, name: chosen.name }, problem: null, connect };
 }

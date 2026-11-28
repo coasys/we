@@ -94,6 +94,7 @@ export const storeEntries: StoreEntry[] = [
       canManageAi: { type: 'boolean' },
       canConfigureAi: { type: 'boolean' },
       canConfigureExecutor: { type: 'boolean' },
+      executorOnServer: { type: 'boolean' },
       unsupportedCapabilities: { type: 'array', properties: ['name', 'firstSeen'] },
       mcpEnabled: { type: 'boolean' },
       mcpPort: { type: 'number' },
@@ -843,8 +844,25 @@ export const storeEntries: StoreEntry[] = [
       validCount: { type: 'number' },
       canManage: { type: 'boolean' },
       error: { type: 'string' },
+      canSwitch: { type: 'boolean' },
+      servers: { type: 'array', properties: ['id', 'name', 'subtitle', 'icon', 'current', 'canRemove'] },
+      servingRole: { type: 'string' },
+      servingProblem: { type: 'string' },
+      sessionEnded: { type: 'object', properties: ['reason', 'id', 'name', 'message'] },
+      serverAddress: { type: 'string' },
+      serverError: { type: 'string' },
+      serverBusy: { type: 'boolean' },
     },
-    actions: ['refresh', 'addDevice', 'revoke'],
+    actions: [
+      'refresh',
+      'addDevice',
+      'revoke',
+      'setServerAddress',
+      'refreshServers',
+      'addServer',
+      'serveFrom',
+      'removeServer',
+    ],
   },
   {
     name: 'clockStore',
@@ -982,19 +1000,23 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       canManageAi: 'boolean — gate the AI section on this',
       canConfigureAi:
         "boolean — the models can be changed, not just listed. False for a guest on somebody else's node, which grants reading the models but refuses changing them. Gate add/edit/remove/set-default controls on this and the section itself on canManageAi",
-      canConfigureExecutor: 'boolean — this host starts the backend, so how it starts it can be changed. False on web',
+      canConfigureExecutor:
+        'boolean — how the backend starts can be changed: this host starts it, or it is a server this person operates. False on web, and on a server where they are only an agent',
+      executorOnServer:
+        'boolean — the backend is a server reached by its address, not this computer; keys only its own machine may change show "Only from that computer" and are not editable',
       unsupportedCapabilities:
         "{ name, firstSeen }[] — capabilities this backend was asked for and does not have, `name` being the backend's own word for each (its RPC method name), so it can be searched for in that backend's source. What a node running an older build looks like from inside the app: the adapter degrades rather than failing, so the symptom is a part of the app quietly doing less, and this is the only thing connecting that to the node. EMPTY MEANS NOTHING HAS BEEN REFUSED YET, not that the backend is current — nothing is recorded until something asks — so say as much rather than rendering silence as health",
       mcpEnabled: 'boolean — whether the backend serves MCP on its next start',
       mcpPort: 'number — the port MCP is served on',
       executorRestartPending: 'boolean — settings were changed that the running backend has not picked up',
       executorConfigFile:
-        'string — the path of the config file the backend started with, where this app may write it (the desktop app’s own executor); empty otherwise. Gate the config rows on it',
+        'string — the path of the config file the backend started with, where this app may write it (the desktop app’s own executor); empty otherwise. It names that file only: gate the config rows on canConfigureExecutor, which also offers a server’s rows',
       executorConfigRows:
         '{ id, key, value, kind, choice, editable, note }[] — every key of that file: value ready to show (empty when the file leaves the key to its default, "Default" for a fixed one), kind the control it takes, from the key’s type rather than its value (boolean | number | text, or fixed for one only shown), choice for a boolean key’s three-way select (default | on | off, default while the file leaves it to the backend), editable, and note saying why one is not (a flag of this start sets it) or that it is changed only from this computer',
       executorLogTail:
         'string — the newest lines of this run’s backend log, oldest first. Empty until loadExecutorLogTail runs',
-      canRestartExecutor: 'boolean — the host starts the backend, so a restart can be offered',
+      canRestartExecutor:
+        'boolean — a restart can be offered: the host starts the backend, or the server has not refused it as local-only',
       canBackUp:
         'boolean — a database export/import can be offered: the backend writes the file and the host can name one. False on web',
       logLevels:
@@ -1078,7 +1100,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       exportDatabase: '(): asks for a file, then has the backend write everything to it',
       importDatabase: '(): asks for a file, then has the backend read it back in',
       restartExecutor:
-        '(): starts the backend over so written settings take effect — where it keeps a config file, by asking it to restart, and the app starts it again with the same arguments and reloads. Does not return',
+        '(): restarts the backend so written settings take effect. On this computer the app starts the backend again with the same arguments and reloads the window, so it does not return. On a server the app asks the server to restart through its own supervisor, which may refuse; the window is not reloaded, and a refusal lands in error',
       setExecutorConfigValue:
         '(key: string, value): writes one key of the config file — a row’s key and the control’s value (event.detail); an empty value returns it to its default. Takes effect at the next start. A refused key lands in error with the backend’s reason',
       loadExecutorLogTail: '(): reads the newest lines of the backend’s log into executorLogTail',
@@ -2226,9 +2248,29 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       validCount: 'number — how many keys are valid',
       canManage: 'boolean — Link a device or Remove can be offered: this computer keeps the master key of the identity',
       error: 'string — why the last read failed, or empty',
+      canSwitch:
+        "boolean — a server can be added and chosen to serve this session: the backend logs in to one with this computer's device key",
+      servers:
+        "{ id, name, subtitle, icon, current, canRemove }[] — the devices that can serve this session: 'this-computer' first, then each server added by its address (`subtitle` is the address). `current` marks the one serving now; `canRemove` is a server that is not",
+      servingRole:
+        "string — 'operator' on a server this person runs (its executor settings are offered), 'agent' on one that serves them (none are), empty on this computer",
+      servingProblem:
+        'string — why the chosen server is not serving this session, so this computer serves instead, or empty',
+      sessionEnded:
+        "{ reason, id, name, message } | null — the server serving this session ended it: `reason` 'revoked' (this device was removed from the identity) or 'ended'; `message` says it. Offer serveFrom('this-computer') beside it",
+      serverAddress: 'string — the address typed into Add a server',
+      serverError: 'string — why adding or choosing a server did not work, or empty',
+      serverBusy: 'boolean — a server is being added, or a device chosen',
     },
     actions: {
       refresh: '(): reads the device list again',
+      setServerAddress: '(address: string): sets the address typed into Add a server',
+      refreshServers: '(): reads the devices that can serve this session again',
+      addServer:
+        "(): logs in to the server at serverAddress with this computer's device key and lists it once it lets this computer in; a refusal lands in serverError. Resolves with { ok, id } or { ok: false, reason, message }",
+      serveFrom:
+        "(id: string): serves this session from that device ('this-computer' or a server's id) from now on; the app starts over against it",
+      removeServer: '(id: string): forgets that server. Not the one serving now',
       addDevice:
         '(): adds a device — the backend asks the person wherever it keeps the master key (on the desktop: the offer link and QR code, then the match code, then the confirmation that signs it). Resolves with the outcome; the list is read again',
       revoke:

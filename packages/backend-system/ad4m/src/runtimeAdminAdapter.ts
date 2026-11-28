@@ -21,6 +21,7 @@ import { type Ad4mClient, type Apps, capSentence, type RuntimeConfig } from '@co
 import type { AuthorizedApp, ExecutorConfig, ExecutorConfigEntry, RuntimeAdminPort } from '@we/backend-shared';
 
 import type { Ad4mCapability } from './capabilities';
+import { refusalReason } from './keySession';
 import { missingExecutorMethods, onMissingMethod } from './missingMethods';
 import { formatNetworkMetrics } from './networkMetrics';
 import { toPeerRecords } from './peerRecords';
@@ -185,6 +186,14 @@ export interface Ad4mRuntimeOptions {
    * See `capabilities.ts` for why reading the grant beats inferring it.
    */
   capabilities?: Ad4mCapability[] | null;
+
+  /**
+   * Whether the executor runs on this machine. Defaults to true. False for a server reached by its
+   * address with a key login: the executor treats such a caller as off its machine, so its
+   * machine-only config keys and `runtime.restart` answer `local-only`, and a database path names a
+   * file on the server rather than here, so export and import are left out.
+   */
+  onThisMachine?: boolean;
 }
 
 export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRuntimeOptions = {}): RuntimeAdminPort {
@@ -414,9 +423,17 @@ export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRunt
       };
     },
 
-    /** `runtime.restart`: answers, then exits 75, and the app supervising it starts it again. */
+    /**
+     * `runtime.restart`: answers, then exits 75, and the app supervising it starts it again. The
+     * executor answers `local-only` to a caller off its machine; that is a refusal, not a failure.
+     */
     async restartExecutor() {
-      await client.runtime.restart();
+      try {
+        await client.runtime.restart();
+      } catch (error) {
+        if (refusalReason(error) === 'local-only') return { refused: 'off-machine' as const };
+        throw error;
+      }
     },
 
     async executorLogTail(lines) {
@@ -432,6 +449,16 @@ export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRunt
    * neutral contract never learns AD4M's capability vocabulary, and a second backend expresses the
    * same thing by implementing the same subset.
    */
+  if (options.onThisMachine === false) {
+    const offMachine: RuntimeAdminPort = { ...nodeScoped };
+    delete offMachine.exportDatabase;
+    delete offMachine.importDatabase;
+    return {
+      ...agentScoped,
+      onThisMachine: false,
+      ...(administersNode ? { ...offMachine, ...consent } : {}),
+    };
+  }
   return {
     ...agentScoped,
     ...(administersNode ? { ...nodeScoped, ...consent } : {}),

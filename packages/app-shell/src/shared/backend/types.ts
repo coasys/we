@@ -7,6 +7,10 @@ import type { BackendPorts, BackendPortsContext } from '@we/backend-shared';
  */
 export interface BackendConnectionDetails {
   port: number;
+  /**
+   * Read every time it is handed to an embedded app, never copied once at connect. A connector whose
+   * token is renewed during the session defines this as a getter over the current one.
+   */
   token: string;
   url?: string;
 }

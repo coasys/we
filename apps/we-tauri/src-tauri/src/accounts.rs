@@ -65,8 +65,12 @@ const REGISTRY_FILE: &str = "registry.json";
 /// Ceiling on a cached profile picture, in data-URI characters. ~192 KB, far above an 80px PNG.
 const MAX_AVATAR_CHARS: usize = 200_000;
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct AccountEntry {
+    /// Defaulted so an entry the electron host wrote before an account was named still reads: one
+    /// entry that fails to parse makes the whole registry read as empty, and the next write then
+    /// drops the selection and every other account's metadata.
+    #[serde(default)]
     pub name: String,
     pub path: PathBuf,
     /// Cached profile picture as a small data URI. See `Account::avatar`.
@@ -75,6 +79,11 @@ pub struct AccountEntry {
     /// Setup was never finished. See `prune_abandoned`.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub provisional: bool,
+    /// Everything else the entry holds that this host does not model — the electron host keeps the
+    /// account's `servers` and `serving` here. Kept verbatim so a write from this host (selecting
+    /// another account, say) does not erase what only the other host understands.
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
 /// The shape the UI consumes. `id` is the data path — stable, and unique by construction, so
@@ -462,16 +471,19 @@ impl AccountRegistry {
                 // No entry means a directory nobody has named yet — the default account on a first
                 // run, or one restored by renaming a backup back before its metadata caught up.
                 let meta = state.accounts.iter().find(|a| a.path == path);
-                let name = meta.map(|m| m.name.clone()).unwrap_or_else(|| {
-                    if path == self.default_path {
-                        self.default_name.clone()
-                    } else {
-                        path.file_name()
-                            .unwrap_or_default()
-                            .to_string_lossy()
-                            .to_string()
-                    }
-                });
+                let name = meta
+                    .map(|m| m.name.clone())
+                    .filter(|n| !n.is_empty())
+                    .unwrap_or_else(|| {
+                        if path == self.default_path {
+                            self.default_name.clone()
+                        } else {
+                            path.file_name()
+                                .unwrap_or_default()
+                                .to_string_lossy()
+                                .to_string()
+                        }
+                    });
                 Account {
                     id: path.to_string_lossy().to_string(),
                     has_agent: has_agent(&path),
@@ -517,6 +529,7 @@ impl AccountRegistry {
             // directory, a placeholder name and no identity, and would otherwise sit in the
             // switcher forever looking real.
             provisional: true,
+            ..Default::default()
         });
         state.selected_path = Some(path.clone());
         self.write(&state)?;
@@ -559,8 +572,7 @@ impl AccountRegistry {
             state.accounts.push(AccountEntry {
                 name: String::new(),
                 path: target.clone(),
-                avatar: None,
-                provisional: false,
+                ..Default::default()
             });
         }
 
@@ -814,6 +826,22 @@ mod tests {
     }
 
     #[test]
+    fn an_entry_with_no_stored_name_lists_under_the_default_name() {
+        let (root, default_path, registry) = temp_registry();
+        let state: RegistryState = serde_json::from_str(&format!(
+            r#"{{"accounts":[{{"path":{}}}]}}"#,
+            serde_json::to_string(&default_path.to_string_lossy()).unwrap()
+        ))
+        .expect("a nameless entry must still parse");
+        assert_eq!(state.accounts[0].name, "");
+        registry.write(&state).unwrap();
+
+        let accounts = registry.list();
+        assert_eq!(accounts[0].name, "Main");
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
     fn keeps_created_accounts_inside_the_container() {
         let (root, default_path, registry) = temp_registry();
         let created = registry.create().unwrap();
@@ -910,8 +938,7 @@ mod tests {
                 accounts: vec![AccountEntry {
                     name: "Ghost".to_string(),
                     path: default_path.clone(),
-                    avatar: None,
-                    provisional: false,
+                    ..Default::default()
                 }],
                 selected_path: Some(default_path.clone()),
                 executor: None,
@@ -1088,8 +1115,7 @@ mod tests {
                 accounts: vec![AccountEntry {
                     name: "Work".to_string(),
                     path: legacy.clone(),
-                    avatar: None,
-                    provisional: false,
+                    ..Default::default()
                 }],
                 selected_path: Some(legacy.clone()),
                 executor: None,
@@ -1107,6 +1133,71 @@ mod tests {
         assert!(!legacy.exists());
         assert_eq!(migrated.resolve_active_path(), target);
         assert!(migrated.list().iter().any(|a| a.name == "Work"));
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn selecting_an_account_keeps_the_servers_the_electron_host_stored() {
+        let (root, default_path, registry) = temp_registry();
+        let other = default_path.join("we-accounts").join("other");
+        fs::create_dir_all(&other).unwrap();
+        let registry_file = default_path.join("we-accounts").join("registry.json");
+        let written = serde_json::json!({
+            "accounts": [{
+                "name": "Main",
+                "path": default_path,
+                "servers": [{ "address": "https://192.168.1.20:12000", "name": "home" }],
+                "serving": "https://192.168.1.20:12000"
+            }],
+            "selectedPath": default_path
+        });
+        fs::write(&registry_file, written.to_string()).unwrap();
+
+        registry.select(&other.to_string_lossy()).unwrap();
+
+        let back: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&registry_file).unwrap()).unwrap();
+        assert_eq!(back["selectedPath"], serde_json::json!(other));
+        assert_eq!(
+            back["accounts"][0]["servers"],
+            written["accounts"][0]["servers"]
+        );
+        assert_eq!(
+            back["accounts"][0]["serving"],
+            written["accounts"][0]["serving"]
+        );
+        assert_eq!(back["accounts"][0]["name"], "Main");
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn a_nameless_entry_does_not_make_the_whole_registry_read_as_empty() {
+        let (root, default_path, registry) = temp_registry();
+        let other = default_path.join("we-accounts").join("other");
+        fs::create_dir_all(&other).unwrap();
+        let registry_file = default_path.join("we-accounts").join("registry.json");
+        // The electron host adds an entry with a name when it first adds a host; older builds wrote
+        // one without. Either way the other accounts' metadata and the selection must survive.
+        let written = serde_json::json!({
+            "accounts": [
+                { "path": other, "servers": [{ "address": "https://h.example:1", "name": "h" }] },
+                { "name": "Main", "path": default_path, "avatar": "data:image/png;base64,aGk=" }
+            ],
+            "selectedPath": other
+        });
+        fs::write(&registry_file, written.to_string()).unwrap();
+
+        assert_eq!(registry.resolve_active_path(), other);
+        let accounts = registry.list();
+        assert_eq!(
+            accounts
+                .iter()
+                .find(|a| a.id == default_path.to_string_lossy())
+                .unwrap()
+                .avatar
+                .as_deref(),
+            Some("data:image/png;base64,aGk=")
+        );
         fs::remove_dir_all(root).ok();
     }
 
