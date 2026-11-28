@@ -451,6 +451,43 @@ describe('deviceStore', () => {
     expect(stores.devices.canManage()).toBe(true);
   });
 
+  it('on a phone, marks the phone’s key and not the key of the computer it reaches', async () => {
+    // The backend is the computer's (d1, which it marks as its own); the phone's custody is d2.
+    const b = backend({ did: DID, events: [incept, add], devices });
+    const state: IdentityCustodyView = {
+      ...NO_CUSTODY,
+      did: DID,
+      holdsMaster: true,
+      unlock: 'os',
+      devices: [{ keyId: 'd1', name: 'Desktop', kind: 'desktop-app', holdsMaster: 'no' }],
+      requests: [{ id: 'r1', kind: 'confirm-revoke', by: 'd1', keyIds: ['d2'], expires: 99 }],
+      thisDevice: { keyId: 'd2', kind: 'phone-app', form: 'phone' },
+    };
+    setPorts({ identity: signing(b.port, { custody: async () => state, change: async () => 'done' }) });
+    const { identity, devices: deviceStore } = mount();
+    await flush();
+    await flush();
+    expect(deviceStore.devices().map((d) => [d.keyId, d.label, d.icon, d.thisDevice, d.canRevoke])).toEqual([
+      ['d2', 'This phone', 'device-mobile', true, false],
+      ['d1', 'Desktop', 'laptop', false, true],
+    ]);
+    expect(identity.keyLog().map((r) => [r.title, r.detail])).toEqual([
+      ['Added this phone', 'd2 · This phone'],
+      ['Created identity', 'with d1'],
+    ]);
+    expect(deviceStore.requests()[0].title).toBe('Desktop asks to remove This phone');
+    // `unlinkSelf` would retire the backend's key (d1), not the phone's: the phone's row offers no unlink,
+    // and neither the confirm nor the call can be reached.
+    expect(deviceStore.devices().map((d) => [d.keyId, d.canUnlink])).toEqual([
+      ['d2', false],
+      ['d1', true],
+    ]);
+    expect(await deviceStore.unlinkThisComputer()).toBe('failed');
+    expect(b.calls).not.toContain('unlinkSelf');
+    expect(deviceStore.confirmingUnlink()).toBe(false);
+    expect(deviceStore.error()).toContain("can't unlink itself");
+  });
+
   it('revoke asks for that key and reads the list again', async () => {
     const b = backend({ did: DID, events: [incept, add], devices });
     const c = custody(

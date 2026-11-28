@@ -43,6 +43,34 @@
  */
 import { FAMILY_ROLES, FAMILY_STATE_FALLBACKS } from './familyRoles.js';
 
+/**
+ * How much chroma sRGB holds just below white, per unit of lightness left: at OKLCH lightness `L`
+ * every hue reaches at least `0.463 × (1 − L)` (hue 268 is the narrowest; measured from 0.9 to
+ * 0.999). A little under it, so a value at the bound is inside the gamut rather than on its edge.
+ */
+export const SRGB_CHROMA_PER_LIGHTNESS = 0.45;
+
+/**
+ * A step *up* from another colour that stays inside sRGB.
+ *
+ * `calc(l + n) c h` alone carries the source's chroma to the new lightness, and near white there is
+ * no room for it: a light theme's `page` lands at `L ≈ 1` with the neutral's tint still on it, which
+ * is no sRGB colour at all. Desktop Chrome clips each channel and paints white. Android System
+ * WebView 124 does not clip the root background, the one that paints the canvas: its blue channel
+ * comes out at 256.6 and wraps, and the identity page on a phone was pure yellow (255, 255, 1).
+ *
+ * So the chroma is bounded by the lightness the step lands on, and the bound reaches 0 at white. It
+ * changes only values that were outside sRGB already, where what a browser paints was its own choice;
+ * everywhere else `min()` returns `c` and the colour is the one the plain step gave. The step *down*
+ * (`surfaceSunken`) needs no bound: chroma that fitted at the lighter value fits at the darker one.
+ */
+function stepUp(from: string, step: number): string {
+  return (
+    `oklch(from var(${from}) calc(l + ${step}) ` +
+    `min(c, max(0, calc((1 - l - ${step}) * ${SRGB_CHROMA_PER_LIGHTNESS}))) h)`
+  );
+}
+
 export const role = {
   /**
    * The plane a space's own content sits on, a step above the chrome framing it. The stack below is
@@ -63,7 +91,7 @@ export const role = {
    * a card is measured from what it sits on, and it sits on a space's content, not on the rail down
    * the side of the window.
    */
-  page: 'oklch(from var(--we-role-chrome) calc(l + 0.03) c h)',
+  page: stepUp('--we-role-chrome', 0.03),
   /**
    * The app's own furniture — the sidebar, the module rail, a docked panel's frame.
    *
@@ -105,7 +133,7 @@ export const role = {
    * above is unchanged. That is the intended shape of this knob — it answers "how dark is this
    * app", and the answers to "how far apart are its planes" live on the roles that step off it.
    */
-  chrome: 'oklch(from var(--we-color-neutral-50) calc(l + 0.01) c h)',
+  chrome: stepUp('--we-color-neutral-50', 0.01),
   /**
    * Default surface (cards, panels) — one step above the page, in both polarities.
    *
@@ -114,7 +142,7 @@ export const role = {
    * old distance was two large steps from the furniture and read as floating rather than resting.
    * Tuned by eye against the stack as it now stands.
    */
-  surface: 'oklch(from var(--we-role-page) calc(l + 0.025) c h)',
+  surface: stepUp('--we-role-page', 0.025),
   /**
    * A surface elevated above its parent. Light themes pair it with shadow; dark themes lighten it.
    *
@@ -132,7 +160,7 @@ export const role = {
    * The other half of the separation is the border a popover already carries, which is the same
    * bargain `channels` makes deliberately when it sets its page and its cards to one value.
    */
-  surfaceRaised: 'oklch(from var(--we-role-page) calc(l + 0.04) c h)',
+  surfaceRaised: stepUp('--we-role-page', 0.04),
   /**
    * A surface recessed below its parent (wells, input troughs).
    *

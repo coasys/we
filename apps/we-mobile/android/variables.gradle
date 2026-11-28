@@ -1,0 +1,23 @@
+ext {
+    // Android 11: where the app's support starts. What WE itself needs is a WebView version, not an
+    // Android version (Android System WebView updates through the Play Store): see
+    // android.minWebViewVersion in capacitor.config.ts.
+    minSdkVersion = 30
+    compileSdkVersion = 36
+    targetSdkVersion = 36
+    androidxActivityVersion = '1.11.0'
+    androidxAppCompatVersion = '1.7.1'
+    androidxCoordinatorLayoutVersion = '1.3.0'
+    androidxCoreVersion = '1.17.0'
+    androidxFragmentVersion = '1.8.9'
+    coreSplashScreenVersion = '1.2.0'
+    androidxWebkitVersion = '1.14.0'
+    junitVersion = '4.13.2'
+    androidxJunitVersion = '1.3.0'
+    androidxEspressoCoreVersion = '3.7.0'
+    cordovaAndroidVersion = '14.0.1'
+    // What the uniffi bindings of crates/phone-custody call the Rust library through.
+    jnaVersion = '5.17.0'
+    cameraxVersion = '1.5.1'
+    mlkitBarcodeVersion = '17.3.0'
+}

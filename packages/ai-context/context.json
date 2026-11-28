@@ -6579,6 +6579,13 @@
         "devicesLoaded": {
           "type": "boolean"
         },
+        "serving": {
+          "type": "object",
+          "properties": ["label", "subtitle", "icon"]
+        },
+        "deviceNoun": {
+          "type": "string"
+        },
         "validCount": {
           "type": "number"
         },
@@ -7801,6 +7808,9 @@
           "type": "boolean"
         },
         "panelMaximised": {
+          "type": "boolean"
+        },
+        "narrowWindow": {
           "type": "boolean"
         },
         "dockPlacement": {

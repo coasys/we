@@ -60,6 +60,12 @@ export interface Ad4mCustodyHost {
   /** Opens the custody service's window on `change`; resolves when the change ends there. */
   open(change: IdentityChange): Promise<IdentityChangeOutcome>;
   publicState(): Promise<Ad4mCustodyState>;
+  /**
+   * Whether the host takes the 12 words back, to replace the master key or restore the identity.
+   * Absent means it does, as the desktop custody service does; a phone, which takes no words, says
+   * `false`, and the screens then offer neither.
+   */
+  takesWords?: boolean;
 }
 
 /** The custody service's public state, as it answers `publicState`. */
@@ -83,6 +89,11 @@ export interface Ad4mCustodyState {
   endedHolders?: string[];
   masterWaiting?: boolean;
   /**
+   * The device this custody service answers for, where it is not the executor's: a phone's own key
+   * and kind. Absent on the desktop, where the custody service and the executor share a computer.
+   */
+  thisDevice?: { keyId: string | null; kind: string } | null;
+  /**
    * The key log lists an enc key for this computer other than the one the custody service keeps.
    * Absent from a custody service that predates it.
    */
@@ -94,6 +105,9 @@ type Raw = Record<string, unknown>;
 const record = (value: unknown): Raw => (value && typeof value === 'object' ? (value as Raw) : {});
 const text = (value: unknown): string | null => (typeof value === 'string' ? value : null);
 const count = (value: unknown): number | null => (typeof value === 'number' ? value : null);
+
+/** The private record's kind for the phone app's device. */
+const PHONE_APP = 'phone-app';
 
 function readHead(value: unknown): KeyLogHead | null {
   if (!value || typeof value !== 'object') return null;
@@ -173,8 +187,16 @@ export function readCustody(value: Ad4mCustodyState): IdentityCustodyView {
     endedHolders: Array.isArray(value.endedHolders) ? value.endedHolders.map(String) : [],
     requests,
     masterWaiting: value.masterWaiting === true,
+    thisDevice: readCustodyDevice(value.thisDevice),
     encMismatch: value.encMismatch === true,
   };
+}
+
+function readCustodyDevice(value: unknown): IdentityCustodyView['thisDevice'] {
+  if (!value || typeof value !== 'object') return null;
+  const device = record(value);
+  const kind = text(device.kind) ?? '';
+  return { keyId: text(device.keyId), kind, form: kind === PHONE_APP ? 'phone' : 'computer' };
 }
 
 export function readIdentityStatus(value: unknown): IdentityStatusView {
@@ -287,7 +309,7 @@ export function createAd4mIdentityPort(backendClient: unknown, custody?: Ad4mCus
         keyLog: true,
         devices: true,
         masterKey: !!custody,
-        recoveryWords: !!custody,
+        recoveryWords: !!custody && custody.takesWords !== false,
         linkDevice: !!custody,
       };
     },

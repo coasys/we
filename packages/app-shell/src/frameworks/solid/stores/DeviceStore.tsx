@@ -12,7 +12,17 @@
  * Chrome tier only (`devices` in `templateSurface.ts`): a space template never sees a person's
  * devices.
  */
-import { type DeviceRow, deviceRows, lastRotation, type RequestRow, requestRows } from '@shared/identityRows';
+import {
+  custodyDevice,
+  deviceNoun,
+  type DeviceRow,
+  deviceRows,
+  lastRotation,
+  type RequestRow,
+  requestRows,
+  type ServingDevice,
+  servingDevice,
+} from '@shared/identityRows';
 import { type DeviceKeyView, type IdentityChangeOutcome, UnlinkUncertainError } from '@we/backend-shared';
 import { latest } from '@we/module-shared';
 import {
@@ -36,6 +46,13 @@ export interface DeviceStore {
   /** The device keys, valid first, this computer at the top. */
   devices: Accessor<DeviceRow[]>;
   devicesLoaded: Accessor<boolean>;
+  /**
+   * The device serving this session, for the top of Devices: "This computer" on the desktop; on a
+   * phone, the host it signs in to, by its name in the record or "Your host".
+   */
+  serving: Accessor<ServingDevice>;
+  /** What this device is, for the sentences about it: "phone" on a phone, "computer" on the desktop. */
+  deviceNoun: Accessor<'phone' | 'computer'>;
   /** How many device keys are valid: neither unlinked, revoked nor ended. A bot's key is not a device's. */
   validCount: Accessor<number>;
   /**
@@ -200,8 +217,17 @@ export function DeviceStoreProvider(props: ParentProps) {
   const encMismatch = () => !!identity.custody()?.encMismatch;
   // The record's names cannot have been read here then: whatever came is not this computer's to show.
   const names = () => (encMismatch() ? [] : (identity.custody()?.devices ?? []));
+  // A phone's custody service answers for the phone, not for the computer it reaches.
+  const here = createMemo(() => custodyDevice(identity.custody()));
   const rows = createMemo(() =>
-    deviceRows(raw(), names(), identity.custody()?.endedHolders ?? [], lastRotation(identity.keyLog())),
+    deviceRows(
+      raw(),
+      names(),
+      identity.custody()?.endedHolders ?? [],
+      lastRotation(identity.keyLog()),
+      undefined,
+      here(),
+    ),
   );
   // The words go to the custody service, which the `recoveryWords` capability says is here.
   const words = () => session.identityCapabilities().recoveryWords && identity.canChange();
@@ -227,6 +253,12 @@ export function DeviceStoreProvider(props: ParentProps) {
       return 'failed';
     }
     if (unlinking()) return 'cancelled';
+    // `unlinkSelf` retires the key of the backend reached, which on a phone is another device's.
+    if (here()) {
+      setConfirmingUnlink(false);
+      setError("This phone can't unlink itself from here.");
+      return 'failed';
+    }
     setUnlinking(true);
     setError('');
     let outcome: UnlinkOutcome = 'done';
@@ -260,6 +292,8 @@ export function DeviceStoreProvider(props: ParentProps) {
   const store: DeviceStore = {
     devices: rows,
     devicesLoaded,
+    serving: createMemo(() => servingDevice(raw(), names(), here())),
+    deviceNoun: () => deviceNoun(here()),
     validCount: () => rows().filter((d) => d.valid).length,
     canManage,
     canShowCode: () => linking() && identity.statusLoaded() && !identity.did() && !identity.custody()?.holdsMaster,
@@ -278,7 +312,14 @@ export function DeviceStoreProvider(props: ParentProps) {
     masterWaiting,
     encMismatch,
     requests: createMemo(() =>
-      canManage() ? requestRows(identity.custody()?.requests ?? [], names(), identity.keyId() || null) : [],
+      canManage()
+        ? requestRows(
+            identity.custody()?.requests ?? [],
+            names(),
+            here() ? here()!.keyId : identity.keyId() || null,
+            here()?.label,
+          )
+        : [],
     ),
     error,
     refresh,
@@ -290,7 +331,7 @@ export function DeviceStoreProvider(props: ParentProps) {
     answerRequest: (id: string) => step(() => identity.open({ kind: 'answer-request', id })),
     rename: (keyId: string) => step(() => identity.open({ kind: 'rename', keyId })),
     unlink: async (keyId: string) => {
-      if (rows().some((d) => d.keyId === keyId && d.thisDevice)) {
+      if (!here() && rows().some((d) => d.keyId === keyId && d.thisDevice)) {
         // Not again while it runs: the confirm is already up, and one unlink is all there is.
         if (!unlinking()) setConfirmingUnlink(true);
         return 'cancelled';

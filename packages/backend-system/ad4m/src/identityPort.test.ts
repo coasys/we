@@ -292,6 +292,10 @@ describe('the AD4M identity port with a custody service', () => {
     const port = createAd4mIdentityPort(client({ status: {} }), host);
     // The custody service takes the 12 words back too: replacing the master key, restoring.
     expect(await port.capabilities()).toMatchObject({ masterKey: true, recoveryWords: true, linkDevice: true });
+    // A host that takes no words (the phone) keeps the master key and links devices, and offers
+    // neither replacing the master key nor restoring.
+    const phone = createAd4mIdentityPort(client({ status: {} }), { ...custody({}), takesWords: false });
+    expect(await phone.capabilities()).toMatchObject({ masterKey: true, recoveryWords: false, linkDevice: true });
     expect(await port.change!({ kind: 'replace-master' })).toBe('done');
     expect(host.open).toHaveBeenCalledWith({ kind: 'replace-master' });
     expect(await port.change!({ kind: 'revoke', keyId: 'd2' })).toBe('done');
@@ -306,8 +310,30 @@ describe('the AD4M identity port with a custody service', () => {
       endedHolders: [],
       requests: [],
       masterWaiting: false,
+      // The desktop's custody service runs beside the executor, so it names no device of its own.
+      thisDevice: null,
       encMismatch: false,
     });
+  });
+
+  it('reads the device a custody service answers for apart from the executor’s', async () => {
+    const port = createAd4mIdentityPort(
+      client({ status: {} }),
+      custody({ thisDevice: { keyId: 'd2', kind: 'phone-app' } }),
+    );
+    expect((await port.custody!()).thisDevice).toEqual({ keyId: 'd2', kind: 'phone-app', form: 'phone' });
+    // Before the log lists the phone, it is still the device here, with no key id yet.
+    const unlisted = createAd4mIdentityPort(
+      client({ status: {} }),
+      custody({ thisDevice: { keyId: null, kind: 'phone-app' } }),
+    );
+    expect((await unlisted.custody!()).thisDevice).toEqual({ keyId: null, kind: 'phone-app', form: 'phone' });
+    // Any other kind is a computer's.
+    const laptop = createAd4mIdentityPort(
+      client({ status: {} }),
+      custody({ thisDevice: { keyId: 'd3', kind: 'desktop-app' } }),
+    );
+    expect((await laptop.custody!()).thisDevice?.form).toBe('computer');
   });
 
   it('carries the custody service’s word that this computer lost its enc key', async () => {
