@@ -341,12 +341,18 @@ describe('a key session on a server', () => {
       throw new FakeRpcError(503, 'connection failed');
     };
 
-    // By our clock the token ran out 30 s ago; by the server's it has 60 s left.
-    server.advance(session.expiresAt() - server.now() - 60);
+    // By our clock the token ran out 10 s ago; by the server's it has 80 s left.
+    const expiresAt = session.expiresAt();
+    server.advance(expiresAt - server.now() - 80);
     await timers.fire();
     expect(ended).not.toHaveBeenCalled();
+    const delay = [...timers.pending.values()][0].ms / 1000;
+    expect(delay).toBe(60);
 
+    // The server is back at the retry, which falls while its token still lasts (20 s left).
     agent.sessionChallenge = real;
+    server.advance(delay);
+    expect(server.now()).toBeLessThan(expiresAt);
     await timers.fire();
     expect(session.token()).toBe('token-2');
     expect(ended).not.toHaveBeenCalled();
