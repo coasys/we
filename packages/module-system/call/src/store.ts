@@ -509,8 +509,8 @@ export function createCallStore(deps: ModuleStoreDeps) {
    */
   const REPLACED = 'You joined this call from another tab, so it ended here.';
   /**
-   * The session's own verdict that the call is over (`call-ended`), as opposed to another tab
-   * taking it (`replaced`). `gave-up` is a connection the backend's rebuilds could not save;
+   * The session's own verdict that the call is over (`ended` with `reason` `gave-up` or `refused`),
+   * as opposed to another tab taking it (`ended` with `reason` `replaced`). `gave-up` is a connection the backend's rebuilds could not save;
    * `refused` is the call server saying this session is another agent's. Both are said plainly,
    * because a silent end reads as a dropped call — and both leave the session already stopped, so
    * joining again is the person's choice rather than anything automatic.
@@ -1211,28 +1211,32 @@ export function createCallStore(deps: ModuleStoreDeps) {
       }
     });
     /*
-      Another tab of this device joined the call and took it over: the SFU holds one session per
-      device. The call has ended in this tab, so it is let go like a leave — devices released, the
-      session destroyed — and nothing rebuilds or rejoins it. Joining again is the person's choice.
+      The session ended the call itself, and says why in `reason`. The session is already stopped —
+      and its roster already emptied — so the call is let go like a leave (devices released, the
+      session destroyed) and the reason said, rather than rebuilt or silently dead. Joining again is
+      the person's choice.
+
+      - `replaced`: another tab of this device joined the call and took it over (the SFU holds one
+        session per device).
+      - `gave-up`: the backend's rebuilds ran out.
+      - `refused`: the call server said this session is another agent's.
 
       `teardown` also takes this tab's call activity out of presence. That is this tab's own record,
       not the agent's: the other tab holds its own, and the tab coordinator hands publishing to it
       when this tab stops holding a call (see `setPinned` in the app shell's `tabCoordinator`).
     */
-    on('replaced', () => {
-      teardown();
-      setProblem(REPLACED);
-    });
-    /*
-      The session ended the call itself: the backend's rebuilds gave up (`gave-up`), or the call
-      server refused this session as another agent's (`refused`). The session is already stopped —
-      and its roster already emptied — so like `replaced` the call is let go and the reason said,
-      rather than rebuilt or silently dead.
-    */
-    on('call-ended', (event) => {
+    on('ended', (event) => {
       const reason = (event as { reason?: unknown } | null)?.reason;
       teardown();
-      setProblem(reason === 'refused' ? CALL_REFUSED : reason === 'gave-up' ? CALL_GAVE_UP : CALL_ENDED);
+      setProblem(
+        reason === 'replaced'
+          ? REPLACED
+          : reason === 'refused'
+            ? CALL_REFUSED
+            : reason === 'gave-up'
+              ? CALL_GAVE_UP
+              : CALL_ENDED,
+      );
     });
     session.on('error', (err: unknown) => console.error('call: backend error', err));
 

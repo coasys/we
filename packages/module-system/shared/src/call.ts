@@ -56,10 +56,10 @@ export interface CallSession {
   readonly participants: ReadonlyArray<CallParticipant>;
   getState(): string;
   /**
-   * Session events. `replaced` says this device joined the call again from another tab: this
-   * session's call has ended, it is idle, and it does not rejoin by itself. `call-ended` says the
-   * session ended the call itself — `{ reason }` is `gave-up` when the backend's rebuilds ran out,
-   * `refused` when the call server disowned the session — and it likewise does not rejoin.
+   * Session events. `ended` says the session ended the call itself: it is idle, and it does not
+   * rejoin by itself. `{ reason }` is `replaced` when this device joined the call again from
+   * another tab, `gave-up` when the backend's rebuilds ran out, `refused` when the call server
+   * disowned the session.
    */
   on(event: string, cb: (...args: unknown[]) => void): void;
   off(event: string, cb?: (...args: unknown[]) => void): void;
