@@ -1571,7 +1571,7 @@ describe('transport and device lifetime', () => {
         await store.toggleAudio();
         expect(published.at(-1)).not.toBeNull();
 
-        fire('replaced', { participantId: 'session-this-tab' });
+        fire('ended', { reason: 'replaced', session: { participantId: 'session-this-tab' } });
         await settle();
 
         expect(store.callId()).toBeNull();
@@ -1588,7 +1588,7 @@ describe('transport and device lifetime', () => {
         const { store, fire, sessions, backendArgs, publishesCall } = await inCallWith('did:someone');
         const id = store.callId() as string;
 
-        fire('replaced', { participantId: 'session-this-tab' });
+        fire('ended', { reason: 'replaced', session: { participantId: 'session-this-tab' } });
         await settle();
         // The call goes on: presence keeps saying who is in it, a switch included.
         publishesCall('did:someone', id, { topology: { mode: 'mesh', at: Date.now() + 1, by: 'did:someone' } });
@@ -1602,7 +1602,7 @@ describe('transport and device lifetime', () => {
       it('joins again when the person asks', async () => {
         const { store, fire, sessions } = await inCallWith('did:someone');
         const id = store.callId() as string;
-        fire('replaced', { participantId: 'session-this-tab' });
+        fire('ended', { reason: 'replaced', session: { participantId: 'session-this-tab' } });
         await settle();
 
         await store.joinCall(id);
@@ -1635,7 +1635,7 @@ describe('transport and device lifetime', () => {
         // A give-up tells each participant it left first, then ends the call.
         fire('participant-left', { participantId: 'did:someone', did: 'did:someone' });
         fire('error', new Error('rebuild attempts exhausted'));
-        fire('call-ended', { reason: 'gave-up', error: new Error('rebuild attempts exhausted') });
+        fire('ended', { reason: 'gave-up', error: new Error('rebuild attempts exhausted') });
         await settle();
 
         expect(store.callId()).toBeNull();
@@ -1649,7 +1649,7 @@ describe('transport and device lifetime', () => {
       it('says the call server refused this session, as a terminal end', async () => {
         const { store, session, fire } = await inCallWith('did:someone');
 
-        fire('call-ended', { reason: 'refused', error: new Error('session belongs to another agent') });
+        fire('ended', { reason: 'refused', error: new Error('session belongs to another agent') });
         await settle();
 
         expect(store.callId()).toBeNull();
@@ -1662,7 +1662,7 @@ describe('transport and device lifetime', () => {
         const { store, fire, sessions } = await inCallWith('did:someone');
         const id = store.callId() as string;
 
-        fire('call-ended', { reason: 'gave-up', error: new Error('rebuild attempts exhausted') });
+        fire('ended', { reason: 'gave-up', error: new Error('rebuild attempts exhausted') });
         await settle();
 
         expect(store.callId()).toBeNull();
