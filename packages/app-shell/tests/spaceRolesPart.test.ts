@@ -207,6 +207,33 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     await expect(CollectionBlock.create(handle, { kind: 'post' })).resolves.toBeTruthy();
   });
 
+  it('lets the creator write a just-shared space its address, though the record does not match by it yet', async () => {
+    const h = await spaceHarness(makePort(), [{ id: 'ds-s', name: 'Orchard', sharedUri: 'inmemory://orchard' }]);
+    const ds = await h.datasets.get('ds-s');
+    expect(ds.sharedId).toBeTruthy();
+    // Made before it was shared: the record names the creator's dataset, and has no address yet.
+    const record = (await Space.create(ds.handle, { uuid: 'ds-s', name: 'The Orchard' })) as Space;
+    let roles!: SpaceRoles;
+    disposers.push(
+      h.reactivity.root(() => {
+        const spaces = createSpaceList({
+          ...h.ctx,
+          routeStore: { segments: () => [], navigate: () => {} },
+          templateStore: { appTemplate: () => null, preloadSpaceTemplates: () => Promise.resolve() } as never,
+          shapeStore: { addRecordTypes: () => Promise.resolve([]) } as never,
+        });
+        roles = createSpaceRoles({ ...h.ctx, spaces, onScreen: { currentSpace: () => null } });
+      }),
+    );
+    expect(roles).toBeTruthy();
+    // On screen, so known to be a space, before its roles have been read.
+    h.datasets.show('ds-s');
+    await flush();
+    // The write that makes the record match its dataset by address is judged, not refused as arriving.
+    await expect(Space.update(ds.handle, record.id, { url: ds.sharedId })).resolves.toBeTruthy();
+    expect(h.toasts.said).toEqual([]);
+  });
+
   it('does not judge a write to a dataset not known to be a space when its record is not there', async () => {
     const built = await build();
     const { h } = built;
