@@ -268,10 +268,13 @@ describe('a transcript with nothing in it', () => {
   it('draws the window the reader’s way round, with the replies flattened in', () => {
     // Reversed exactly when the anchored end is the bottom — see `timelineOrder` in the schema kit.
     expect(linesJson).toContain(
-      '? reverse(threadLines({ rows: local.utterances, newestFirst: !modules.transcribe.transcriptFromStart })) :',
+      '? reverse(threadLines({ rows: concat(local.utterances, local.bareUtterances), newestFirst: !modules.transcribe.transcriptFromStart })) :',
     );
     // Each line arrives with its thread: a reply is a child of nothing, so this is where it comes from.
-    expect(linesJson).toContain('"include":{"thread":true}');
+    // Each line with its parts and its whole thread, each reply with its parts.
+    expect(linesJson).toContain(
+      '"include":{"children":{"include":{"children":{"select":["name","title","mimeType","size"]}}},"thread":{"include":{"children":{"include":{"children":{"select":["name","title","mimeType","size"]}}}}}}',
+    );
   });
 
   /**
@@ -1348,7 +1351,7 @@ describe('the interpretation panel', () => {
       The store cannot do better alone: peers write into the shared record without telling it, so
       "is there anything in here" is a question for the graph. One row answers it.
     */
-    expect(json).toContain('"spoken":{"entity":"TextBlock"');
+    expect(json).toContain('"spoken":{"entity":"CollectionBlock","where":{"kind":"message"}');
     // Scoped to the call on screen, through the relation its utterances hang off.
     expect(json).toContain(`"via":"children","anchorId":{"$":"${INTERPRETATION_SUBJECT_EXPR}"}`);
     expect(json).toContain('!count(local.spoken) || !');

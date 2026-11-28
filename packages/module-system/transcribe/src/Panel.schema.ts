@@ -16,7 +16,7 @@
  * rendering. The other three modules still declare their fragments inline; this is the shape they
  * should move to.
  */
-import { messageLine, repliesInclude } from '@we/messages';
+import { lineInclude, messageLine, repliesInclude } from '@we/messages';
 import {
   emptyState,
   foldingBody,
@@ -2699,7 +2699,9 @@ const interpretNow: SchemaNode = {
   props: { gap: '300' },
   $queries: {
     spoken: {
-      entity: 'TextBlock',
+      // Whether anybody has said anything: a message in the subject.
+      entity: 'CollectionBlock',
+      where: { kind: 'message' },
       scope: { anchor: 'CollectionBlock', via: 'children', anchorId: INTERPRETATION_SUBJECT },
       limit: 1,
       when: INTERPRETATION_SUBJECT,
@@ -3074,7 +3076,12 @@ export const transcriptLines: SchemaNode = {
   */
   $queries: {
     utterances: {
-      entity: 'TextBlock',
+      // The call's lines: messages, each a collection holding its blocks — see `@we/messages`.
+      entity: 'CollectionBlock',
+      where: { kind: 'message' },
+      // What a line draws, and the parts and thread it is read with. A message holds no list worth
+      // carrying beyond those.
+      select: ['author', 'createdAt', 'updatedAt', 'textContent', 'source', 'kind', 'respondsTo', 'children', 'thread'],
       scope: {
         anchor: 'CollectionBlock',
         via: 'children',
@@ -3097,8 +3104,8 @@ export const transcriptLines: SchemaNode = {
         said.
       */
       limit: { $: 'modules.transcribe.transcriptShown' },
-      // Each line's whole thread, so its replies are drawn inline — see `threadLines`.
-      include: repliesInclude(),
+      // Each line's parts, and its whole thread with theirs, so its replies are drawn inline — see `threadLines`.
+      include: lineInclude(),
       when: { $: 'modules.transcribe.collectionId' },
       /*
         A call's lines are live only while the call is; anything else — a channel these lines are
@@ -3116,6 +3123,28 @@ export const transcriptLines: SchemaNode = {
         followed. The subject has to come through `subjectKind`: substitution is whole-token and
         cannot reach a subject mentioned inside this expression.
       */
+      subscribe: {
+        $:
+          `${CALL_ON_SCREEN_LIVE} || (local.subjectKindLoaded && ` +
+          `(first(local.subjectKind).kind != 'call' || first(local.subjectKind).id in ${LIVE_CALL_RECORDS}))`,
+      },
+    },
+    /*
+      And any bare text block in it — a line from a writer that knows nothing of messages (a bot
+      writing through its own tools). Drawn beside the messages as a one-part line, merged by time
+      in `threadLines`; the same window, the same liveness. Almost always empty.
+    */
+    bareUtterances: {
+      entity: 'TextBlock',
+      scope: {
+        anchor: 'CollectionBlock',
+        via: 'children',
+        anchorId: { $: 'modules.transcribe.collectionId' },
+      },
+      order: { $: "modules.transcribe.transcriptFromStart ? { createdAt: 'asc' } : { createdAt: 'desc' }" },
+      limit: { $: 'modules.transcribe.transcriptShown' },
+      include: repliesInclude(),
+      when: { $: 'modules.transcribe.collectionId' },
       subscribe: {
         $:
           `${CALL_ON_SCREEN_LIVE} || (local.subjectKindLoaded && ` +
@@ -3166,7 +3195,7 @@ export const transcriptLines: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $: 'count(local.utterances)' },
+        condition: { $: 'count(local.utterances) || count(local.bareUtterances)' },
         then: {
           type: '$each',
           props: {
@@ -3185,7 +3214,7 @@ export const transcriptLines: SchemaNode = {
             */
             items: {
               $: timelineOrder(
-                `threadLines({ rows: local.utterances, newestFirst: !${TRANSCRIPT_FROM_START} })`,
+                `threadLines({ rows: concat(local.utterances, local.bareUtterances), newestFirst: !${TRANSCRIPT_FROM_START} })`,
                 TRANSCRIPT_FROM_START,
                 TIMELINE_ORIENTATION,
               ),

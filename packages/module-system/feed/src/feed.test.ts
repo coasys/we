@@ -84,6 +84,26 @@ describe('the feed window', () => {
     expect(drawn[1]).toMatchObject({ call: '', source: 'typed' });
   });
 
+  it('draws the messages and the bare lines of a call together, by time, a message by its words and parts', async () => {
+    const message = {
+      entity: 'CollectionBlock',
+      id: 'msg',
+      in: 'monday',
+      kind: 'message',
+      createdAt: t(4),
+      author: 'did:ann',
+      textContent: 'the agenda is up',
+      source: 'typed',
+      children: [{ id: 'msg/text', __subjectClass: 'TextBlock', text: 'the agenda is up' }],
+    };
+    const { find } = store([...rows, message]);
+    const { rows: drawn } = await readFeedWindow(find, { root: ROOT, shown: 10, fromStart: false, activityTypes: [] });
+    expect(drawn.map((r) => r.id)).toEqual(['s2', 'typed', 'm2', 's1', 'msg', 'm1']);
+    const said = drawn.find((r) => r.id === 'msg')!;
+    expect(said).toMatchObject({ call: 'monday', text: 'the agenda is up', source: 'typed' });
+    expect((said as { content: unknown[] }).content).toEqual([expect.objectContaining({ text: 'the agenda is up' })]);
+  });
+
   it('stops between call pages once its answer is no longer wanted, rather than reading the rest', async () => {
     const { find, asked } = store(rows);
     const callPages = () => asked.filter((a) => a.entity === 'TextBlock' && a.query.within !== ROOT).length;
@@ -103,7 +123,9 @@ describe('the feed window', () => {
     const { find, asked } = store(rows);
     await readFeedWindow(find, { root: ROOT, shown: 10, fromStart: false, activityTypes: [] });
     // A whole call carries the id of every line said in it; the window draws its title and time.
-    const callList = asked.filter((a) => a.entity === 'CollectionBlock');
+    const callList = asked.filter(
+      (a) => a.entity === 'CollectionBlock' && (a.query.where as { kind?: unknown } | undefined)?.kind === 'call',
+    );
     expect(callList).toHaveLength(1);
     expect(callList[0].query.select).toEqual(['title', 'createdAt']);
   });

@@ -312,9 +312,15 @@ export default function TemplateProvider() {
         return dataset ? threadSubject(dataset, id) : null;
       },
 
-      // A post, from a module: always the space on screen. See `RecordsKernel.documents`.
+      // A post or a message, from a module: the space on screen, or the dataset it names (a call's
+      // lines go into the call's space). A name no dataset answers refuses, as in `moduleTarget`.
       documents: documentAccess(
-        () => datasetStore.currentDataset(),
+        (uri) => {
+          if (!uri) return datasetStore.currentDataset();
+          const found = datasetStore.datasets().find((d) => d.sharedUri === uri || d.id === uri);
+          if (!found) console.warn(`module host: no dataset for "${uri}" — refusing rather than writing elsewhere`);
+          return found ?? null;
+        },
         () => sessionStore.me()?.did,
       ),
 

@@ -593,6 +593,11 @@ export interface SpaceStore {
    * Made to be handed to a person or a model investigating why a call extracted what it did.
    */
   exportInterpretationLog: (callId: string) => Promise<void>;
+  /**
+   * Save a file a message carries — a `FileBlock` by id — to the reader's machine. A message line holds
+   * only the file's name and size; the bytes are read from the space on screen when this is called.
+   */
+  saveFileBlock: (fileId: string) => Promise<void>;
   removeSpaceFromGlobal: (spaceUuid: string) => Promise<void>;
   updateSpaceInCache: (dataset: AppDataset, updates: Partial<Space>) => void;
 
@@ -807,6 +812,7 @@ export function createSpaceStore(deps: SpaceStoreDeps): SpaceStoreWithLends {
   // A call's transcript and its interpretation log, read for the dataset each export names.
   const callExports = createCallExports({
     toasts,
+    platform,
     dataset: () => datasetStore.currentDataset(),
     interpretation: () => session.backendPorts()?.interpretation,
     profileStore,
@@ -827,6 +833,7 @@ export function createSpaceStore(deps: SpaceStoreDeps): SpaceStoreWithLends {
     spaceList,
     firstScreenOpen: () => firstScreen.open(),
     exportCallTranscript: callExports.exportCallTranscript,
+    saveFileBlock: callExports.saveFileBlock,
     exportInterpretationLog: callExports.exportInterpretationLog,
   };
   return { store, lends: { appearance, installedModules: modules.installedModules } };

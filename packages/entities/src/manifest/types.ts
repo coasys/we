@@ -84,6 +84,7 @@ export interface CollectionBlockRecord extends WeNodeRecord {
   slug: string;
   editorState: string | null;
   textContent: string;
+  source: string;
   version: number;
   sourceRef: string;
   sourceName: string;

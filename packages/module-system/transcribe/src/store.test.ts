@@ -115,6 +115,48 @@ function harness(peers: Peer[] = [], extraDeps: HarnessDeps = {}) {
       link: async (entity: string, id: string, relation: string, value: string) => {
         linked.push({ entity, id, relation, value });
       },
+      /*
+        A line is a message, written as a document (`@we/messages`). Recorded in `created` as
+        `message`, its words and how it arrived as fields, and where it went as the link the write
+        makes: a child of the collection it is in, or a response to the line it answers.
+      */
+      documents: {
+        create: async (
+          blocks: { text?: string }[],
+          options: {
+            kind?: string;
+            container?: string;
+            respondsTo?: string;
+            fields?: Record<string, string>;
+            generatedBy?: string;
+            dataset?: string;
+            storeDocument?: boolean;
+          } = {},
+        ) => {
+          const id = `id-${nextId++}`;
+          const parent = options.container
+            ? { id: options.container, relation: 'children', entity: 'CollectionBlock' }
+            : { id: options.respondsTo!, relation: 'responses' };
+          created.push({
+            entity: 'message',
+            fields: {
+              kind: options.kind,
+              text: blocks.map((b) => b.text ?? '').join('\n'),
+              ...(options.fields ?? {}),
+              ...(options.generatedBy ? { generatedBy: options.generatedBy } : {}),
+              storeDocument: options.storeDocument,
+            },
+            options: {
+              parent,
+              ...(options.dataset ? { dataset: options.dataset } : {}),
+            } as unknown as Created['options'],
+          });
+          return { id, ref: '' };
+        },
+        update: async () => {},
+        remove: async () => {},
+        read: async () => null,
+      },
       ...records,
     },
     ...(transcription ? { transcription } : {}),
@@ -236,7 +278,7 @@ describe('the call record', () => {
     await h.say('hello');
 
     expect(h.created.filter((c) => c.entity === 'CollectionBlock')).toHaveLength(0);
-    expect(h.created[0].entity).toBe('TextBlock');
+    expect(h.created[0].entity).toBe('message');
     expect(h.created[0].fields.text).toBe('hello');
     // Parented, not loose. A block written flat into the space is how transcripts used to end up in
     // the Cards route's Text list next to authored prose.
@@ -248,7 +290,7 @@ describe('the call record', () => {
     await h.say('one');
     await h.say('two');
 
-    expect(h.created.filter((c) => c.entity === 'TextBlock')).toHaveLength(2);
+    expect(h.created.filter((c) => c.entity === 'message')).toHaveLength(2);
     expect(h.created.every((c) => c.options?.parent?.id === RECORD)).toBe(true);
   });
 
@@ -764,7 +806,7 @@ describe('a call in another space', () => {
 
     expect(h.store.recordingCall()).toMatchObject({ enabled: true, available: true });
     await h.say('still here');
-    const line = h.created.find((c) => c.entity === 'TextBlock');
+    const line = h.created.find((c) => c.entity === 'message');
     expect(line?.fields.text).toBe('still here');
     expect(line?.options?.parent).toEqual({ id: RECORD, relation: 'children', entity: 'CollectionBlock' });
   });
@@ -1527,7 +1569,7 @@ describe('interpretation', () => {
     h.store.receiveText('and one more thing');
     await h.store.interpret();
 
-    const texts = h.created.filter((c) => c.entity === 'TextBlock').map((c) => c.fields.text);
+    const texts = h.created.filter((c) => c.entity === 'message').map((c) => c.fields.text);
     expect(texts).toContain('and one more thing');
   });
 
@@ -2468,7 +2510,7 @@ describe('interpreting by id', () => {
     h.store.receiveText('said during a later call');
     await h.store.interpretCollection('an-older-call');
 
-    const texts = h.created.filter((c) => c.entity === 'TextBlock').map((c) => c.fields.text);
+    const texts = h.created.filter((c) => c.entity === 'message').map((c) => c.fields.text);
     expect(texts).not.toContain('said during a later call');
   });
 
@@ -2480,7 +2522,7 @@ describe('interpreting by id', () => {
     h.store.receiveText('and one more thing');
     await h.store.interpretCollection(RECORD);
 
-    const texts = h.created.filter((c) => c.entity === 'TextBlock').map((c) => c.fields.text);
+    const texts = h.created.filter((c) => c.entity === 'message').map((c) => c.fields.text);
     expect(texts).toContain('and one more thing');
   });
 
@@ -2807,7 +2849,7 @@ describe('typing into a transcript', () => {
 
     await h.say('hello there');
 
-    expect(h.created.find((c) => c.entity === 'TextBlock')?.fields.source).toBe('spoken');
+    expect(h.created.find((c) => c.entity === 'message')?.fields.source).toBe('spoken');
   });
 
   it('marks what a microphone heard as written by one transcription run, made once', async () => {
@@ -2822,7 +2864,7 @@ describe('typing into a transcript', () => {
     expect(h.runs[0].fields).toMatchObject({ kind: 'transcription', trigger: 'auto' });
     expect(h.runs[0].options?.parent).toMatchObject({ relation: 'runs', entity: 'CollectionBlock' });
 
-    const lines = h.created.filter((c) => c.entity === 'TextBlock');
+    const lines = h.created.filter((c) => c.entity === 'message');
     expect(lines).toHaveLength(2);
     for (const line of lines) expect(line.fields.generatedBy).toBe(h.runs[0].id);
   });
@@ -2832,8 +2874,14 @@ describe('typing into a transcript', () => {
 
     await h.store.addMessage('', '  Sam is joining late  ');
 
-    const block = h.created.find((c) => c.entity === 'TextBlock');
-    expect(block?.fields).toEqual({ text: 'Sam is joining late', source: 'typed' });
+    const block = h.created.find((c) => c.entity === 'message');
+    // A message, keeping no stored copy of itself — a line is read with its parts.
+    expect(block?.fields).toEqual({
+      kind: 'message',
+      text: 'Sam is joining late',
+      source: 'typed',
+      storeDocument: false,
+    });
     // Into the call's own record, which exists from its first second — a message does not require
     // somebody to have spoken first.
     expect(block?.options?.parent).toEqual({ id: RECORD, relation: 'children', entity: 'CollectionBlock' });
@@ -2844,7 +2892,7 @@ describe('typing into a transcript', () => {
 
     await h.store.addMessage('', '   ');
 
-    expect(h.created.filter((c) => c.entity === 'TextBlock')).toEqual([]);
+    expect(h.created.filter((c) => c.entity === 'message')).toEqual([]);
   });
 
   it('has nowhere to put a message outside a call, and does not invent one', async () => {
@@ -2852,7 +2900,7 @@ describe('typing into a transcript', () => {
 
     await h.store.addMessage('', 'a thought');
 
-    expect(h.created.filter((c) => c.entity === 'TextBlock')).toEqual([]);
+    expect(h.created.filter((c) => c.entity === 'message')).toEqual([]);
   });
 
   it('writes into the transcript named, so a past call can be annotated', async () => {
@@ -2862,7 +2910,7 @@ describe('typing into a transcript', () => {
 
     await h.store.addMessage('past-call', 'watched this back');
 
-    const block = h.created.find((c) => c.entity === 'TextBlock');
+    const block = h.created.find((c) => c.entity === 'message');
     expect(block?.options?.parent).toEqual({ id: 'past-call', relation: 'children', entity: 'CollectionBlock' });
     // And in the space on screen, not in whichever space a live call happens to be running in.
     expect(block?.options?.dataset).toBeUndefined();
@@ -2878,7 +2926,7 @@ describe('typing into a transcript', () => {
     await h.store.addMessage('past-call', 'watched this back');
     await Promise.resolve();
 
-    expect(h.created.find((c) => c.entity === 'TextBlock')?.options?.parent).toMatchObject({ id: 'past-call' });
+    expect(h.created.find((c) => c.entity === 'message')?.options?.parent).toMatchObject({ id: 'past-call' });
     // The store can link — it put this agent on the roster of the call it is in — and did not for this one.
     expect(h.linked).toEqual([{ entity: 'CollectionBlock', id: RECORD, relation: 'participants', value: ME }]);
   });
@@ -2926,8 +2974,32 @@ describe('mending a line somebody misheard', () => {
         update: async (entity: string, id: string, fields: Record<string, unknown>) => {
           updates.push({ entity, id, fields });
         },
+        // These lines are bare text blocks: no message has their id.
+        find: async () => [],
       },
     };
+  });
+
+  it('writes the corrected words of a message as its blocks again, and marks it corrected', async () => {
+    const rewritten: { id: string; blocks: unknown; target?: unknown }[] = [];
+    const h = harness(inCall, {
+      records: {
+        update: async (entity: string, id: string, fields: Record<string, unknown>) => {
+          updates.push({ entity, id, fields });
+        },
+        find: async (entity: string) => (entity === 'CollectionBlock' ? [{ id: 'msg-1' }] : []),
+        documents: {
+          update: async (id: string, blocks: unknown, target?: unknown) => void rewritten.push({ id, blocks, target }),
+        },
+      } as never,
+    });
+
+    await h.store.editUtterance('msg-1', 'Siobhan is joining late', 'spoken');
+
+    expect(rewritten).toEqual([
+      { id: 'msg-1', blocks: [{ _type: 'block', text: 'Siobhan is joining late' }], target: undefined },
+    ]);
+    expect(updates).toEqual([{ entity: 'CollectionBlock', id: 'msg-1', fields: { source: 'corrected' } }]);
   });
 
   it('records that a heard line is no longer verbatim', async () => {
@@ -3726,8 +3798,8 @@ describe('replies', () => {
     await h.store.reply('line-1', 'I do');
 
     expect(h.created[0]).toMatchObject({
-      entity: 'TextBlock',
-      fields: { text: 'I do', source: 'typed' },
+      entity: 'message',
+      fields: { kind: 'reply', text: 'I do', source: 'typed' },
       options: { parent: { id: 'line-1', relation: 'responses' } },
     });
     expect(h.store.replyingTo()).toBeNull();

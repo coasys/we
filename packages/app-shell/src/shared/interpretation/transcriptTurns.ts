@@ -30,8 +30,15 @@ export interface GatherTurnsDeps {
   handle: unknown;
 }
 
-/** Entities whose instances can be a turn. Only TextBlock today; a list so a caller can widen it. */
-const DEFAULT_TURN_ENTITIES = ['TextBlock'];
+/**
+ * Entities whose instances can be a turn: a message (a collection holding its blocks, its words as
+ * `textContent`), and a bare text block — a line from before lines were messages, or from a writer
+ * that knows nothing of them. A list so a caller can widen it.
+ */
+const DEFAULT_TURN_ENTITIES = ['CollectionBlock', 'TextBlock'];
+
+/** What of each entity a turn is: of the collections in a conversation, only its messages. */
+const TURN_WHERE: Record<string, Record<string, unknown>> = { CollectionBlock: { kind: 'message' } };
 
 /**
  * What counts as input: what a person said or wrote, by the `source` WE stamps on every message it
@@ -110,13 +117,16 @@ export async function gatherTranscriptTurns(
       await model.findAll(deps.handle, {
         // The collection's own parts, by the relation's name; the backend knows how it stores them.
         parent: { id: collectionId, relation: 'children', entity: 'CollectionBlock' },
+        ...(TURN_WHERE[entity] ? { where: TURN_WHERE[entity] } : {}),
         include: { thread: true },
         ...(options.limit !== undefined ? { limit: options.limit } : {}),
       }),
     );
 
     for (const row of rows) {
-      const text = typeof row.text === 'string' ? row.text.trim() : '';
+      // A bare line's `text`, a message's `textContent` — a reply in a thread is a message too.
+      const words = typeof row.text === 'string' ? row.text : row.textContent;
+      const text = typeof words === 'string' ? words.trim() : '';
       const speaker = typeof row.author === 'string' ? row.author : '';
       const timestamp = isoTimestamp(row.createdAt);
       if (!text || !speaker || !timestamp) continue;

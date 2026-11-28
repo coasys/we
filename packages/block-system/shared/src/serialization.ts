@@ -586,6 +586,15 @@ export interface WritePostOptions {
   generatedBy?: string;
   /** The invocation's id — a replay supplies the original; otherwise a fresh one. */
   invocationId?: string;
+  /**
+   * Whether the root keeps a stored copy of the whole document (`editorState`). On by default: a
+   * post is read whole, and the copy is what draws it from the root alone.
+   *
+   * Off for a message. A line is read with its parts (`rowsToBlocks`), never whole on its own, and
+   * the copy is a file written to the dataset's storage: one more upload on every line, which for a
+   * transcript is one every few seconds per speaker, for a copy nothing reads.
+   */
+  storeDocument?: boolean;
 }
 
 export interface PlanPostOptions extends Omit<WritePostOptions, 'invoker'> {
@@ -635,7 +644,16 @@ export async function planPost(
   input: ContentInput,
   options: PlanPostOptions = {},
 ): Promise<{ invocationId: string; args: Record<string, unknown> }> {
-  const { kind, mode = kind ? 'document' : undefined, fields, container, respondsTo, generatedBy, within } = options;
+  const {
+    kind,
+    mode = kind ? 'document' : undefined,
+    fields,
+    container,
+    respondsTo,
+    generatedBy,
+    within,
+    storeDocument = true,
+  } = options;
   const invocationId = options.invocationId ?? crypto.randomUUID();
   const { blocks } = normalizeInput(input);
   const uploaded = await preUploadFileAssets(dataset, blocks);
@@ -675,7 +693,7 @@ export async function planPost(
     ...Object.fromEntries(Object.entries(fields ?? {}).filter(([name, value]) => value && rootFields.has(name))),
     ...(kind ? { kind } : {}),
     ...(mode ? { mode } : {}),
-    editorState: asFileField(encodeEditorState(uploaded)),
+    ...(storeDocument ? { editorState: asFileField(encodeEditorState(uploaded)) } : {}),
     textContent: extractTextContent(uploaded),
   };
   const thread = respondsTo ? await threadSubject(dataset, respondsTo) : null;
@@ -804,6 +822,30 @@ export async function loadBlocks(dataset: BlockDataset, rootUri: string): Promis
   const resolved = await resolveBlockInstance(dataset, rootUri);
   if (!resolved) return undefined;
   return childrenToBlocks(dataset, resolved.model);
+}
+
+/**
+ * The blocks a hydrated `children` list holds, as a query hands it back — each row carrying the
+ * entity it is (`__subjectClass`), a collection's own `children` hydrated the same way. What a
+ * message line is drawn from: its parts arrive with it, so nothing more is read.
+ *
+ * A child that is only an id (not hydrated), or of an entity no block is registered for, is left
+ * out rather than drawn as an unknown block.
+ */
+export function rowsToBlocks(rows: readonly unknown[] | undefined): ContentBlock[] {
+  const blocks: ContentBlock[] = [];
+  for (const row of rows ?? []) {
+    if (!row || typeof row !== 'object') continue;
+    const record = row as BlockRecord & { __subjectClass?: unknown; children?: unknown };
+    // The entity's name, or a class IRI a backend handed back as it is (`we://TextBlock`).
+    const named = typeof record.__subjectClass === 'string' ? record.__subjectClass : '';
+    const entity = named.includes('://') ? named.slice(named.lastIndexOf('/') + 1) : named;
+    if (entity !== 'TextBlock' && !nodeTypeForEntity(entity)) continue;
+    const block = recordToBlock(record, entity);
+    if (isCollectionBlock(block)) block.content = rowsToBlocks(Array.isArray(record.children) ? record.children : []);
+    blocks.push(block);
+  }
+  return blocks;
 }
 
 /** The blocks of a hydrated collection's children, recursing into nested collections. */

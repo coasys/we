@@ -111,8 +111,25 @@ export class CollectionBlock extends WeNode {
   @Property({ through: 'we://editor_state', resolveLanguage: FILE_STORAGE_LANGUAGE })
   editorState: string | null = null;
 
-  @Property({ through: 'we://text_content' })
+  /**
+   * The words of the children, for search, preview, and any reader that knows nothing of blocks.
+   *
+   * Answers as `text` in the shared vocabulary of text, so a generic transcript reader or a
+   * mention watcher reads a message as one thing with its words — under its own id, in its own
+   * place — rather than finding only its text block, a part, one level down.
+   */
+  @Property({ through: 'we://text_content', alias: { TextContent: 'text' } })
   textContent: string = '';
+
+  /**
+   * How a message arrived: `'typed'`, `'spoken'` (what a microphone heard) or `'corrected'` (spoken,
+   * then edited by its speaker). The same word and predicate as `TextBlock.source`, set on the
+   * message rather than on its parts because it is a fact about the whole line — readers filter
+   * and draw by it (spoken text is drawn as said, never parsed as markdown). Empty on everything
+   * that is not a message, and on a message a bot or another app wrote.
+   */
+  @Property({ through: 'we://text_source', options: [{ value: 'spoken' }, { value: 'typed' }, { value: 'corrected' }] })
+  source: string = '';
 
   @Property({ through: 'we://version' })
   version: number = 0;

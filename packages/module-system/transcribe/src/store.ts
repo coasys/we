@@ -1,5 +1,5 @@
 import { activitiesOfType } from '@we/backend-shared';
-import { CORRECTED, SPOKEN, TYPED } from '@we/messages';
+import { CORRECTED, correctLine, lineDocumentOptions, messageBlocks, SPOKEN, TYPED } from '@we/messages';
 import type { DatasetTarget, ModuleStoreDeps, RecordsKernel } from '@we/module-shared';
 import { coalesceByKey, latest } from '@we/module-shared';
 import { namespace } from '@we/schema-shared';
@@ -1743,14 +1743,17 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       // The call's space, not the reader's. See `myCall().datasetUri`.
       const dataset = myCall()?.datasetUri ?? undefined;
       const run = await transcriptionRun(slot.id, dataset);
-      await createEntity?.(
-        'TextBlock',
-        // `spoken`, because a recogniser heard it — the one writer that may say so. Everything else
-        // in this timeline is a person typing, and a transcript that cannot tell them apart claims
-        // somebody said what they wrote. See `TextBlock.source`. And `generatedBy` the run, in the
-        // same write, because a model wrote it down: see `transcriptionRuns`.
-        { text, source: SPOKEN, ...(run ? { generatedBy: run } : {}) },
-        { parent: { id: slot.id, relation: 'children', entity: 'CollectionBlock' }, ...(dataset ? { dataset } : {}) },
+      // A message in the call: one block of what was heard, never parsed. `spoken`, because a
+      // recogniser heard it — the one writer that may say so; everything else in this timeline is a
+      // person typing, and a transcript that cannot tell them apart claims somebody said what they
+      // wrote. And `generatedBy` the run, in the same write, because a model wrote it down: see
+      // `transcriptionRuns`.
+      await records?.documents?.create(
+        messageBlocks(text, undefined, SPOKEN),
+        lineDocumentOptions({ container: slot.id }, SPOKEN, {
+          ...(run ? { generatedBy: run } : {}),
+          ...(dataset ? { dataset } : {}),
+        }),
       );
       await recordSelfParticipation(slot.id, dataset);
     } catch (cause) {
@@ -2924,11 +2927,12 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   });
 
   /**
-   * Write one typed line into a collection — a transcript, or the space itself — with its marks.
+   * Write one typed line into a collection — a transcript, or the space itself — or, as a reply,
+   * answering a line.
    *
-   * The one way a typed message is written, so the transcript's composer, the Feed's and a reply
-   * cannot drift apart about what a message is: a `TextBlock` with `source: typed`, its marks as
-   * the composer gave them, under whatever holds it.
+   * A message, written as the Feed writes one (`@we/messages`), so the transcript's composer, the
+   * Feed's and a reply cannot drift apart about what a message is: a collection holding its blocks,
+   * `source: typed`, whoever its marks mention linked from it, a reply threaded under its subject.
    */
   async function writeMessage(
     holder: { id: string; relation: string; entity?: string },
@@ -2937,12 +2941,14 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     dataset?: string,
   ): Promise<string | null> {
     const words = String(text ?? '').trim();
-    if (!words || !createEntity) return null;
-    return createEntity(
-      'TextBlock',
-      { text: words, source: TYPED, ...(Array.isArray(marks) && marks.length ? { marks } : {}) },
-      { parent: holder, ...(dataset ? { dataset } : {}) },
+    const documents = records?.documents;
+    if (!words || !documents) return null;
+    const place = holder.relation === 'responses' ? { respondsTo: holder.id } : { container: holder.id };
+    const written = await documents.create(
+      messageBlocks(words, marks, TYPED),
+      lineDocumentOptions(place, TYPED, dataset ? { dataset } : {}),
     );
+    return written?.id ?? null;
   }
 
   /*
@@ -3985,15 +3991,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * (see `transcriptTurns`) and the panel is holding the row already.
      */
     editUtterance: action(async (id: string, text: string, was?: string) => {
-      const words = String(text ?? '').trim();
-      if (!id || !words || !updateEntity) return;
-      await updateEntity(
-        'TextBlock',
-        id,
-        { text: words, ...(was === SPOKEN ? { source: CORRECTED } : {}) },
-        // The call's space, as every other write here. `callTarget` answers with it or undefined.
-        callTarget(),
-      );
+      if (!records?.documents || !updateEntity) return;
+      // The call's space, as every other write here. `callTarget` answers with it or undefined.
+      await correctLine(records, id, text, was, callTarget());
     }, 'Corrects the words on a line of the transcript, marking a spoken line as corrected.'),
     /** Write what has been heard so far without waiting for the buffer to fill. */
     flushNow: action(() => flush(), 'Writes what has been heard so far without waiting for the buffer to fill.'),

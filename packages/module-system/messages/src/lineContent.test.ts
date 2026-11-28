@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { lineContent } from './thread.ts';
+import { messageBlocks } from './compose.ts';
+import { attachmentsOf, isMessage, lineContent, threadLines } from './thread.ts';
 
 type Block = { _type: string; text: string; marks: { start: number; end: number; type: string; href?: string }[] };
 const block = (row: Record<string, unknown>) => (lineContent(row) as Block[] | null)?.[0];
@@ -69,5 +70,106 @@ describe('lineContent reads a typed line as markdown', () => {
       expect(lineContent({ text: '# one *two*', marks: '', source })).toEqual([
         { _type: 'block', text: '# one *two*', marks: [] },
       ]);
+  });
+});
+
+describe('a message — a collection holding its parts', () => {
+  const message = (over: Record<string, unknown> = {}) => ({
+    id: 'we://m',
+    kind: 'message',
+    textContent: 'the plan, as typed',
+    children: [{ id: 'we://m/1', __subjectClass: 'TextBlock', text: '# kept as typed', style: 'normal', marks: '' }],
+    ...over,
+  });
+
+  it('is drawn from its parts as they were stored, not parsed again', () => {
+    expect(lineContent(message())).toEqual([
+      expect.objectContaining({ _type: 'block', _key: 'we://m/1', text: '# kept as typed' }),
+    ]);
+  });
+
+  it('read without its parts, is drawn from its words', () => {
+    expect(block(message({ children: ['we://m/1'], source: 'spoken' }))).toMatchObject({ text: 'the plan, as typed' });
+  });
+
+  it('gives its words as `text`, and a reply quotes them', () => {
+    const reply = {
+      id: 'we://r',
+      kind: 'reply',
+      textContent: 'agreed',
+      respondsTo: 'we://m',
+      children: [],
+      createdAt: 2,
+    };
+    const lines = threadLines({ rows: [{ ...message(), createdAt: 1, thread: [reply] }] });
+    expect(lines.map((l) => [l.id, l.text])).toEqual([
+      ['we://m', 'the plan, as typed'],
+      ['we://r', 'agreed'],
+    ]);
+    expect(lines[1].replyTo).toMatchObject({ id: 'we://m', text: 'the plan, as typed' });
+  });
+
+  it('is told apart from a bare text block, which is drawn from its own text', () => {
+    expect(isMessage(message())).toBe(true);
+    expect(isMessage({ id: 'we://t', text: 'hi' })).toBe(false);
+    expect(block({ id: 'we://t', text: 'hi', marks: '' })).toMatchObject({ text: 'hi' });
+  });
+});
+
+describe('a message with files', () => {
+  it('is written as its words, then one group holding a file block each', () => {
+    const blocks = messageBlocks('the agenda', undefined, 'typed', [
+      { data: { data_base64: 'QUJD', name: 'agenda.pdf', file_type: 'application/pdf' }, size: 3 },
+    ]);
+    expect(blocks).toEqual([
+      expect.objectContaining({ _type: 'block', text: 'the agenda' }),
+      {
+        _type: 'collection',
+        kind: 'attachments',
+        content: [
+          {
+            _type: 'file',
+            name: 'agenda.pdf',
+            mimeType: 'application/pdf',
+            size: 3,
+            url: { data_base64: 'QUJD', name: 'agenda.pdf', file_type: 'application/pdf' },
+          },
+        ],
+      },
+    ]);
+    // Files and no words: the group alone.
+    expect(
+      messageBlocks('', undefined, 'typed', [{ data: { data_base64: '', name: 'a', file_type: 'x' }, size: 0 }]),
+    ).toHaveLength(1);
+  });
+
+  it('draws its words, and names and sizes its files as attachments rather than drawing them as blocks', () => {
+    const row = {
+      id: 'we://m',
+      kind: 'message',
+      textContent: 'the agenda',
+      children: [
+        { id: 'we://m/text', __subjectClass: 'TextBlock', text: 'the agenda' },
+        {
+          id: 'we://m/files',
+          __subjectClass: 'CollectionBlock',
+          kind: 'attachments',
+          children: [
+            {
+              id: 'we://f',
+              __subjectClass: 'FileBlock',
+              name: 'agenda.pdf',
+              mimeType: 'application/pdf',
+              size: 2_500_000,
+            },
+          ],
+        },
+      ],
+    };
+    expect(lineContent(row)).toEqual([expect.objectContaining({ text: 'the agenda' })]);
+    expect(attachmentsOf(row)).toEqual([
+      { id: 'we://f', name: 'agenda.pdf', mimeType: 'application/pdf', size: 2_500_000, sizeLabel: '2.4 MB' },
+    ]);
+    expect(threadLines({ rows: [row] })[0].attachments).toHaveLength(1);
   });
 });

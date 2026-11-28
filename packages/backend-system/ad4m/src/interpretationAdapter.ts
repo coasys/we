@@ -77,9 +77,13 @@ const DEFAULT_BASE_PREFIX = 'we://interpreted/';
 const FILING_PREDICATE = 'we://extraction_filing';
 const filingNode = (watchId: string) => `ad4m://autoprocessor/${watchId}/filing`;
 
-/** Where a turn's words live, and what marks a child as one rather than any other block. */
+/** Where a bare line's words live, and what marks a child as one rather than any other block. */
 const TEXT_PREDICATE = 'we://text';
 const TEXT_BLOCK_FLAG = { predicate: 'we://flag', value: 'we://text_block' } as const;
+/** Where a message's words live — the words of its parts — and what marks a collection as a line. */
+const TEXT_CONTENT_PREDICATE = 'we://text_content';
+const KIND_PREDICATE = 'we://kind';
+const LINE_KINDS = ['message', 'reply'] as const;
 /** The link from a thread's subject to every response under it — see {@link transcriptScopeQuery}. */
 const THREAD_PREDICATE = 'we://thread';
 /** Where a text line records how it came to be — see {@link transcriptScopeQuery}. */
@@ -1620,18 +1624,32 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
  * under that line, at any depth, one link each — so the replies are one hop from the lines rather
  * than a walk down `we://response`. A `UNION` rather than a `?` path, so every predicate is written
  * out as a full IRI, which is what the executor reads a query's predicates from. A call held about a
- * line is in its thread too, and is not a text block, so the flag below leaves it out.
+ * line is in its thread too, and is neither a message nor a text block, so it is left out.
+ *
+ * A line is a message: a collection (kind `message`, or `reply` in a thread) whose words are the
+ * words of its parts, `we://text_content`, written by whoever wrote the message, so that link's
+ * reifier names the speaker as a bare line's text link does. A bare text block — a line from before
+ * lines were messages, or from a writer that knows nothing of them — is read as it always was.
  */
 export function transcriptScopeQuery(parentId: string, childPredicate: string): string {
   return `SELECT ?speaker ?text ?timestamp WHERE {
   { <${parentId}> <${childPredicate}> ?m . }
   UNION
   { <${parentId}> <${childPredicate}> ?line . ?line <${THREAD_PREDICATE}> ?m . }
-  ?m <${TEXT_BLOCK_FLAG.predicate}> <${TEXT_BLOCK_FLAG.value}> .
   ?m <${TEXT_SOURCE_PREDICATE}> ?source .
   FILTER(?source IN (${INPUT_SOURCES.map((source) => `"${source}"`).join(', ')}))
-  ?m <${TEXT_PREDICATE}> ?text .
-  ?r <http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies> <<( ?m <${TEXT_PREDICATE}> ?text )>> .
+  {
+    ?m <${KIND_PREDICATE}> ?kind .
+    FILTER(?kind IN (${LINE_KINDS.map((kind) => `"${kind}"`).join(', ')}))
+    ?m <${TEXT_CONTENT_PREDICATE}> ?text .
+    ?r <http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies> <<( ?m <${TEXT_CONTENT_PREDICATE}> ?text )>> .
+  }
+  UNION
+  {
+    ?m <${TEXT_BLOCK_FLAG.predicate}> <${TEXT_BLOCK_FLAG.value}> .
+    ?m <${TEXT_PREDICATE}> ?text .
+    ?r <http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies> <<( ?m <${TEXT_PREDICATE}> ?text )>> .
+  }
   ?r <ad4m://ontology/author> ?speaker .
   ?r <ad4m://ontology/timestamp> ?timestamp .
 }

@@ -20,6 +20,8 @@ export type EntityManifestProperty = {
   interpretationHint?: string;
   /** This property is the entity's interpretation dedup key — see `PropertySchema.identity`. */
   identity?: boolean;
+  /** The names this property answers to in shared vocabularies — see `PropertySchema.alias`. */
+  alias?: Record<string, string>;
   /**
    * Closed set of allowed values — see `PropertySchema.options`. SHACL carries them as `sh:in`,
    * in the same `{ value, label? }` form AD4M's decorator takes, so an entry reads them
@@ -135,6 +137,7 @@ export function manifestEntries(
             writable: true,
             ...(spec.interpretationHint ? { interpretationHint: spec.interpretationHint } : {}),
             ...(spec.identity ? { identity: true } : {}),
+            ...(spec.alias && Object.keys(spec.alias).length ? { alias: { ...spec.alias } } : {}),
           })),
         ...Object.entries(entity.relations)
           // Containment needs no predicate named: it has one, on every backend.

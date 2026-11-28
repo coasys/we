@@ -41,13 +41,13 @@ vi.mock('@we/entities/manifest', () => ({
     version: '1',
     entities: {
       TextBlock: { properties: { style: {}, text: {}, marks: {} }, relations: {} },
-      CollectionBlock: { properties: { type: {}, kind: {}, mode: {} }, relations: {} },
+      CollectionBlock: { properties: { type: {}, kind: {}, mode: {}, source: {} }, relations: {} },
       ImageBlock: { properties: { src: { format: 'file' }, altText: {} }, relations: {} },
     },
   },
 }));
 
-import type { ContentBlock } from '../src/content';
+import type { CollectionContentBlock, ContentBlock } from '../src/content';
 import { type BlockEntityStatic, registerBlock } from '../src/registry';
 import {
   copyableContent,
@@ -55,6 +55,7 @@ import {
   planPost,
   reconcileBlocks,
   resolveExpressionAddresses,
+  rowsToBlocks,
 } from '../src/serialization';
 import { decodeEditorState } from '../src/utils';
 
@@ -240,5 +241,50 @@ describe('a composition moving between datasets', () => {
     expect(image.altText).toBe('alone');
     // The model gets the payload; there is no blob to hold an address.
     expect(image.src).toEqual({ data_base64: 'QUJD', name: 'src', file_type: 'image/png' });
+  });
+});
+
+describe('a message', () => {
+  it('keeps no stored copy when told not to, and still carries its words and how it arrived', async () => {
+    const blocks: ContentBlock[] = [{ _type: 'block', text: 'Data, can you take the notes?' }];
+    const { args } = await planPost(dataset, blocks, {
+      kind: 'message',
+      storeDocument: false,
+      fields: { source: 'spoken' },
+      container: 'we://call',
+    });
+    const root = args.root as Record<string, unknown>;
+    expect(root).not.toHaveProperty('editorState');
+    expect(root).toMatchObject({
+      kind: 'message',
+      mode: 'document',
+      source: 'spoken',
+      textContent: 'Data, can you take the notes?',
+    });
+    expect(args.container).toBe('we://call');
+    expect(stored).toEqual([]); // nothing went to file storage
+  });
+
+  it('is drawn from its parts as a query hands them back', () => {
+    const drawn = rowsToBlocks([
+      { id: 'we://text', __subjectClass: 'TextBlock', text: 'the agenda', style: 'normal' },
+      {
+        id: 'we://files',
+        __subjectClass: 'we://CollectionBlock',
+        kind: 'attachments',
+        children: [
+          { id: 'we://image', __subjectClass: 'ImageBlock', src: 'qm://a', altText: 'a' },
+          'we://not-hydrated',
+        ],
+      },
+      { id: 'we://unknown', __subjectClass: 'Whatever' },
+      'we://not-hydrated',
+    ]);
+    expect(drawn).toHaveLength(2);
+    expect(drawn[0]).toMatchObject({ _type: 'block', _key: 'we://text', text: 'the agenda' });
+    expect(drawn[1]).toMatchObject({ _key: 'we://files', kind: 'attachments' });
+    expect((drawn[1] as CollectionContentBlock).content).toEqual([
+      expect.objectContaining({ _type: 'image', _key: 'we://image', src: 'qm://a' }),
+    ]);
   });
 });

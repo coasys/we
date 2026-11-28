@@ -3,8 +3,8 @@
  * and what they share: one gather for the transcript, one label for each person, one report of the save.
  */
 import { displayName, type InterpretationPort } from '@we/backend-shared';
-import { saveFile, type SaveOutcome } from '@we/design-utils';
-import { CollectionBlock, type DatasetProxy, getEntityForDataset } from '@we/entities';
+import { dataUriToBlob, safeHref, saveFile, type SaveOutcome } from '@we/design-utils';
+import { CollectionBlock, type DatasetProxy, FileBlock, getEntityForDataset } from '@we/entities';
 
 import {
   type AmendmentEntry,
@@ -14,12 +14,15 @@ import {
   transcriptLine,
 } from '../../interpretation/callExport';
 import { gatherTranscriptTurns, type TurnRecord } from '../../interpretation/transcriptTurns';
+import type { PlatformPort } from '../../platform/port';
 import type { Toasts } from '../../toasts';
 import type { ProfileStore } from '../ProfileStore';
 
 /** What the exports read from the space they are made in. */
 export interface CallExportDeps {
   toasts: Toasts;
+  /** Where a file kept at a web address is opened. */
+  platform: Pick<PlatformPort, 'openLink'>;
   /** The dataset of the space the call is in, or nothing outside a space. */
   dataset: () => { handle: DatasetProxy } | null | undefined;
   interpretation: () => InterpretationPort | undefined;
@@ -212,5 +215,39 @@ export function createCallExports(deps: CallExportDeps) {
     }
   }
 
-  return { exportCallTranscript, exportInterpretationLog };
+  /**
+   * Save a file a message carries. The line holds the file's name and size and not its bytes, so the
+   * record is read now, for the dataset the file is in at the moment of the press, and written to the
+   * reader's machine. A file stored at an address rather than inline is opened there instead, if the
+   * address is a web one. (From coasys/we#563.)
+   */
+  async function saveFileBlock(fileId: string): Promise<void> {
+    const dataset = deps.dataset();
+    if (!dataset || !fileId) return;
+    try {
+      const file = await FileBlock.findOne(dataset.handle, { where: { id: fileId } });
+      const url = typeof file?.url === 'string' ? file.url.trim() : '';
+      if (!file || !url) {
+        toasts.warning('That file is not available.');
+        return;
+      }
+      if (!/^data:/i.test(url)) {
+        // The address came from whoever wrote the record: only a web address is opened.
+        const href = safeHref(url);
+        if (!/^https?:/i.test(href)) {
+          toasts.warning('That file is not available.');
+          return;
+        }
+        deps.platform.openLink(href);
+        return;
+      }
+      const type = file.mimeType || 'application/octet-stream';
+      await saveFile({ name: file.name || 'file', type, content: () => dataUriToBlob(url) });
+    } catch (error) {
+      console.error('SpaceStore: saveFileBlock failed', error);
+      toasts.error('Could not save the file.');
+    }
+  }
+
+  return { exportCallTranscript, exportInterpretationLog, saveFileBlock };
 }

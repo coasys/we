@@ -16,7 +16,7 @@
  * A thread holds every response, and a call held about a line is one; it is a conversation of its
  * own, not a line of this one, so it is left out.
  */
-import { isTextBlock, markdownToBlocks, marksOf, withFoundLinks } from '@we/block-shared';
+import { isTextBlock, markdownToBlocks, marksOf, rowsToBlocks, withFoundLinks } from '@we/block-shared';
 import type { ModuleFunction } from '@we/module-shared';
 
 import { CORRECTED, SPOKEN } from './source.ts';
@@ -74,7 +74,23 @@ type Row = Record<string, unknown>;
  * mark is still drawn, as if that mark were not there.
  */
 export function lineContent(row: Row): Row[] | null {
-  const text = typeof row.text === 'string' ? row.text : '';
+  const parts = partsOf(row);
+  if (parts.length) {
+    /*
+      A message: its parts, drawn as they were stored. A typed message was parsed into blocks when
+      it was written (headings, lists, code), and a spoken one is one block of what was said, so
+      neither is parsed again here — parsing what is already blocks would read a literal `*` in a
+      heading as emphasis. Its files come too, in the group they were attached in.
+    */
+    // The files are drawn as the line's attachments (`attachmentsOf`), not as blocks.
+    const blocks = rowsToBlocks(parts.filter((part) => !isAttachments(part))).map((block) =>
+      isTextBlock(block) ? { ...block, marks: withFoundLinks(block.text, block.marks ?? []) } : block,
+    );
+    return blocks.length ? blocks : null;
+  }
+  // A line with no parts on hand: a bare text block (a line written before messages were
+  // compositions, or by a writer that knows nothing of them), or a message read without its parts.
+  const text = lineText(row);
   if (!text) return null;
   const marks = marksOf(row.marks);
   if (row.source === SPOKEN || row.source === CORRECTED)
@@ -82,6 +98,62 @@ export function lineContent(row: Row): Row[] | null {
   return markdownToBlocks(text, marks).map((block) =>
     isTextBlock(block) ? { ...block, marks: withFoundLinks(block.text, block.marks ?? []) } : block,
   );
+}
+
+/**
+ * Whether a row is a message — a collection holding its parts — rather than a bare text block. A
+ * message carries its words as `textContent`; a bare line as `text`.
+ */
+export const isMessage = (row: Row): boolean => typeof row.textContent === 'string' && typeof row.text !== 'string';
+
+/** A message's parts as the read handed them back: only the hydrated ones (an id alone draws nothing). */
+function partsOf(row: Row): Row[] {
+  if (!isMessage(row) || !Array.isArray(row.children)) return [];
+  return (row.children as unknown[]).filter((c): c is Row => !!c && typeof c === 'object');
+}
+
+/** The group a message's files are in — see `messageBlocks`. */
+const isAttachments = (part: Row): boolean => part.kind === 'attachments';
+
+/** A file a line carries, as the line draws it: named and sized, its bytes fetched when saved. */
+export interface LineAttachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  /** The size as people read it — "2.4 MB". */
+  sizeLabel: string;
+}
+
+/** A size as people read it. */
+export function sizeLabel(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** The files in a message's attachment group, as its read handed them back. */
+export function attachmentsOf(row: Row): LineAttachment[] {
+  const group = partsOf(row).find(isAttachments);
+  const files = Array.isArray(group?.children) ? (group.children as unknown[]) : [];
+  return files
+    .filter((f): f is Row => !!f && typeof f === 'object' && typeof (f as Row).id === 'string')
+    .map((f) => {
+      const size = Number(f.size) || 0;
+      return {
+        id: f.id as string,
+        name: typeof f.name === 'string' && f.name ? f.name : typeof f.title === 'string' ? f.title : 'File',
+        mimeType: typeof f.mimeType === 'string' ? f.mimeType : '',
+        size,
+        sizeLabel: sizeLabel(size),
+      };
+    });
+}
+
+/** A line's words: a bare line's `text`, a message's `textContent`. */
+export function lineText(row: Row): string {
+  if (typeof row.text === 'string') return row.text;
+  return typeof row.textContent === 'string' ? row.textContent : '';
 }
 
 const timeOf = (row: Row): number => {
@@ -105,7 +177,7 @@ function quoteOf(row: Row, byId: Map<string, Row>): ReplyQuote | null {
   return {
     id,
     author: typeof found!.author === 'string' ? found!.author : '',
-    text: typeof found!.text === 'string' ? found!.text : '',
+    text: lineText(found!),
   };
 }
 
@@ -158,6 +230,10 @@ export function threadLines(options: { rows?: unknown; newestFirst?: unknown } |
       author: row.author,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
+      // A message's words under the name a bare line has them, so what draws, quotes and edits a
+      // line reads one field whichever it is.
+      text: lineText(row),
+      attachments: attachmentsOf(row),
       ...(replyTo ? { replyTo } : {}),
       ...(content ? { content } : {}),
     });
@@ -166,15 +242,30 @@ export function threadLines(options: { rows?: unknown; newestFirst?: unknown } |
   return out.sort((a, b) => (newestFirst ? timeOf(b) - timeOf(a) : timeOf(a) - timeOf(b)));
 }
 
-/** The `include` that brings each line's replies with it — its whole thread, at any depth. */
+/**
+ * The `include` that brings a message's parts: its blocks, and the files in the group inside it.
+ * Both untyped, each member read as the entity it is. A file by what draws it — its name, type and
+ * size — never its `url`, which for a stored file is the whole file: a page of lines would read
+ * every attachment's bytes on each refresh. They are fetched when somebody saves one.
+ */
+export function partsInclude(): Record<string, unknown> {
+  return { children: { include: { children: { select: ['name', 'title', 'mimeType', 'size'] } } } };
+}
+
+/** The `include` that brings each line's replies with it — its whole thread, at any depth — each with its parts. */
 export function repliesInclude(): Record<string, unknown> {
-  return { thread: true };
+  return { thread: { include: partsInclude() } };
+}
+
+/** The `include` a page of lines is read with: each line's parts, and its replies with theirs. */
+export function lineInclude(): Record<string, unknown> {
+  return { ...partsInclude(), ...repliesInclude() };
 }
 
 export const threadLinesFunction: ModuleFunction = {
   name: 'threadLines',
   params: ['options'],
-  doc: 'A page of a conversation’s lines with every reply to them, each once, in time order — newest first when `newestFirst` is true. A reply is a child of nothing: it is in the `thread` of the line it answers, so read the page with `include: { thread: true }` and this flattens each line’s thread in beside it, leaving out any call held about a line. Each reply carries `replyTo: { id, author, text }`, its direct parent, for the quote drawn above it, and a line with marks carries `content` — the one block a BlockRenderer draws it from. Options: rows (the page), newestFirst (boolean).',
+  doc: 'A page of a conversation’s lines with every reply to them, each once, in time order — newest first when `newestFirst` is true. A line is a message: a CollectionBlock (kind message, or reply) holding its blocks, the files attached to it in a group among them. A reply is a child of nothing: it is in the `thread` of the line it answers, so read the page with `include: { children: { include: { children: true } }, thread: { include: { children: { include: { children: true } } } } }` and this flattens each line’s thread in beside it, leaving out any call held about a line. Each line carries `text` (its words), `content` (the blocks a BlockRenderer draws it from, files included), and a reply `replyTo: { id, author, text }`, its direct parent, for the quote drawn above it. A bare TextBlock line, from a writer that knows nothing of messages, is drawn the same way from its own text. Options: rows (the page), newestFirst (boolean).',
   example: 'threadLines({ rows: local.utterances, newestFirst: !modules.transcribe.transcriptFromStart })',
   fn: threadLines,
 };

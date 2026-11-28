@@ -555,6 +555,7 @@ export const storeEntries: StoreEntry[] = [
       'copyGuestLink',
       'exportCallTranscript',
       'exportInterpretationLog',
+      'saveFileBlock',
       'setModuleEnabled',
       'setModuleInstalled',
       'setModuleVisible',
@@ -1720,6 +1721,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         "(callId: string): writes the call's transcript to a .txt file (one line per utterance: name, timestamp, text) and downloads it. Read-only and client-side — it reads the shared record and writes to the caller's own device",
       exportInterpretationLog:
         "(callId: string): writes everything interpretation did with the call to a Markdown file and downloads it — the settings it ran under, the transcript once, every member's passes with their prompts and responses verbatim, the records written as they are stored now, and the suggestions still awaiting a decision. For handing to a person or a model investigating the interpretation. Read-only and client-side, like exportCallTranscript",
+      saveFileBlock:
+        "(fileId: string): saves a file a message carries — a FileBlock, by id — to the reader's device. A message line names and sizes its files (`line.attachments`) without their bytes; this reads them from the space on screen when pressed. Read-only and client-side, like exportCallTranscript",
       setModuleInstalled:
         '(moduleId: string, installed: boolean): turns a module on or off for this agent in every space. Personal — writes AgentSettings.installedModules in the root dataset, so no other member sees it',
       setModuleEnabled:

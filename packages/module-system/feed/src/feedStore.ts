@@ -21,7 +21,7 @@
  * moved. The same answer the transcript's cards are marked from, read from the host rather than from
  * another module, which this one may not depend on.
  */
-import { lineContent, TYPED } from '@we/messages';
+import { lineContent, sizeLabel, TYPED } from '@we/messages';
 import type { InterpretationKernel, ModuleStoreDeps, RecordsKernel } from '@we/module-shared';
 
 import {
@@ -37,6 +37,12 @@ import {
 
 /** How long a burst of changes is collected before the window is read again. */
 const SETTLE_MS = 250;
+
+/** The files a send was given, whatever the schema passed — a list of browser files, or nothing. */
+export const filesOf = (value: unknown): File[] =>
+  (Array.isArray(value) ? value : []).filter(
+    (file): file is File => typeof File !== 'undefined' && file instanceof File,
+  );
 
 export interface FeedDeps {
   signal: ModuleStoreDeps['signal'];
@@ -79,7 +85,7 @@ export interface FeedDeps {
    * Write a message under `holder` — the store's own, so typed lines and feed messages are written
    * one way. Resolves with the new record's id, or `null` when there was nowhere to write it.
    */
-  write: (holder: FeedHolder, text: string, marks?: unknown) => Promise<string | null>;
+  write: (holder: FeedHolder, text: string, marks?: unknown, files?: File[]) => Promise<string | null>;
 }
 
 /** What a message is written under: the collection it is a child of, or the line it answers. */
@@ -318,7 +324,13 @@ export function createFeed(deps: FeedDeps) {
    * resolves, so a read matches it by that id and never before: one that lands first leaves it be. A
    * failed write takes it down and says so to whoever sent it.
    */
-  async function post(holder: FeedHolder, text: string, marks?: unknown, replyTo: FeedLine['replyTo'] = null) {
+  async function post(
+    holder: FeedHolder,
+    text: string,
+    marks?: unknown,
+    replyTo: FeedLine['replyTo'] = null,
+    files: File[] = [],
+  ) {
     const words = text.trim();
     // Strictly later than the last, so two sends in one millisecond keep the order they were made in.
     lastSentAt = Math.max(Date.now(), lastSentAt + 1);
@@ -338,13 +350,21 @@ export function createFeed(deps: FeedDeps) {
       callTitle: '',
       replyTo,
       content: lineContent({ text: words, marks }),
+      // Named as they will be; there is nothing to save until the write has stored them.
+      attachments: files.map((file) => ({
+        id: '',
+        name: file.name,
+        mimeType: file.type,
+        size: file.size,
+        sizeLabel: sizeLabel(file.size),
+      })),
       sending: true,
     };
     setSent([...sent(), { key, line }]);
     const forget = () => setSent(sent().filter((entry) => entry.key !== key));
     try {
-      const id = await deps.write(holder, words, marks);
-      if (!id) return forget();
+      const id = await deps.write(holder, words, marks, files);
+      if (!id) throw new Error('The message could not be sent: there was nowhere to write it.');
       // A read may have landed with it while the write was resolving.
       if (rows().some((row) => row.id === id)) return forget();
       setSent(sent().map((entry) => (entry.key === key ? { key, line: { ...entry.line, id } } : entry)));
@@ -475,6 +495,15 @@ export function createFeed(deps: FeedDeps) {
     */
     const ownLines = deps.activityRoot ? { within: space } : {};
     stops.push(records.subscribe('TextBlock', { ...ownLines, ...newest }, onChange()));
+    // A message or a reply: a new line is one of these, its words a part inside it rather than in the
+    // window's own collection.
+    stops.push(
+      records.subscribe(
+        'CollectionBlock',
+        { ...ownLines, where: { kind: ['message', 'reply'] }, ...newest, select: ['id'] },
+        onChange(),
+      ),
+    );
     // The fields a window draws of a call: a new call or a renamed one moves them, and a line said in
     // one is heard by the TextBlock subscription above rather than through the call's line list.
     stops.push(
@@ -507,7 +536,17 @@ export function createFeed(deps: FeedDeps) {
     shownStop?.();
     shownStop = null;
     if (!ids.length || typeof records?.subscribe !== 'function') return;
-    shownStop = records.subscribe('TextBlock', { where: { id: ids } }, onChange());
+    // A message's corrected words are on the message itself; a bare line's on the line.
+    const messages = records.subscribe(
+      'CollectionBlock',
+      { where: { id: ids }, select: ['textContent', 'source'] },
+      onChange(),
+    );
+    const bare = records.subscribe('TextBlock', { where: { id: ids } }, onChange());
+    shownStop = () => {
+      messages();
+      bare();
+    };
   });
   deps.onDispose?.(() => {
     disposed = true;
@@ -566,10 +605,11 @@ export function createFeed(deps: FeedDeps) {
       'Re-anchors the Feed at the newest message.',
       { ambient: true },
     ),
-    sendToFeed: action(async (text: string, marks?: unknown) => {
+    sendToFeed: action(async (text: string, marks?: unknown, files?: unknown) => {
       const space = root();
-      if (!space || !text?.trim()) return;
-      await post({ id: space, relation: 'children', entity: 'CollectionBlock' }, text, marks);
-    }, 'Writes a message straight into the space, outside any call — with its marks, when the composer gave any.'),
+      const attached = filesOf(files);
+      if (!space || (!text?.trim() && !attached.length)) return;
+      await post({ id: space, relation: 'children', entity: 'CollectionBlock' }, text ?? '', marks, null, attached);
+    }, 'Writes a message straight into the space, outside any call — with its marks, when the composer gave any, and the files attached to it, when it was given any.'),
   };
 }

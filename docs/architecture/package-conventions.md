@@ -288,7 +288,8 @@ only in its imports. A store may rely on the port's three timing guarantees and 
 are in that package's README.
 
 **Its environment comes from one `PlatformPort` in the same way** (`app-shell/src/shared/platform/`):
-storage and session storage, the address and its history, a reload, the window's size, media
+storage and session storage, the address and its history, a reload, a web address opened away
+from the app, the window's size, media
 queries, the window's input events, animation frames, an image codec (how a picture is scaled
 and encoded before it is stored: a canvas in a browser, the bytes as they came in a test), and the
 document (custom properties and attributes on its root, style sheets, an element by id, a drawn

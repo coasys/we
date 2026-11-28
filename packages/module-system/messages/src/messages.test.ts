@@ -40,6 +40,19 @@ describe('a message line', () => {
   });
 });
 
+describe('the files a line carries', () => {
+  const line = JSON.stringify(messageLine({ as: 'row', actions: 'modules.feed', surface: 'feed', relative: false }));
+
+  it('names each file and offers to save it only once stored, carrying no bytes', () => {
+    expect(line).toContain('"row.attachments ?? []"');
+    expect(line).toContain('"file.sizeLabel"');
+    // The save is asked for by the file's id — the bytes are read when it is pressed, not drawn from the line.
+    expect(line).toContain('"$invoke":"spaceStore.saveFileBlock","args":[{"$":"file.id"}]');
+    expect(line).toContain('"condition":{"$":"file.id"}');
+    expect(line).not.toContain('file.url');
+  });
+});
+
 describe('how a line arrived', () => {
   it('turns a heard line corrected when somebody edits it, and leaves anything else as it was', () => {
     expect(sourceAfterEdit(SPOKEN)).toBe(CORRECTED);

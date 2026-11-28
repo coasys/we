@@ -285,7 +285,10 @@ const callBody: SchemaNode = {
   $localState: { [TRANSCRIPT_FIELD]: { type: 'number', initial: TRANSCRIPT_PAGE } },
   $queries: {
     utterances: {
-      entity: 'TextBlock',
+      // The call's lines: messages, by their words — see `@we/messages`.
+      entity: 'CollectionBlock',
+      where: { kind: 'message' },
+      select: ['author', 'createdAt', 'textContent'],
       scope: { anchor: 'CollectionBlock', via: 'children', anchorId: idExpr },
       order: { createdAt: 'asc' },
       limit: { $: `local.${TRANSCRIPT_FIELD}` },
@@ -384,7 +387,7 @@ const callBody: SchemaNode = {
                                 },
                               },
                             },
-                            { type: 'we-text', children: [{ $: 'line.text' }] },
+                            { type: 'we-text', children: [{ $: 'line.textContent' }] },
                           ],
                         },
                       ],

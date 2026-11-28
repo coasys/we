@@ -26,7 +26,7 @@
  * event (its `createdAt`, its author), and `extractedFrom` is where it came from; nothing extra is
  * written. Records nobody extracted are grouped by author the same way: "Ann added a task".
  */
-import { lineContent, repliesInclude, SPOKEN, threadLines } from '@we/messages';
+import { type LineAttachment, lineContent, lineInclude, repliesInclude, SPOKEN, threadLines } from '@we/messages';
 import type { RecordQuery } from '@we/module-shared';
 
 type Row = Record<string, unknown>;
@@ -64,6 +64,8 @@ export interface FeedLine {
   /** The line as the blocks a renderer draws, or `null` for a line with no words — see `lineContent`. */
   content: Record<string, unknown>[] | null;
   /** Sent from here and not yet read back — drawn at once, dimmed, until a read of the window has it. */
+  /** The files sent with it, named and sized — see `attachmentsOf` in `@we/messages`. */
+  attachments: LineAttachment[];
   sending: boolean;
 }
 
@@ -180,6 +182,7 @@ function toLine(row: Row, call: string, callTitle: string): FeedLine {
     callTitle,
     replyTo: (row.replyTo as FeedLine['replyTo']) ?? null,
     content: lineContent(row),
+    attachments: Array.isArray(row.attachments) ? (row.attachments as LineAttachment[]) : [],
     sending: false,
   };
 }
@@ -258,12 +261,27 @@ export async function readFeedWindow(
   const activityRoot = options.activityRoot || root;
   const order: 'asc' | 'desc' = fromStart ? 'asc' : 'desc';
   const before = (a: number, b: number) => (fromStart ? a < b : a > b);
-  const page = (within: string): RecordQuery => ({
-    within,
-    order: { createdAt: order },
-    limit: shown,
-    include: repliesInclude(),
-  });
+  /*
+    A collection's lines, newest or oldest `shown` of them: its messages, with their parts and
+    replies, and any bare text block in it — a line from a writer that knows nothing of messages —
+    drawn beside them as a one-part message. Two reads merged by time, the second almost always
+    empty.
+  */
+  const linesWithin = async (within: string): Promise<Row[]> => {
+    const [messages, bare] = await Promise.all([
+      find('CollectionBlock', {
+        within,
+        where: { kind: 'message' },
+        order: { createdAt: order },
+        limit: shown,
+        include: lineInclude(),
+      }),
+      find('TextBlock', { within, order: { createdAt: order }, limit: shown, include: repliesInclude() }),
+    ]);
+    return [...messages, ...bare]
+      .sort((a, b) => (fromStart ? timeOf(a) - timeOf(b) : timeOf(b) - timeOf(a)))
+      .slice(0, shown);
+  };
 
   /*
     Of one call, what its passes wrote, by id — the call's own `extracted`, which each record's
@@ -283,7 +301,7 @@ export async function readFeedWindow(
         );
 
   const [loose, calls, ...extracted] = await Promise.all([
-    find('TextBlock', page(root)),
+    linesWithin(root),
     /*
       The calls in the space collection itself — a call about nothing. A call held about something
       is a response to it and a child of nothing, so it is not here: it belongs with what it is
@@ -365,7 +383,7 @@ export async function readFeedWindow(
     reachedCalls += 1;
     const callId = text(call.id);
     stop();
-    const said = await find('TextBlock', page(callId));
+    const said = await linesWithin(callId);
     if (said.length >= shown) filled = true;
     lines = lines.concat(
       threadLines({ rows: said, newestFirst: !fromStart })

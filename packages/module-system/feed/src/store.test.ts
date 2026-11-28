@@ -118,6 +118,20 @@ function harness(
     },
     // Every line here is the subject of its own thread, as a line nobody has answered is.
     threadSubject: async (id: string) => ({ id, entity: 'TextBlock' }),
+    // A line is a message, written as a document: recorded beside `create`'s writes, as one.
+    documents: {
+      create: async (blocks: unknown, options: unknown) => {
+        created.push({ entity: 'CollectionBlock', fields: { blocks }, options });
+        const id = `new-${created.length}`;
+        await creating;
+        return { id, ref: '' };
+      },
+      update: async (id: string, blocks: unknown) => {
+        updated.push({ entity: 'CollectionBlock', id, fields: { blocks } });
+      },
+      remove: async () => {},
+      read: async () => null,
+    },
   };
   /** The operations run, in order — a reply is `feed.reply`. */
   const ran: { name: string; args: Record<string, unknown> }[] = [];
@@ -182,13 +196,58 @@ describe('messages written from the Feed', () => {
     const h = harness();
     await vi.runAllTimersAsync();
     await h.store.sendToFeed('see you all on Friday', [{ start: 0, end: 3, type: 'strong' }]);
+    // A message in the space collection, holding its words as a block, with their marks.
     expect(h.created).toEqual([
       {
-        entity: 'TextBlock',
-        fields: { text: 'see you all on Friday', source: 'typed', marks: [{ start: 0, end: 3, type: 'strong' }] },
-        options: { parent: { id: 'root-1', relation: 'children', entity: 'CollectionBlock' } },
+        entity: 'CollectionBlock',
+        fields: {
+          blocks: [
+            expect.objectContaining({
+              _type: 'block',
+              text: 'see you all on Friday',
+              marks: [{ start: 0, end: 3, type: 'strong' }],
+            }),
+          ],
+        },
+        options: { kind: 'message', container: 'root-1', fields: { source: 'typed' }, storeDocument: false },
       },
     ]);
+    vi.useRealTimers();
+  });
+
+  it('sends the files attached to a message in the message, in one group, in one write', async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    await vi.runAllTimersAsync();
+    const agenda = new File(['ABC'], 'agenda.pdf', { type: 'application/pdf' });
+    await h.store.sendToFeed('the agenda', [], [agenda]);
+    expect(h.created).toHaveLength(1);
+    const [words, group] = (h.created[0].fields as { blocks: Record<string, unknown>[] }).blocks;
+    expect(words).toMatchObject({ _type: 'block', text: 'the agenda' });
+    expect(group).toMatchObject({
+      _type: 'collection',
+      kind: 'attachments',
+      content: [
+        {
+          _type: 'file',
+          name: 'agenda.pdf',
+          mimeType: 'application/pdf',
+          size: 3,
+          url: { data_base64: 'QUJD', name: 'agenda.pdf', file_type: 'application/pdf' },
+        },
+      ],
+    });
+    vi.useRealTimers();
+  });
+
+  it('refuses a file over the cap, and writes nothing', async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    await vi.runAllTimersAsync();
+    const huge = new File(['x'], 'huge.bin');
+    Object.defineProperty(huge, 'size', { value: 26 * 1024 * 1024 });
+    await expect(h.store.sendToFeed('take this', [], [huge])).rejects.toThrow(/can't be attached: huge.bin/);
+    expect(h.created).toEqual([]);
     vi.useRealTimers();
   });
 
@@ -202,10 +261,15 @@ describe('messages written from the Feed', () => {
       surface: 'feed',
     });
     await h.store.reply('line-1', 'I do');
-    expect(h.ran).toEqual([
-      { name: 'feed.reply', args: { line: 'line-1', text: 'I do', thread: 'line-1', threadEntity: 'TextBlock' } },
+    // A message answering the line: the write threads it under the line's thread subject.
+    expect(h.created).toEqual([
+      {
+        entity: 'CollectionBlock',
+        fields: { blocks: [expect.objectContaining({ text: 'I do' })] },
+        options: { kind: 'reply', respondsTo: 'line-1', fields: { source: 'typed' }, storeDocument: false },
+      },
     ]);
-    expect(h.created).toEqual([]);
+    expect(h.ran).toEqual([]);
     expect(h.store.replyingTo()).toBeNull();
   });
 
@@ -286,14 +350,21 @@ describe('staying live', () => {
       { id: 'a-change', kind: 'update' },
     ]);
     await vi.runAllTimersAsync();
-    // Only the bot watch, which is for the reader who is not looking (see `botWatch.ts`).
-    expect(h.subscriptions).toEqual(['TextBlock']);
+    // Only the bot watch, which is for the reader who is not looking (see `botWatch.ts`): messages,
+    // and bare lines from writers that know nothing of them.
+    expect(h.subscriptions).toEqual(['CollectionBlock', 'TextBlock']);
     expect(h.interpretation.proposals).not.toHaveBeenCalled();
 
     // A view of the Feed is drawn: the host calls `watchFeed`, as it would open the panel.
     h.store.watchFeed();
     await vi.runAllTimersAsync();
-    expect(h.subscriptions).toEqual(['TextBlock', 'TextBlock', 'CollectionBlock']);
+    expect(h.subscriptions).toEqual([
+      'CollectionBlock',
+      'TextBlock',
+      'TextBlock',
+      'CollectionBlock',
+      'CollectionBlock',
+    ]);
     // Asked of the whole space, by the host's kernel rather than by another module.
     expect(h.interpretation.proposals).toHaveBeenCalledWith(undefined, undefined);
 
@@ -309,7 +380,9 @@ describe('staying live', () => {
       A whole call carries the id of every line said in it, which is most of what a call weighs. Its
       title and time are what the window draws, and what a change worth a re-read moves.
     */
-    const call = h.subscribed.find((s) => s.entity === 'CollectionBlock');
+    const call = h.subscribed.find(
+      (s) => s.entity === 'CollectionBlock' && (s.query.where as { kind?: unknown } | undefined)?.kind === 'call',
+    );
     expect(call?.query).toMatchObject({ where: { kind: 'call' }, limit: 1, select: ['title', 'createdAt'] });
     vi.useRealTimers();
   });
@@ -514,9 +587,9 @@ describe('the Feed of one call', () => {
 
     expect(h.created).toEqual([
       {
-        entity: 'TextBlock',
-        fields: { text: 'running late', source: 'typed' },
-        options: { parent: { id: 'call-9', relation: 'children', entity: 'CollectionBlock' } },
+        entity: 'CollectionBlock',
+        fields: { blocks: [expect.objectContaining({ text: 'running late' })] },
+        options: { kind: 'message', container: 'call-9', fields: { source: 'typed' }, storeDocument: false },
       },
     ]);
     // Writing into a call is not being in it: nobody is put on its roster from here.

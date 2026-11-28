@@ -863,10 +863,11 @@ A $-prefixed projection (below) works at any level, so a count rides on each inc
 { "include": { "conversations": { "include": { "$messageCount": { "from": "messages", "count": true } } } } }
 Below an UNTYPED relation each member answers it for its own type, and a member whose type has no
 such relation simply carries no count.
-One limit, silent rather than refused, so keep clear of it: below an UNTYPED relation (see "include
-works with an UNTYPED relation" below), only a TYPED relation can be nested. Nesting another untyped
-one fails the whole query the moment any member has something in it — so it works on an empty board
-and breaks on the first card.
+An UNTYPED relation nests inside another (see "include works with an UNTYPED relation" below): each
+member is read as the entity it is, at every depth, so a page of messages is read with their parts
+and each reply with its own — { "children": { "include": { "children": true } }, "thread": { "include":
+{ "children": { "include": { "children": true } } } } } — in one query. The backend conformance case
+'queries.transcript-lines-with-parts' holds every backend to it.
 
 Count projection — add a derived numeric field:
 { "$query": { "entity": "Post", "include": { "$likeCount": { "from": "likes", "count": true } } } }
@@ -989,6 +990,17 @@ said in a room is its children PLUS THEIR THREADS: read the children with
 and draw each row's thread beside it (threadLines does this for a transcript or a feed). Children
 alone are the top-level items, with no filter needed. The same three links — child, response,
 thread — hold for a single chat feed and for a forum of channels; only the arrangement differs.
+
+A LINE IS A MESSAGE. Everything said in a room — a typed message, a bot's, a reply, a spoken line in
+a call — is a composition like a post: a CollectionBlock of kind 'message' (or 'reply', in a
+thread) holding its blocks, the files attached to it in a group among them. Its words are
+"textContent", how it arrived is "source" ('spoken', 'typed', 'corrected'), and it keeps no stored
+editorState: draw it from its parts. So a room's lines are read as
+  { "entity": "CollectionBlock", "where": { "kind": "message" }, "include": { "children": { "include":
+  { "children": true } }, "thread": { "include": { "children": { "include": { "children": true } } } } } }
+and threadLines gives each row "text" (its words) and "content" (its blocks, for a BlockRenderer).
+A bare TextBlock in a room is a line from a writer that knows nothing of messages; threadLines draws
+it the same way, from its own text.
 
 Local state (scoped ephemeral state):
 Declare on any node: "$localState": { "name": { "type": "string", "initial": "" } }
@@ -1509,7 +1521,7 @@ Give every nested zone `noArm`, so picking something up speaks once about the co
 than once about every row inside it.
   Props: accepts: string = '', disabled: boolean = false, noArm: boolean = false, noSelf: boolean = false, hint: string = ''
 - we-file-upload (DesignSystemElement)
-  Props: accept: string = '', multiple: boolean = false, disabled: boolean = false, name: string = ''
+  Props: accept: string = '', multiple: boolean = false, disabled: boolean = false, name: string = '', files?: File[] | undefined, maxSize: number = 0, hideList: boolean = false, label: string = ''
 - we-form-field (DesignSystemElement)
   Props: label: string = '', description: string = '', error: string = '', required: boolean = false, size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-html (DesignSystemElement) — Renders a raw HTML string safely via DOMPurify sanitization.
@@ -2685,6 +2697,7 @@ CollectionBlock extends WeNode:
   - slug: string [we://slug]
   - editorState: string = null [we://editor_state]
   - textContent: string [we://text_content]
+  - source: string [we://text_source]
   - version: number [we://version]
   - sourceRef: string [we://source_ref]
   - sourceName: string [we://source_name]
@@ -3842,6 +3855,7 @@ spaceStore (WE-host-only):
   - copyGuestLink(uuid: string): copies that space's guest invite link — a URL that creates an account on the space's host and joins, with no sign-up and no download. Empty, and the control hidden, unless BOTH this app's origin and the node's URL are addresses a recipient could reach: a loopback address on either half resolves to the reader's own machine. Read `spaceList[].guestLink` to decide whether to offer it; `shareLink` is the one for somebody who already has WE
   - exportCallTranscript(callId: string): writes the call's transcript to a .txt file (one line per utterance: name, timestamp, text) and downloads it. Read-only and client-side — it reads the shared record and writes to the caller's own device
   - exportInterpretationLog(callId: string): writes everything interpretation did with the call to a Markdown file and downloads it — the settings it ran under, the transcript once, every member's passes with their prompts and responses verbatim, the records written as they are stored now, and the suggestions still awaiting a decision. For handing to a person or a model investigating the interpretation. Read-only and client-side, like exportCallTranscript
+  - saveFileBlock(fileId: string): saves a file a message carries — a FileBlock, by id — to the reader's device. A message line names and sizes its files (`line.attachments`) without their bytes; this reads them from the space on screen when pressed. Read-only and client-side, like exportCallTranscript
   - removeSpaceFromGlobal(spaceUuid: string): withdraws a space's listing from the global discovery space, leaving the space itself alone. Only its author may; removeSpace does this for you
 
 templateStore (WE-host-only):
@@ -4180,7 +4194,7 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
 - Settings: `recordCalls` (boolean; deployment, agent, space, agent-in-space) — Record calls automatically; `timelineOrder` (enum; agent) — Newest messages
 - Presence activities: `transcribe` { id: string, recording: boolean, anchor: object, collection: string }
 - Functions:
-  - threadLines(options) — A page of a conversation’s lines with every reply to them, each once, in time order — newest first when `newestFirst` is true. A reply is a child of nothing: it is in the `thread` of the line it answers, so read the page with `include: { thread: true }` and this flattens each line’s thread in beside it, leaving out any call held about a line. Each reply carries `replyTo: { id, author, text }`, its direct parent, for the quote drawn above it, and a line with marks carries `content` — the one block a BlockRenderer draws it from. Options: rows (the page), newestFirst (boolean).  e.g. threadLines({ rows: local.utterances, newestFirst: !modules.transcribe.transcriptFromStart })
+  - threadLines(options) — A page of a conversation’s lines with every reply to them, each once, in time order — newest first when `newestFirst` is true. A line is a message: a CollectionBlock (kind message, or reply) holding its blocks, the files attached to it in a group among them. A reply is a child of nothing: it is in the `thread` of the line it answers, so read the page with `include: { children: { include: { children: true } }, thread: { include: { children: { include: { children: true } } } } }` and this flattens each line’s thread in beside it, leaving out any call held about a line. Each line carries `text` (its words), `content` (the blocks a BlockRenderer draws it from, files included), and a reply `replyTo: { id, author, text }`, its direct parent, for the quote drawn above it. A bare TextBlock line, from a writer that knows nothing of messages, is drawn the same way from its own text. Options: rows (the page), newestFirst (boolean).  e.g. threadLines({ rows: local.utterances, newestFirst: !modules.transcribe.transcriptFromStart })
 
 ### Feed (`feed`)
 Everything said and written in a space, and what was found in it, in one stream.
@@ -4210,9 +4224,9 @@ Needs: kernels records, interpretation.
   - readCallFeedLive — Re-anchors the call’s Feed at its newest line.
   - readFeedFromStart — Re-anchors the Feed at the beginning of the space.
   - readFeedLive — Re-anchors the Feed at the newest message.
-  - reply — Answers one line with a typed line of its own, linked from it as a reply.
-  - sendToCallFeed — Writes a typed message into the call on screen — with its marks, when the composer gave any. Nothing when no call is shown. Writing into a call does not put the writer on its roster.
-  - sendToFeed — Writes a message straight into the space, outside any call — with its marks, when the composer gave any.
+  - reply — Answers one line with a typed line of its own, linked from it as a reply — with the files attached to it, when it was given any.
+  - sendToCallFeed — Writes a typed message into the call on screen — with its marks, when the composer gave any, and the files attached to it, when it was given any. Nothing when no call is shown. Writing into a call does not put the writer on its roster.
+  - sendToFeed — Writes a message straight into the space, outside any call — with its marks, when the composer gave any, and the files attached to it, when it was given any.
   - showMoreCallFeed — Grows the call’s Feed by a page.
   - showMoreFeed — Grows the Feed’s window by a page.
   - startReply — Starts a reply to one line — pass { id, text, author, surface } — which the composer of that list ('feed', the default, or 'callFeed') then sends as a reply.
@@ -4663,11 +4677,6 @@ An app installed at runtime brings its own, which this list does not show.
   Params: canvas: string (required) — The canvas.; connection: string (required) — The Relationship.; route: string — The connection’s route on this canvas, where it has one.; action: string (required) — update, replace, create or delete.; fields: object — sourceAnchor, targetAnchor, points — what the route says.
   Returns: nothing
   Writes: adds to CollectionBlock.children; creates a EdgeRoute; deletes a EdgeRoute; edits a EdgeRoute (destructive)
-
-- ops.feed.reply — Answer one line with a typed line of its own: a response to it, threaded under the subject of the thread it is in, mentioning whoever its marks name.
-  Params: line: string (required) — The line answered.; text: string (required) — What the reply says.; marks: list — Its marks, as the composer gave them; absent when it has none.; thread: string — The subject of the thread it joins.; threadEntity: string — The subject’s entity.
-  Returns: a value, read in onSuccess as result
-  Writes: adds to its parent.responses; adds to Relationship.thread; creates a TextBlock; adds to Topic.thread; adds to thread on any block type
 
 - ops.pocket.gather — Keep a reference in the Pocket, in a folder or at its root. Something already held is moved to the folder rather than kept twice.
   Params: ref: string (required) — The record URI — we:<datasetKey>/<Entity>/<id>.; entity: string — The reference’s entity, written out beside it.; datasetKey: string — Its dataset key.; recordId: string — Its record id.; withinEntity: string — The record it sits inside, where it is a block.; withinId: string — That record’s id.; label: string — How it read when it was gathered.; icon: string — Its icon.; thumbnail: string — Its picture.; sourceName: string — The space it came from, by name.; sourceAuthor: string — Whoever wrote it.; into: string — The folder to keep it in; the root when omitted.; origin: object — Where a row dragged out of the Pocket came from — { id, folder } — so a drop elsewhere moves it.
@@ -6986,17 +6995,22 @@ contextually narrows it to the `true` literal, so it needs no `as const`.
 
 ### Parents by relation name
 
-A record created under another — a signal on a node, a message in a channel, a reply to a post —
+A record created under another — a signal on a node, a card on a board, a reply to a post —
 names where it goes by the RELATION it joins, as the parent entity declares it, never by how a
 backend stores that relation:
 ```ts
 await Signal.create(dataset, { signalTypeId, value }, {
   parent: { id: nodeId, relation: 'signals' },
 });
-await TextBlock.create(dataset, { text }, {
-  parent: { id: channelId, relation: 'children', entity: 'CollectionBlock' },
+await TaskBlock.create(dataset, { title }, {
+  parent: { id: boardId, relation: 'children', entity: 'CollectionBlock' },
 });
 ```
+
+A message is not made this way. A line in a channel or a call is a composition — a CollectionBlock of
+kind `message` holding its blocks — written as a post is: `writePost` / `core.createPost` in the
+app, `documents.create(blocks, { kind: 'message', container, fields: { source }, storeDocument: false })`
+from a module (`lineDocumentOptions` in `@we/messages` builds those options).
 
 Add `entity` where the name alone does not decide — `children` is declared on more than one
 entity, so name `CollectionBlock`. `signals` and `responses` live on `WeNode` and mean the same

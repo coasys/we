@@ -161,24 +161,54 @@ export function watchBotMessages(deps: BotWatchDeps): void {
     forget();
     seen = new Set();
     if (!space || typeof records?.subscribe !== 'function') return;
-    let first = true;
-    stop = records.subscribe('TextBlock', { order: { createdAt: 'desc' }, limit: WATCHED }, (rows) => {
+    /*
+      Two reads, one seen set. A line is a message — a collection holding its blocks, its words as
+      `textContent` — and a bot writing through WE's tools writes one. A bot writing through its own
+      tools may write a bare text block instead, so those are heard too; but a message's own text
+      block is a part of a line already heard, and is skipped by what holds it.
+    */
+    const take = (first: boolean, row: Record<string, unknown>, words: unknown) => {
+      const id = typeof row.id === 'string' ? row.id : '';
+      if (!id || seen.has(id)) return;
+      seen.add(id);
+      // The first answer is what was already there: a notice is for what arrives.
+      if (!first)
+        heard({
+          id,
+          call: idOf(row.partOf),
+          author: typeof row.author === 'string' ? row.author : '',
+          text: typeof words === 'string' ? words : '',
+          source: typeof row.source === 'string' ? row.source : '',
+        });
+    };
+    const newest = { order: { createdAt: 'desc' as const }, limit: WATCHED };
+    let firstMessages = true;
+    const messages = records.subscribe(
+      'CollectionBlock',
+      {
+        where: { kind: ['message', 'reply'] },
+        ...newest,
+        select: ['textContent', 'source', 'partOf', 'author', 'createdAt'],
+      },
+      (rows) => {
+        for (const row of rows) take(firstMessages, row, row.textContent);
+        firstMessages = false;
+      },
+    );
+    let firstBare = true;
+    const bare = records.subscribe('TextBlock', { ...newest, include: { partOf: { select: ['kind'] } } }, (rows) => {
       for (const row of rows) {
-        const id = typeof row.id === 'string' ? row.id : '';
-        if (!id || seen.has(id)) continue;
-        seen.add(id);
-        // The first answer is what was already there: a notice is for what arrives.
-        if (!first)
-          heard({
-            id,
-            call: idOf(row.partOf),
-            author: typeof row.author === 'string' ? row.author : '',
-            text: typeof row.text === 'string' ? row.text : '',
-            source: typeof row.source === 'string' ? row.source : '',
-          });
+        const holder = row.partOf as { kind?: unknown } | undefined;
+        const kind = holder && typeof holder === 'object' ? holder.kind : undefined;
+        if (kind === 'message' || kind === 'reply') continue;
+        take(firstBare, row, row.text);
       }
-      first = false;
+      firstBare = false;
     });
+    stop = () => {
+      messages();
+      bare();
+    };
   });
   deps.onDispose?.(forget);
 }

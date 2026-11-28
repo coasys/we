@@ -85,6 +85,14 @@ function propertyDecorator(spec) {
   const opts = [`through: ${q(toAd4mPredicate(spec.containment ? CONTAINMENT_PREDICATE : spec.predicate))}`];
   if (spec.required) opts.push('required: true');
   if (spec.identity) opts.push('identity: true');
+  // Which shared vocabularies the property answers in (AD4M's abstract classes): `{ TextContent: 'text' }`.
+  if (spec.alias && Object.keys(spec.alias).length) {
+    opts.push(
+      `alias: { ${Object.entries(spec.alias)
+        .map(([k, v]) => `${k}: ${q(v)}`)
+        .join(', ')} }`,
+    );
+  }
   // The closed value set, as `sh:in`. Absent on a `vocabulary` property — its real list is the
   // space's own, and once the executor enforces `sh:in` a fixed list would reject it (options.ts).
   const options = toAd4mOptions(spec);
