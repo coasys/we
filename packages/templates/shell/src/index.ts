@@ -7,6 +7,7 @@
  * schema system stays honest because WE's own UI is its heaviest consumer.
  */
 export { accountSettings, removeAccountModal } from './AccountSettings.schema';
+export { baseFallback } from './BaseFallback.schema';
 export { bootScreen, signInAccounts, signInForm } from './BootScreen.schema';
 export { consentPrompt, consentSecret } from './ConsentPrompt.schema';
 export { destructivePrompt } from './DestructivePrompt.schema';

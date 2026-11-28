@@ -21,6 +21,20 @@
  */
 import { createSignal } from 'solid-js';
 
+/**
+ * How long a password may be, in UTF-16 code units (a string's `length`): every `CredentialField` input
+ * stops there (`maxlength`). A ceiling on what is held and sent, not a rule about strength. The desktop
+ * supervisor refuses past the same number (`AGENT_PASSWORD_MAX`, `apps/we-electron/electron/mainAgent.js`).
+ */
+export const PASSWORD_MAX_LENGTH = 1024;
+
+/**
+ * The fewest characters (code points) a NEW WE password on the base app's password step may have: one
+ * this device's agent is made with. A password an agent was already made with is never measured. The
+ * desktop supervisor holds the same floor (`NEW_AGENT_PASSWORD_MIN`, `mainAgent.js`).
+ */
+export const NEW_PASSWORD_MIN_LENGTH = 8;
+
 let secret = '';
 let confirmation = '';
 
@@ -28,9 +42,15 @@ const [entered, setEntered] = createSignal(false);
 const [confirmationEntered, setConfirmationEntered] = createSignal(false);
 const [matches, setMatches] = createSignal(false);
 const [touched, setTouched] = createSignal(false);
+/** How many characters (code points) are typed: never the characters themselves. */
+const [characters, setCharacters] = createSignal(0);
+/** Past {@link PASSWORD_MAX_LENGTH}, which the fields stop at: only something else setting it gets here. */
+const [tooLong, setTooLong] = createSignal(false);
 
 function recompute(): void {
   setEntered(secret.length > 0);
+  setCharacters([...secret].length);
+  setTooLong(secret.length > PASSWORD_MAX_LENGTH);
   setConfirmationEntered(confirmation.length > 0);
   setMatches(secret.length > 0 && secret === confirmation);
 }
@@ -51,8 +71,15 @@ export const credential = {
   entered,
   /** The confirmation field has something in it — whether it matches is {@link confirmed}. */
   confirmationEntered,
-  /** A new password, typed twice and the same both times. What Create account is gated on. */
+  /**
+   * A new password, typed twice and the same both times. What Create account is gated on. Typing it
+   * twice only catches a typo: it says nothing of how strong the password is.
+   */
   confirmed: matches,
+  /** At least `min` characters (code points, so an emoji is one) are typed. Reactive. */
+  longEnough: (min: number): boolean => characters() >= min,
+  /** Nothing typed is past {@link PASSWORD_MAX_LENGTH}, which every field stops at. Reactive. */
+  withinMax: (): boolean => !tooLong(),
   /**
    * Whether a new-password field should say what is wrong with it. Set by somebody pressing the
    * button the field belongs to — the counterpart of `$touch: '$all'` for the fields it cannot reach.

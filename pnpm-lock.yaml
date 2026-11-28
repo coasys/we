@@ -78,6 +78,61 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
 
+  apps/coasys:
+    dependencies:
+      '@coasys/ad4m':
+        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@2b3fd1083b3442fd41844c263a145a3ae319f122
+        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@2b3fd1083b3442fd41844c263a145a3ae319f122
+      '@coasys/ad4m-connect':
+        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@2b3fd1083b3442fd41844c263a145a3ae319f122
+        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@2b3fd1083b3442fd41844c263a145a3ae319f122
+      '@we/app-shell':
+        specifier: workspace:*
+        version: link:../../packages/app-shell
+      '@we/app-web':
+        specifier: workspace:*
+        version: link:../we-web
+      '@we/backend-ad4m':
+        specifier: workspace:*
+        version: link:../../packages/backend-system/ad4m
+      '@we/backend-shared':
+        specifier: workspace:*
+        version: link:../../packages/backend-system/shared
+      solid-js:
+        specifier: ^1.9.18
+        version: 1.9.18
+    devDependencies:
+      '@we/brand':
+        specifier: workspace:*
+        version: link:../../packages/brand
+      '@we/cli':
+        specifier: workspace:*
+        version: link:../../packages/cli
+      '@we/csp':
+        specifier: workspace:*
+        version: link:../../packages/csp
+      '@we/globe-layers':
+        specifier: workspace:*
+        version: link:../../packages/module-system/globe/layers
+      '@we/globe-widget':
+        specifier: workspace:*
+        version: link:../../packages/module-system/globe/widget
+      playwright-core:
+        specifier: ^1.64.1
+        version: 1.64.1
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vite:
+        specifier: ^8.3.5
+        version: 8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.107.1)(tsx@4.23.15)(yaml@2.9.1)
+      vite-plugin-solid:
+        specifier: ^2.11.15
+        version: 2.11.15(solid-js@1.9.18)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.107.1)(tsx@4.23.15)(yaml@2.9.1))
+      vitest:
+        specifier: ^5.0.5
+        version: 5.0.5(@types/node@26.6.6)(@vitest/coverage-v8@5.0.5)(happy-dom@21.0.4)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.107.1)(tsx@4.23.15)(yaml@2.9.1))
+
   apps/playgrounds/solid/graph-explorer:
     dependencies:
       '@we/components':
@@ -259,6 +314,9 @@ importers:
       '@types/node':
         specifier: ^26.6.6
         version: 26.6.6
+      '@we/app-coasys':
+        specifier: workspace:*
+        version: link:../coasys
       '@we/app-shell':
         specifier: workspace:*
         version: link:../../packages/app-shell
@@ -411,6 +469,9 @@ importers:
       '@tauri-apps/api':
         specifier: 2.12.4
         version: 2.12.4
+      '@we/app-coasys':
+        specifier: workspace:*
+        version: link:../coasys
       '@we/app-shell':
         specifier: workspace:*
         version: link:../../packages/app-shell

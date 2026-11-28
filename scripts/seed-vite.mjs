@@ -166,6 +166,34 @@ export function devFeatures(command, env = process.env) {
 }
 
 /**
+ * The deployment's app before a session, as a build outside the app needs it: the theme its screens
+ * before a session are drawn in, and its name and mark. The desktop identity windows and the phone's
+ * identity page are built with these (`identityWindowConfig` in `@we/identity-window/vite`), so the
+ * page that shows the 12 words looks like the app around it without running any of the app.
+ *
+ * The same choice `deploymentBase` in `@we/app-shell` makes from the built-in bundles: the app the
+ * seed's `host.ui.app` names, else the first seed bundle that brings one; that bundle's base, its
+ * first theme, its brand. Read from `bundles/<id>.bundle.json` — data, no cartridge code — and
+ * `{}` for a deployment whose app brings no base. The shell's `seedBase.test.ts` holds the two to
+ * the same answer.
+ */
+export function seedBase(seed = seedFile.readSeed(), bundlesDir = BUNDLES_DIR) {
+  const bundles = (seed.bundles ?? []).map((id) =>
+    JSON.parse(readFileSync(join(bundlesDir, `${id}.bundle.json`), 'utf8')),
+  );
+  // Under the bundle's id, as the shell lands an app (`bundlePieceId`).
+  const appId = (bundle) => (bundle.app ? `${bundle.id}--${bundle.app.id}` : undefined);
+  const wanted = seed.host?.ui?.app || bundles.map(appId).find(Boolean);
+  const owner = bundles.find((bundle) => appId(bundle) === wanted && bundle.base);
+  if (!owner) return {};
+  const theme = (owner.themes ?? (owner.theme ? [owner.theme] : []))[0];
+  return {
+    ...(theme ? { theme: { overrides: theme.overrides ?? {} } } : {}),
+    brand: { name: owner.brand?.name || owner.name, ...(owner.brand?.mark ? { mark: owner.brand.mark } : {}) },
+  };
+}
+
+/**
  * The registry an import names, when it is one of the shell's generated registries: `./X.generated`
  * from inside the registries directory, or `@shared/registries/X.generated` from anywhere.
  */

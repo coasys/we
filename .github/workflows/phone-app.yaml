@@ -18,6 +18,8 @@ on:
       - apps/we-mobile/**
       - crates/phone-custody/**
       - apps/we-web/**
+      - apps/coasys/**
+      - seeds/coasys.seed.json
       - packages/**
       - we-seed.json
       - pnpm-lock.yaml
@@ -27,6 +29,8 @@ on:
       - apps/we-mobile/**
       - crates/phone-custody/**
       - apps/we-web/**
+      - apps/coasys/**
+      - seeds/coasys.seed.json
       - packages/**
       - we-seed.json
       - pnpm-lock.yaml
@@ -60,8 +64,8 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Build WE for the web
-        run: pnpm build:web
+      - name: Build the Coasys app for the web
+        run: pnpm build:coasys
 
       - name: Assemble the phone's web directory
         working-directory: apps/we-mobile

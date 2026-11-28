@@ -100,7 +100,8 @@ export function involvementMenu(options: InvolvementMenuOptions | null | undefin
     if (!members.has(person.did)) members.set(person.did, profiles.get(person.did) ?? { did: person.did });
   }
 
-  const nameOf = (member: Member) => member.name || `${member.did.slice(0, 16)}…`;
+  // A member whose profile has not arrived is "Someone", never an identifier.
+  const nameOf = (member: Member) => member.name || 'Someone';
   const byName = [...members.values()].sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
 
   const groups = kinds.map((kind) => {

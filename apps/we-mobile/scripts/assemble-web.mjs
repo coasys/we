@@ -1,16 +1,20 @@
 #!/usr/bin/env node
 /**
- * Builds `www/`, the directory Capacitor serves: WE's web build, unchanged, plus the one page of the
- * app's own beside it.
+ * Builds `www/`, the directory Capacitor serves: the Coasys app's web build, unchanged, plus the pages
+ * of the phone's own beside it.
  *
- * 1. Copies `apps/we-web/dist` (build it first: `pnpm build:web` at the repo root). WE's files are
- *    not edited: WE connects to its executor the way it does in a browser.
+ * 1. Copies `apps/coasys/dist` (build it first: `pnpm build:coasys` at the repo root). Its files are
+ *    not edited. It is the same page as in a browser: it finds the `DeviceKey` plugin and boots as
+ *    the phone's host, with the identity, the phone's join and the choice of where the session comes
+ *    from before any executor (see apps/coasys/README.md).
  * 2. Builds `www/mobile/error.html`, the page Capacitor opens instead of WE when the phone's
  *    Android System WebView is older than WE's build needs (`android.minWebViewVersion`), or when
  *    WE's page fails to load (`server.errorPath`). See src/webViewFloor.ts.
  * 3. Builds `www/mobile/identity.html`, the phone's identity page: the shared identity window
  *    (`@we/identity-window`) over the `DeviceKey` plugin, under the window's own policy. WE opens it
- *    to join an identity and for each identity change. See src/identity/.
+ *    to join an identity and for each identity change. See src/identity/. It wears the app's theme,
+ *    name and mark as the app's screens before a session do, from the seed the Coasys app is built
+ *    for (`WE_SEED`, as apps/coasys/vite.config.ts defaults it).
  */
 import { cpSync, existsSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -19,12 +23,14 @@ import { fileURLToPath } from 'node:url';
 import { identityWindowConfig } from '@we/identity-window/vite';
 import { build } from 'vite';
 
+import { seedBase } from '../../../scripts/seed-vite.mjs';
+
 const app = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const weDist = resolve(app, '../we-web/dist');
+const weDist = resolve(app, '../coasys/dist');
 const www = join(app, 'www');
 
 if (!existsSync(join(weDist, 'index.html'))) {
-  console.error(`No WE web build at ${weDist}. Run \`pnpm build:web\` at the repo root first.`);
+  console.error(`No Coasys web build at ${weDist}. Run \`pnpm build:coasys\` at the repo root first.`);
   process.exit(1);
 }
 
@@ -53,7 +59,12 @@ await build({
   },
 });
 
-const identity = identityWindowConfig({ root: join(app, 'src/identity'), outDir: join(www, 'mobile') });
+process.env.WE_SEED ??= 'seeds/coasys.seed.json';
+const identity = identityWindowConfig({
+  root: join(app, 'src/identity'),
+  outDir: join(www, 'mobile'),
+  ...seedBase(),
+});
 await build({
   ...identity,
   configFile: false,

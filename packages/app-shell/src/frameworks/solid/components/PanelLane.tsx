@@ -45,7 +45,9 @@
  *
  * Below `NARROW_VIEWPORT_PX` a kept width means nothing — a phone has no room for a 280px column
  * beside anything — so the lane takes the width its parent gives it and the handle goes. How the page
- * stacks there is the template's, through its own layout (`mdUpProps`).
+ * stacks there is the template's, through its own layout (`mdUpProps`). On a phone
+ * (`shellStore.narrowWindow`) a `foldEmpty` lane covers its row while it is open, rather than
+ * sharing it with the lane beside it.
  *
  * The grips are quiet by default, so a page made of sections reads as a page. Hovering or focusing a
  * section shows its own; `shellStore.customisingLayout` shows them all.
@@ -85,6 +87,62 @@ function layoutParent(node: Element): HTMLElement | null {
   let parent = node.parentElement;
   while (parent && getComputedStyle(parent).display === 'contents') parent = parent.parentElement;
   return parent;
+}
+
+/*
+  Below `NARROW_VIEWPORT_PX` an open lane fills its row (`narrow` gives every lane the row's whole
+  width), so a sibling that is not a lane — a space's view — is squeezed to nothing: still in the
+  DOM, and without this still in the tab order and the accessibility tree, a composer's keystrokes
+  landing off screen. Held inert while a lane fills, as the folded lane itself is.
+
+  Kept by row rather than by lane, because two lanes can fill one row — a space's tree and the
+  settings opened over it — and the sibling is inert while either fills, not just this one. `lanes`
+  is which of the row's lanes are filling now; `held` is what was made inert for them, handed back
+  when they stop.
+*/
+interface FillingRow {
+  lanes: Set<HTMLElement>;
+  held: Set<HTMLElement>;
+  observer: MutationObserver;
+}
+const filling = new WeakMap<Element, FillingRow>();
+
+/** `row`'s children that are not lanes and hold none — what a filling lane squeezes to nothing. */
+function fillables(row: Element): HTMLElement[] {
+  return [...row.children].filter(
+    (sib): sib is HTMLElement =>
+      sib instanceof HTMLElement && !sib.hasAttribute(LANE_ATTR) && !sib.querySelector(`[${LANE_ATTR}]`),
+  );
+}
+
+/** Inert what a filling lane squeezes out, while one fills — and hand it back once none does. */
+function syncFilling(row: Element): void {
+  const state = filling.get(row);
+  if (!state) return;
+  if (!state.lanes.size) {
+    for (const sib of state.held) sib.inert = false;
+    state.held.clear();
+    return;
+  }
+  // A row squeezes its children only when they sit side by side: a column stacks them instead.
+  const style = getComputedStyle(row);
+  if (!(style.display.includes('flex') && !style.flexDirection.startsWith('column'))) return;
+  for (const sib of fillables(row)) {
+    if (sib.inert) continue;
+    sib.inert = true;
+    state.held.add(sib);
+  }
+}
+
+/** A row's record, made on the first lane to fill in it — and the watcher for siblings that arrive later. */
+function fillingRow(row: Element): FillingRow {
+  let state = filling.get(row);
+  if (!state) {
+    state = { lanes: new Set(), held: new Set(), observer: new MutationObserver(() => syncFilling(row)) };
+    filling.set(row, state);
+    state.observer.observe(row, { childList: true });
+  }
+  return state;
 }
 
 /** Whether the window is narrower than a lane can keep a column's width in. */
@@ -159,6 +217,15 @@ export function PanelLane(props: {
   );
   const collapsed = () =>
     shellStore.collapsedLanes().includes(lane()) || (!!props.foldEmpty && !here().length && !away().length);
+  /*
+    On a phone (`shellStore.narrowWindow`, the `sm` rule the app's rail and Settings follow) a lane
+    that opens for something chosen — an inspector, settings from a gear — takes the whole row while
+    it is open. Below `NARROW_VIEWPORT_PX` every lane asks for the row's width and gives way, so the
+    space's tree and its settings shared a 390px window half each and neither could be read. This one
+    does not give way, so the lanes beside it give way to nothing and it covers them until it closes;
+    its section's close is the way back. Nothing here reaches a window wider than `sm`.
+  */
+  const covers = () => shellStore.narrowWindow() && !!props.foldEmpty && !collapsed();
 
   /*
     The width while a drag is under way, held here and written once at the end: a write per pointer
@@ -281,6 +348,45 @@ export function PanelLane(props: {
     for (const other of row.querySelectorAll(`[${LANE_ATTR}]`)) if (other !== el) observer.observe(other);
     onCleanup(() => observer.disconnect());
   });
+  /*
+    Whether this lane fills its row — the `narrow` rule above — told to the row itself, so what the
+    lane squeezes to nothing goes inert while it does (`syncFilling`). Re-derived as the lane moves,
+    folds or the window widens; the observer watches for siblings the row gains meanwhile.
+  */
+  let seat: { row: Element; state: FillingRow } | undefined;
+  createEffect(() => {
+    lanesVersion();
+    const self = el;
+    const row = self && layoutParent(self);
+    if (!self || !row) return;
+    // Moved to another row: leave the old one's count first, or what it held is never handed back.
+    if (seat && seat.row !== row) {
+      seat.state.lanes.delete(self);
+      syncFilling(seat.row);
+      seat = undefined;
+    }
+    const state = fillingRow(row);
+    seat = { row, state };
+    if (narrow() && !collapsed()) state.lanes.add(self);
+    else state.lanes.delete(self);
+    syncFilling(row);
+  });
+  /*
+    Gone rather than re-derived — this lane unmounted — so it is struck off its row's count here,
+    not in the effect above: a cleanup inside the effect would run on every re-derivation as well,
+    striking and restoring the record on each and losing what it held in between.
+  */
+  onCleanup(() => {
+    const self = el;
+    if (!seat || !self) return;
+    seat.state.lanes.delete(self);
+    syncFilling(seat.row);
+    if (!seat.state.lanes.size && !seat.state.held.size) {
+      seat.state.observer.disconnect();
+      filling.delete(seat.row);
+    }
+    seat = undefined;
+  });
   onMount(() => {
     if (!handle) return;
     // Direct listeners: the handle's gesture events are its own — see the section grip below.
@@ -321,7 +427,11 @@ export function PanelLane(props: {
         width: collapsed() ? '0px' : width(),
         'min-width': collapsed() || narrow() ? '0' : (props.minWidth ?? '0'),
         'max-width': narrow() ? 'none' : (props.maxWidth ?? 'none'),
-        flex: narrow() ? undefined : (props.flex ?? (props.width || props.resize ? '0 0 auto' : undefined)),
+        flex: covers()
+          ? '0 0 100%'
+          : narrow()
+            ? undefined
+            : (props.flex ?? (props.width || props.resize ? '0 0 auto' : undefined)),
         'box-sizing': 'border-box',
         /*
           Hidden only once the slide is over, so it is seen leaving; shown at once on the way back,

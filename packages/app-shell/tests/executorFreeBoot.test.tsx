@@ -12,7 +12,13 @@
  */
 import { cleanup, render } from '@solidjs/testing-library';
 import { createInMemoryBackendPorts, type InMemoryAgentOptions, type InMemoryLifecycle } from '@we/backend-inmemory';
-import { type EntityManifest, type LivePage, type LiveQuery, ModuleSchemasRefused } from '@we/backend-shared';
+import {
+  type EntityManifest,
+  isAgentExists,
+  type LivePage,
+  type LiveQuery,
+  ModuleSchemasRefused,
+} from '@we/backend-shared';
 import { createBlocks, registerCoreBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
 import { provideFileSaver } from '@we/design-utils';
@@ -1179,16 +1185,52 @@ describe('first run', () => {
   }, 10000);
 
   it('reports a failed creation and stays put, so the screen can be retried', async () => {
-    // An agent already exists — the backend refuses, as the executor does.
-    agentOptions = { hasAgent: true, unlocked: false, password: 'existing' };
+    onPorts = (ports) => {
+      ports.agentSession.signUp = () => Promise.reject(new Error('the backend could not start'));
+    };
     const stores = mountShell();
-    await vi.waitFor(() => expect(stores.session.bootState()).toBe('login'));
+    await vi.waitFor(() => expect(stores.session.bootState()).toBe('createAgent'));
 
-    await expect(stores.session.createAgent('another-passphrase')).rejects.toThrow(/already exists/);
+    await expect(stores.session.createAgent('a-strong-passphrase')).rejects.toThrow(/could not start/);
 
-    expect(stores.session.createAgentError()).toBe('an agent already exists');
+    expect(stores.session.createAgentError()).toBe('the backend could not start');
+    expect(stores.session.createAgentLoading()).toBe(false);
+    expect(stores.session.bootState()).toBe('createAgent');
+  });
+
+  /*
+    An agent made after the create screen came up (on a desktop, the supervisor's own, say). The
+    backend refuses to make another over it, and the person is sent to sign in, in words they can act on.
+  */
+  it('sends the person to sign in when an account already exists', async () => {
+    agentOptions = { hasAgent: true, unlocked: false, password: 'existing' };
+    onPorts = (ports) => {
+      // The status read still says there is none: the agent appeared between it and the sign-up.
+      const status = ports.agentSession.status.bind(ports.agentSession);
+      let first = true;
+      ports.agentSession.status = async () => {
+        const answer = await status();
+        if (!first) return answer;
+        first = false;
+        return { ...answer, hasAgent: false };
+      };
+    };
+    const stores = mountShell();
+    await vi.waitFor(() => expect(stores.session.bootState()).toBe('createAgent'));
+
+    await expect(stores.session.createAgent('another-passphrase')).rejects.toSatisfy(isAgentExists);
+
+    const words = 'This computer already has an account. Sign in instead.';
+    expect(stores.session.createAgentError()).toBe(words);
+    // The sign-in screen has its own error line, so the words are said there too.
+    expect(stores.session.loginError()).toBe(words);
+    expect(stores.session.passwordError()).toBe(false);
     expect(stores.session.createAgentLoading()).toBe(false);
     expect(stores.session.bootState()).toBe('login');
+
+    // And signing in with the account's own password works from there.
+    await stores.session.login('existing');
+    await vi.waitFor(() => expect(stores.session.bootState()).toBe('ready'));
   });
 
   it('the passphrase chosen at creation is the one that unlocks later', async () => {
@@ -1680,6 +1722,60 @@ describe('dataset lifecycle through the real stores', () => {
     expect(stores.spaces.currentSpace()?.threadMode).toBe('flat');
     const [stored] = await Space.findAll(ref.handle as never);
     expect(stored?.threadMode).toBe('flat');
+  }, 10000);
+
+  /*
+    A switch pressed after another reads the list the first one wrote. The live row of the space on
+    screen is mirrored into the cache, and a row read before a write landed can reach it after the
+    write published — so the next read-modify-write started from a list without the earlier class
+    and stored it away. The delivery is held and replayed late here, which is the window.
+  */
+  it('does not lose a class pressed earlier when a live row older than its write arrives late', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('Targets Space', '', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Targets Space')!;
+    const uuid = ref.id;
+
+    type Row = { uuid: string };
+    const Entity = getEntity('Space') as unknown as {
+      query: (
+        handle: unknown,
+        q?: { where?: { uuid?: string; url?: string } },
+      ) => {
+        subscribe: (cb: (rows: Row[]) => void) => Promise<Row[]>;
+        dispose: () => void;
+      };
+    };
+    const query = Entity.query.bind(Entity);
+    let deliver: ((rows: Row[]) => void) | undefined;
+    const spy = vi.spyOn(Entity, 'query').mockImplementation((handle, q) => {
+      const builder = query(handle, q);
+      if ((q?.where?.uuid ?? q?.where?.url) !== uuid) return builder;
+      return {
+        subscribe: (cb) => {
+          deliver = cb;
+          return builder.subscribe(cb);
+        },
+        dispose: () => builder.dispose(),
+      };
+    });
+    try {
+      await stores.datasets.switchDataset(uuid);
+      await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(uuid));
+      expect(deliver).toBeDefined();
+      // The row as it was read, before anything was pressed.
+      const older = stores.spaces.currentSpace() as unknown as Row;
+
+      await stores.spaces.setInterpretationTarget('Tension', true, uuid);
+      deliver!([older]);
+      await stores.spaces.setInterpretationTarget('Decision', true, uuid);
+
+      const [stored] = await Space.findAll(ref.handle as never);
+      expect(JSON.parse(stored?.extractionTargets ?? '[]')).toEqual(expect.arrayContaining(['Tension', 'Decision']));
+    } finally {
+      spy.mockRestore();
+    }
   }, 10000);
 
   it('says so, and changes nothing on screen, when a space setting cannot be stored', async () => {

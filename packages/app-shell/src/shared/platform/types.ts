@@ -165,6 +165,12 @@ export interface ExecutorHost {
    */
   restart(): Promise<void>;
   /**
+   * The host asks for the executor's settings to be shown: Electron's tray menu, which can reach
+   * the window but not its routes. Hands back its own unsubscribe. Absent where nothing outside the
+   * window can ask.
+   */
+  onOpenSettings?(listener: () => void): () => void;
+  /**
    * Ask the user for a path on this machine. Resolves to null if they cancel.
    *
    * Here rather than on a port because a path is only meaningful to a backend running on the same

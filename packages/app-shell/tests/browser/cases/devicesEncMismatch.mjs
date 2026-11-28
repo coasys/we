@@ -19,7 +19,7 @@ export async function check({ count, screenshot }) {
   for (const step of ['Accept master key', 'Ask for master key', 'Rename']) {
     if (await count(`we-button:has-text("${step}")`)) problems.push(`it offers "${step}", which cannot work here`);
   }
-  if (!(await count('text=Device d1'))) problems.push('the key log’s devices are not listed');
+  if (!(await count('text=Unnamed device'))) problems.push('the key log’s devices are not listed');
   if (await count('text=Has master key')) problems.push('it claims a device has the master key, which it cannot know');
   await screenshot?.('devices-enc-mismatch');
   return problems;

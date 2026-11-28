@@ -249,8 +249,13 @@ export type TemplateMeta = {
    * A `'page'` is a page of an app's own — its About page, a guide — opened above everything as the
    * host's settings and profile are, never as a space's template. Only a bundle brings one, in its
    * `pages`; see `Bundle.pages`.
+   *
+   * A `'base'` is the app before a session: the screens a deployment shows before any backend is
+   * connected — making or linking an identity, choosing where to connect, the device being offline.
+   * Only a bundle brings one, in its `base`, and only the base host draws it, against the session-less
+   * `baseStore`; see `Bundle.base`.
    */
-  role?: 'shell' | 'view' | 'app' | 'page';
+  role?: 'shell' | 'view' | 'app' | 'page' | 'base';
   /**
    * For a `'view'`: the URL segment it renders at, and the identity a space enables or disables it
    * by. Ignored on a shell.
@@ -294,8 +299,18 @@ export type TemplateMeta = {
    * Declared, as `chromeReserve` is, so chrome that grows as somebody opens it does not shove every
    * docked panel across the screen. A band left out is empty; an app declaring no frame keeps WE's
    * own furniture. Ignored on a shell or a view.
+   *
+   * `narrow` is the frame below the `sm` breakpoint (`shellStore.narrowWindow`), where a phone has no
+   * width to give a sidebar: an app whose sidebar becomes a bar across the top there declares that
+   * band, `{ top: 56 }`. Left out, the frame is the same at every width.
    */
-  frame?: { left?: number; right?: number; top?: number; bottom?: number };
+  frame?: {
+    left?: number;
+    right?: number;
+    top?: number;
+    bottom?: number;
+    narrow?: { left?: number; right?: number; top?: number; bottom?: number };
+  };
   /**
    * For an `'app'`: how a panel pushing the content aside at each window edge is framed, when the
    * panel declares no frame of its own — `'flush'` makes that edge's lanes part of the app around

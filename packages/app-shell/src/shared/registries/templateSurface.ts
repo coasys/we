@@ -1314,6 +1314,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // Read by the sidebar, which opens from a menu button rather than under the pointer on a phone.
     // Chrome-tier like its neighbours: a template answers to its own surface, never to the window.
     narrowWindow: state('host-layout'),
+    // Read by a compact rail, which draws no bar while a cover holds the whole window — its own
+    // chrome's to answer, as `narrowWindow` is.
+    chromeCovered: state('host-layout'),
     /*
       Written by the host layout, which can see the editor's widths — never by a template.
 
@@ -1401,6 +1404,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     collapsedLanes: state('view-state'),
     toggleLane: ambient('view-state'),
     setLaneCollapsed: ambient('view-state'),
+    focusInLane: ambient('view-state'),
     laneWidth: WIRING,
     setLaneWidth: WIRING,
     customisingLayout: state('host-layout'),
@@ -1540,6 +1544,56 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     open: action('keys'),
     makeIdentity: action('keys'),
     startWithoutIdentity: action('keys'),
+  },
+  /*
+    The app before a session (`BaseApp`): only ever in the base host's bag, which is built from this
+    store alone. Its identity reads are `keys`, its device list `devices`, where it connects `session`.
+    The doors are actions a press runs: each opens the host's identity window, which asks the person
+    itself. `choose` and `retry` connect or start a backend, so a press too; the pages only show.
+  */
+  baseStore: {
+    stage: state('session'),
+    page: state('session'),
+    hostKind: state('session'),
+    deviceNoun: state('session'),
+    brand: state('session'),
+    executorPhase: state('session'),
+    executorReason: state('session'),
+    executorStopped: state('session'),
+    hasIdentity: state('keys'),
+    identityKnown: state('keys'),
+    did: state('keys'),
+    didShort: state('keys'),
+    unpublished: state('keys'),
+    holdsMaster: state('keys'),
+    keepsLine: state('keys'),
+    blocked: state('keys'),
+    devices: state('devices'),
+    doors: state('keys'),
+    connections: state('session'),
+    chosen: state('session'),
+    busy: state('session'),
+    lastOutcome: state('keys'),
+    error: state('session'),
+    offlineReason: state('session'),
+    passwordIsNew: state('session'),
+    passwordWrong: state('session'),
+    passwordEntered: state('session'),
+    passwordConfirmed: state('session'),
+    refresh: ambient('session'),
+    makeIdentity: action('keys'),
+    linkIdentity: action('keys'),
+    useWords: action('keys'),
+    startNow: action('keys'),
+    choose: action('session'),
+    retry: action('session'),
+    showConnections: ambient('session'),
+    openPage: ambient('session'),
+    closePage: ambient('session'),
+    handBack: WIRING,
+    // Gives the host's own password field to the backend: a press. The template never holds the value.
+    submitPassword: action('session'),
+    clearPasswordWrong: ambient('session'),
   },
   deviceStore: {
     devices: state('devices'),

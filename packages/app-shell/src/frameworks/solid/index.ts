@@ -9,6 +9,8 @@ import '@we/block-solid/styles';
 
 // App
 export { default as App } from './App';
+// The app before a session, and the hand-off to `App`
+export * from './base/BaseApp';
 
 // Platform abstraction — the contracts are framework-neutral, the provider is Solid's
 export * from '../../shared/platform';

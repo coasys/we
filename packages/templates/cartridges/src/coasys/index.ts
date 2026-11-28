@@ -11,6 +11,7 @@
 import type { Cartridge } from '../cartridge.ts';
 import { coasysAbout } from './about.ts';
 import { coasysApp } from './app.ts';
+import { coasysBase } from './base.ts';
 import { coasysBootScreen } from './boot.ts';
 import { coasysBrand } from './brand.ts';
 import { conversationShapes, conversationTopicWorkflow } from './conversation.ts';
@@ -32,6 +33,8 @@ export const coasys: Cartridge = {
   themes: [coasysTheme],
   brand: coasysBrand,
   bootScreen: coasysBootScreen,
+  // Before a session, on every platform: the first run, where to connect, offline.
+  base: coasysBase,
   // What a call is interpreted into, and how a topic moves: the app's own vocabulary, not WE's.
   shapes: conversationShapes,
   workflows: [conversationTopicWorkflow],

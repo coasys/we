@@ -110,6 +110,7 @@ import {
   templatePanels,
   templatePanelScope,
 } from '@shared/registries/templatePanels';
+import { chromeCovered, focusableWithin } from '@shared/windowCover';
 import { usePlatform } from '@solid/providers/PlatformProvider';
 import { DRAGGING_ATTR } from '@we/drag';
 import type { ChromeReserve, DockAspect, DockEdge, DockSize } from '@we/module-shared';
@@ -424,6 +425,14 @@ export interface ShellStore {
    * pointer, because on a touch screen the pointer arrives with every tap and never leaves.
    */
   narrowWindow: Accessor<boolean>;
+  /**
+   * True while the element in front covers the *whole* window — the app's own chrome with the page
+   * (`data-we-covers-window="window"`, a phone's thread). The chrome reads it to take itself away,
+   * since nothing it draws can reach over the cover: the frame holds no bands while it is true
+   * (`declareAppFrame`), so the surface the cover stands in spans the window, and a compact rail's
+   * bar is not drawn. See `windowCover.ts`.
+   */
+  chromeCovered: Accessor<boolean>;
   /** Remember a dock's current size, so the drag that follows is measured from it. */
   beginDockResize: (id: string) => void;
   /**
@@ -694,6 +703,12 @@ export interface ShellStore {
   toggleLane: (lane: string) => void;
   /** Fold a lane away, or bring it back, as said rather than flipped. */
   setLaneCollapsed: (lane: string, collapsed: boolean) => void;
+  /**
+   * Move focus into a lane that has just come back — its selected row where there is one, else its
+   * first control. What a covering view's way back calls after `setLaneCollapsed`: the press had
+   * focus inside the cover, which letting go would leave nowhere.
+   */
+  focusInLane: (lane: string) => void;
   /**
    * Whether every section's grip is showing, so the reader can see what can be moved. Off, a grip
    * shows only where the pointer or the keyboard is, and a page made of sections reads as a page.
@@ -1171,6 +1186,9 @@ function savePlacements(placements: Record<string, FloatPlacement>): void {
   if (first) queueMicrotask(flushPlacements);
 }
 
+/** Settings' page for this device: the executor that serves it, and its settings under Advanced. */
+const EXECUTOR_SETTINGS_PATH = '/devices/this';
+
 export function ShellStoreProvider(props: ParentProps) {
   const [activeShellView, setActiveShellView] = createSignal<string | null>(initialShellView());
   const [pendingPath, setPendingPath] = createSignal<string | null>(null);
@@ -1213,17 +1231,27 @@ export function ShellStoreProvider(props: ParentProps) {
     draws its own). So a missing platform reads as "no capability", which is a state this already
     has to handle, rather than as a failure to construct the shell.
   */
-  const screens = (() => {
+  const platform = (() => {
     try {
-      return usePlatform().screenSources;
+      return usePlatform();
     } catch {
       return undefined;
     }
   })();
+  const screens = platform?.screenSources;
   if (screens) {
     const stop = screens.onRequest((sources) => setPendingScreenSources(sources));
     onCleanup(stop);
   }
+  /*
+    The host asks for the executor's settings from outside the window (Electron's tray menu). They
+    are on this device's Settings page, which holds them under Advanced.
+  */
+  const stopExecutorSettings = platform?.executor?.onOpenSettings?.(() => {
+    setPendingPath(EXECUTOR_SETTINGS_PATH);
+    setActiveShellView('settings');
+  });
+  if (stopExecutorSettings) onCleanup(stopExecutorSettings);
 
   /**
    * Answer the outstanding request, and clear the prompt.
@@ -1256,6 +1284,24 @@ export function ShellStoreProvider(props: ParentProps) {
       return;
     }
     if (tries > 0) focusSearch = setTimeout(() => scrollWhenDrawn(id, tries - 1), 100);
+  }
+
+  /*
+    Focus into a lane just opened, as `scrollWhenDrawn` scrolls to a row just drawn: the press and
+    the lane's rows coming back are one beat, and the answer may be a frame late — looked for until
+    drawn and then given up on, for a lane that never draws is another template's. The same wait
+    answers a lane still held inert by a cover the press just let go — the observer letting it go
+    runs after the press that asked for focus, and an element inside `inert` cannot take focus.
+  */
+  let laneFocus: ReturnType<typeof setTimeout> | undefined;
+  function focusInLane(lane: string, tries = 30): void {
+    clearTimeout(laneFocus);
+    const el = homeLanes().find((entry) => entry.lane === lane)?.el;
+    const focusable = el && !el.closest('[inert]') ? focusableWithin(el) : [];
+    // The row the lane was showing before it folded, marked selected — where a Back belongs.
+    const pick = focusable.find((f) => f.getAttribute('aria-selected') === 'true') ?? focusable[0];
+    if (pick) return pick.focus();
+    if (tries > 0) laneFocus = setTimeout(() => focusInLane(lane, tries - 1), 100);
   }
 
   const [pendingDestructive, setPendingDestructive] = createSignal<PendingDestructive | null>(null);
@@ -3472,6 +3518,7 @@ export function ShellStoreProvider(props: ParentProps) {
     dockResizing,
     panelMaximised,
     narrowWindow,
+    chromeCovered,
 
     dockPlacement: () =>
       Object.fromEntries(
@@ -4862,6 +4909,7 @@ export function ShellStoreProvider(props: ParentProps) {
     },
     toggleLane: (lane) => writeLane(lane, { collapsed: !lanes()[laneKey(lane)]?.collapsed }),
     setLaneCollapsed: (lane, collapsed) => writeLane(lane, { collapsed: !!collapsed }),
+    focusInLane,
     customisingLayout,
     toggleCustomiseLayout: () => setCustomisingLayout((on) => !on),
 

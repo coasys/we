@@ -1,3 +1,4 @@
+import type { DesktopServers, ExecutorBridge } from '@we/app-coasys/hosts/desktop';
 import type { Account, BackendConnector, ScreenSource } from '@we/app-shell/shared';
 import { type Ad4mCustodyHost, createLocalAd4mConnector } from '@we/backend-ad4m';
 import weSeed from '@we/seed-file';
@@ -27,6 +28,10 @@ declare global {
       saveFile: (file: { name: string; type: string; bytes: Uint8Array }) => Promise<boolean>;
       // The custody sidecar's window and public state; absent where there is no custody service.
       custody?: Ad4mCustodyHost;
+      // The executor this app runs, for the app before a session; absent in an older main process.
+      executor?: ExecutorBridge;
+      // The servers the account was given and which one serves it; absent in a build without them.
+      servers?: DesktopServers;
     };
   }
 }

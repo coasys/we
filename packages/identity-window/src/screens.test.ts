@@ -92,8 +92,8 @@ describe('the identity window', () => {
     ).toBe('Revoke Test laptop?');
     expect(revoke.lead).toContain('lost or stolen');
     expect(revoke.lead).toContain('since when');
-    expect(heading({ screen: 'unlinked', keyId: 'd2', seq: 2 }).title).toBe('d2 unlinked');
-    expect(heading({ screen: 'revoked', keyId: 'd2', seq: 3 }).title).toBe('d2 revoked');
+    expect(heading({ screen: 'unlinked', keyId: 'd2', seq: 2 }).title).toBe('Device unlinked');
+    expect(heading({ screen: 'revoked', keyId: 'd2', seq: 3 }).title).toBe('Device revoked');
   });
 
   it("reads the picked time as the person's local time, and an empty one as now", () => {
@@ -164,9 +164,10 @@ describe('the identity window', () => {
   });
 
   it('says on a linked device what it can and cannot do, and what is still on its way', () => {
-    expect(heading({ screen: 'joined', did: 'did:scid:coasys:1:Qm', keyId: 'd2' }).lead).toContain(
-      "doesn't have the master key",
-    );
+    const joined = heading({ screen: 'joined', did: 'did:scid:coasys:1:Qm', keyId: 'd2' }).lead;
+    expect(joined).toBe("It doesn't have the master key, so it can't add or remove devices.");
+    expect(joined).not.toContain('d2');
+    expect(heading({ screen: 'revoked', keyId: 'd2', seq: 2 }).title).toBe('Device revoked');
     const linked = heading({ screen: 'linked', seq: 3, masterSent: true, note: 'Its name is not saved yet.' }).lead;
     expect(linked).toContain('entry #3');
     expect(linked).toContain('It gets the master key the next time it unlocks.');
@@ -362,7 +363,7 @@ describe('the identity window', () => {
     const replaced = heading({ screen: 'master-replaced', index: 1, revoked: ['d2'], note: null });
     expect(replaced.title).toBe('Master key replaced');
     expect(replaced.lead).toContain('The old one no longer works on any device.');
-    expect(replaced.lead).toContain('Also removed: d2.');
+    expect(replaced.lead).toContain('Also removed: 1 device.');
     expect(heading({ screen: 'master-replaced', index: 2, revoked: [], note: 'Late.' }).lead).not.toContain('removed');
     const restored = heading({
       screen: 'restored',
@@ -374,7 +375,10 @@ describe('the identity window', () => {
     });
     expect(restored.title).toBe('Identity restored');
     expect(restored.lead).toContain('linked as Laptop');
-    expect(restored.lead).toContain('Removed: d1.');
+    expect(restored.lead).toContain('Removed: 1 device.');
+    expect(heading({ ...replaced0(), revoked: ['d1', 'd2'] }).lead).toContain('Also removed: 2 devices.');
+    // A completion screen names no key id: the person has just chosen, and ids mean nothing to them.
+    for (const done of [restored, replaced]) expect(done.lead).not.toMatch(/\bd\d\b/);
     expect(heading({ screen: 'master-removed' }).title).toBe('Master key removed');
     expect(heading({ screen: 'remove-master', error: null }).lead).toContain(
       'your recovery phrase, can still add and remove',
@@ -401,7 +405,7 @@ describe('the identity window', () => {
     expect(title).toBe('New master key not saved');
     expect(lead).toContain('the old one no longer works');
     expect(lead).toContain('The unlock was cancelled.');
-    expect(lead).toContain('Also removed: d2.');
+    expect(lead).toContain('Also removed: 1 device.');
     expect(lead).toContain('Enter your recovery phrase again');
     const notLinked: Screen = {
       screen: 'restore-not-linked',
@@ -410,7 +414,7 @@ describe('the identity window', () => {
       reason: 'Key storage error: locked.',
     };
     expect(heading(notLinked).title).toBe("This computer isn't linked yet");
-    expect(heading(notLinked).lead).toContain('Removed: d1.');
+    expect(heading(notLinked).lead).toContain('Removed: 1 device.');
     expect(heading(notLinked).lead).toContain('Key storage error: locked.');
     // After a publish, never "Nothing changed".
     for (const screen of [notKept, notLinked]) {
@@ -502,8 +506,19 @@ describe('the identity window', () => {
     // runs over the next one.
     expect(css).toMatch(/\.word input \{[^}]*box-sizing: border-box;/);
     expect(css).toMatch(
-      /input\[type='text'\],\s*input\[type='password'\],\s*input\[type='datetime-local'\] \{[^}]*box-sizing: border-box;/,
+      /input\[type='text'\],\s*input\[type='password'\],\s*input\[type='url'\],\s*input\[type='number'\],\s*input\[type='datetime-local'\] \{[^}]*box-sizing: border-box;/,
     );
+  });
+
+  it('draws every kind of field it makes in the theme, never in the browser default', () => {
+    const kinds = new Set(
+      [...windowSource.matchAll(/type(?:: | = )'([\w-]+)'/g)]
+        .map((m) => m[1])
+        .filter((kind) => kind !== 'button' && kind !== 'checkbox'),
+    );
+    expect([...kinds].sort()).toEqual(['datetime-local', 'number', 'password', 'text', 'url']);
+    for (const kind of kinds)
+      expect(css).toMatch(new RegExp(`input\\[type='${kind}'\\][,\\s][^{]*\\{[^}]*background: var\\(--sunken\\)`));
   });
 
   it('puts a word field beside its number, so the twelve fit the 640 px window', () => {
@@ -605,8 +620,9 @@ describe('the identity window', () => {
     for (const open of [offer, { screen: 'bot-scope', error: null } as Screen]) expect(isLast(open)).toBe(false);
   });
 
-  it('names no app: the host titles the window, so a WE build and a Coasys build say their own name', () => {
+  it("names no app of its own: the host's build hands it the app's name, so each build says its own", () => {
     for (const source of [windowSource, screensSource]) expect(source).not.toMatch(/Coasys/);
+    expect(windowSource).toContain("import brand from 'virtual:we-identity-brand'");
   });
 
   it('runs under the strict policy: no remote content, no inline script, no string sinks', () => {
@@ -614,11 +630,13 @@ describe('the identity window', () => {
     expect(IDENTITY_CSP).toContain("script-src 'self'");
     expect(IDENTITY_CSP).not.toMatch(/unsafe-(inline|eval)|https:/);
     expect(IDENTITY_CSP).toContain("require-trusted-types-for 'script'");
+    // The theme's typeface is a file of the window's own, never a `data:` font or a font host.
+    expect(IDENTITY_CSP).toMatch(/font-src 'self';/);
   });
 
   it('imports no code of WE: no template, store or module code reaches the window', () => {
-    // Stylesheets only: the token ramps, and the themes `vite.js` works out at build time.
-    const styles = ['@we/tokens/css/color', 'virtual:we-identity-theme.css'];
+    // Stylesheets and data only: the tokens, and the theme and brand `vite.js` works out at build time.
+    const styles = ['@we/tokens/css', 'virtual:we-identity-theme.css', 'virtual:we-identity-brand'];
     for (const source of [indexSource, windowSource, screensSource]) {
       const imports = [...source.matchAll(/(?:from|import) '([^']+)'/g)].map((m) => m[1]);
       for (const name of imports) expect(name.startsWith('./') || styles.includes(name)).toBe(true);
@@ -626,3 +644,7 @@ describe('the identity window', () => {
     }
   });
 });
+
+function replaced0(): Extract<Screen, { screen: 'master-replaced' }> {
+  return { screen: 'master-replaced', index: 1, revoked: [], note: null };
+}

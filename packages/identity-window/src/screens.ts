@@ -257,6 +257,11 @@ export function spreadWords(pasted: string, at: number): Array<[number, string]>
 /** What the device the window runs on is called on its screens. */
 export type DeviceNoun = 'computer' | 'phone';
 
+/** How many devices a lock-out took, said without their key ids: the person ticked them a moment ago. */
+function devices(count: number): string {
+  return count === 1 ? '1 device' : `${count} devices`;
+}
+
 /**
  * The lead of each screen: its title and the sentence under it. `noun` is what this device is
  * where a screen speaks of it while it joins an identity, which a phone does too.
@@ -373,7 +378,7 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
         lead: "Do this for a device you replaced or no longer use. It can't act as you after this entry in your key log, and what it did before stays yours. A computer that's offline learns this when it reconnects.",
       };
     case 'unlinked':
-      return { title: `${screen.keyId} unlinked`, lead: `It's entry #${screen.seq} in your key log.` };
+      return { title: 'Device unlinked', lead: `It's entry #${screen.seq} in your key log.` };
     case 'revoke-confirm':
       return {
         title: `Revoke ${screen.name || screen.keyId}?`,
@@ -399,7 +404,7 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
         title: 'Master key replaced',
         lead: [
           'This computer has the new master key. The old one no longer works on any device.',
-          ...(screen.revoked.length ? [`Also removed: ${screen.revoked.join(', ')}.`] : []),
+          ...(screen.revoked.length ? [`Also removed: ${devices(screen.revoked.length)}.`] : []),
           ...(screen.note ? [screen.note] : []),
         ].join(' '),
       };
@@ -408,7 +413,7 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
         title: 'New master key not saved',
         lead: [
           `Your master key was replaced and the old one no longer works, but this computer couldn't save the new one. ${screen.reason}`,
-          ...(screen.revoked.length ? [`Also removed: ${screen.revoked.join(', ')}.`] : []),
+          ...(screen.revoked.length ? [`Also removed: ${devices(screen.revoked.length)}.`] : []),
           ...(screen.note ? [screen.note] : []),
           'Enter your recovery phrase again to replace it with one this computer saves.',
         ].join(' '),
@@ -418,7 +423,7 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
         title: "This computer isn't linked yet",
         lead: [
           `Your identity was restored and your master key replaced. ${screen.reason}`,
-          ...(screen.revoked.length ? [`Removed: ${screen.revoked.join(', ')}.`] : []),
+          ...(screen.revoked.length ? [`Removed: ${devices(screen.revoked.length)}.`] : []),
           "Try again to link this computer. You don't need your recovery phrase again.",
         ].join(' '),
       };
@@ -427,7 +432,7 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
         title: 'Identity restored',
         lead: [
           `This computer is linked as ${screen.name} and has the new master key.`,
-          ...(screen.revoked.length ? [`Removed: ${screen.revoked.join(', ')}.`] : []),
+          ...(screen.revoked.length ? [`Removed: ${devices(screen.revoked.length)}.`] : []),
           ...(screen.note ? [screen.note] : []),
         ].join(' '),
       };
@@ -479,7 +484,7 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
       };
     }
     case 'revoked':
-      return { title: `${screen.keyId} revoked`, lead: `It's entry #${screen.seq} in your key log.` };
+      return { title: 'Device revoked', lead: `It's entry #${screen.seq} in your key log.` };
     case 'pending-refused':
       return {
         title: "Couldn't publish your identity",

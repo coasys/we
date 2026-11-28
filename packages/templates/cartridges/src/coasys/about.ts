@@ -359,6 +359,11 @@ const header: SchemaNode = {
             textDecoration: 'none',
             fontSize: '24px',
             fontWeight: '800',
+            // The name is one word: a phone's column is narrow enough that, free to break anywhere as
+            // text is, it broke inside itself ("coasy / s"). It keeps its width; the row's gap gives.
+            whiteSpace: 'nowrap',
+            overflowWrap: 'normal',
+            flexShrink: '0',
             smUpProps: { fontSize: '34px' },
           },
           children: [

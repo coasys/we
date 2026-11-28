@@ -12,7 +12,7 @@ const messageCard: SchemaNode = {
       // `minWidth: 0`: the card fits its lane, and the author's name truncates, not the page.
       props: { flex: '1', minWidth: '0', gap: '100' },
       children: [
-        // Meta: author (truncated) + timestamp
+        // Meta: the author's name (never their DID) + timestamp
         {
           type: 'Row',
           props: { ay: 'center', gap: '300', overflow: 'hidden' },
@@ -28,7 +28,7 @@ const messageCard: SchemaNode = {
                 maxWidth: '220px',
                 truncate: true,
               },
-              children: [{ $: 'message.author' }],
+              children: [{ $: "find(spaceStore.members, { did: message.author }).name ?? 'Someone'" }],
             },
             {
               type: 'we-timestamp',

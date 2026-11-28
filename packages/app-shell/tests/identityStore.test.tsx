@@ -51,6 +51,7 @@ import { type DeviceStore, DeviceStoreProvider, useDeviceStore } from '../src/fr
 import {
   type IdentityStore,
   IdentityStoreProvider,
+  START_NOW_HERE_KEY,
   startNowKey,
   useIdentityStore,
 } from '../src/frameworks/solid/stores/IdentityStore';
@@ -414,6 +415,19 @@ describe('identityStore', () => {
     expect(identity.needsFirstRun()).toBe(true);
   });
 
+  it('takes "Skip for now" given before any account, in the app before a session, as this account\'s too', async () => {
+    localStorage.setItem(START_NOW_HERE_KEY, '1');
+    try {
+      setPorts({ identity: custody(backend({ did: null, events: [], devices: [] }).port, () => {}).identity });
+      const { identity } = mount();
+      await flush();
+      await flush();
+      expect(identity.needsFirstRun()).toBe(false);
+    } finally {
+      localStorage.removeItem(START_NOW_HERE_KEY);
+    }
+  });
+
   it('reports a change the person cancelled, and reads again all the same', async () => {
     const b = backend({ did: null, events: [], devices: [] });
     setPorts({
@@ -440,7 +454,7 @@ describe('deviceStore', () => {
     await flush();
     expect(stores.devices.devices().map((d) => [d.label, d.canRevoke])).toEqual([
       ['This computer', false],
-      ['Device d2', true],
+      ['Unnamed device', true],
     ]);
     expect(stores.devices.canManage()).toBe(false);
 
@@ -906,7 +920,7 @@ describe('deviceStore', () => {
     expect(deviceStore.canAskMaster()).toBe(false);
     expect(deviceStore.devices().map((d) => [d.label, d.master])).toEqual([
       ['This computer', ''],
-      ['Device d2', ''],
+      ['Unnamed device', ''],
     ]);
   });
 
@@ -928,7 +942,7 @@ describe('deviceStore', () => {
     await flush();
     await flush();
     const d2 = deviceStore.devices().find((d) => d.keyId === 'd2')!;
-    expect(d2.label).toBe('Device d2');
+    expect(d2.label).toBe('Unnamed device');
     expect(d2.master).toBe('May still have your master key. Replace it to lock this device out.');
     expect(d2.replaceMaster).toBe(true);
     // The words sign a rotation, and the new key is kept here: nothing sent to this computer is needed.

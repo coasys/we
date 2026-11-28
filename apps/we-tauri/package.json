@@ -22,6 +22,7 @@
   "dependencies": {
     "@coasys/ad4m": "*",
     "@tauri-apps/api": "2.12.4",
+    "@we/app-coasys": "workspace:*",
     "@we/app-shell": "workspace:*",
     "@we/identity-window": "workspace:*",
     "solid-js": "^1.9.18",

@@ -3,6 +3,7 @@ import {
   type Choice,
   chooseTemplate,
   chooseTheme,
+  closeWhenCompact,
   field,
   formModal,
   peopleTooltip,
@@ -544,6 +545,24 @@ const DEF_KIND = "split(event.detail.value, '|')[1]";
 const DEF_ID = "split(event.detail.value, '|')[2]";
 
 /**
+ * Fold the lane behind a row that goes somewhere, on a phone, where the lane is the whole window —
+ * `closeWhenCompact` as a compact rail's rows carry it, only this sidebar is a `PanelLane`, not a
+ * rail, so it folds through the shell rather than a local. The view's bar opens it again
+ * (`showTree`). A row that only opens or closes — a group heading, a template's star — is nowhere
+ * new, and leaves the lane be.
+ *
+ * The phone is read as the surface at `base`, not `shellStore.narrowWindow`: the window's width is
+ * chrome's to know, a template answers to the surface it is drawn in — the same `sm` breakpoint.
+ */
+const shutOnPhone = closeWhenCompact(
+  { $: "surface.tier == 'base'" },
+  {
+    $invoke: 'shellStore.setLaneCollapsed',
+    args: ['tree', true],
+  },
+);
+
+/**
  * What choosing a row does, by the kind its value names.
  *
  * Every row is a place. A group's row opens its page — Channels, Calls, Flows and People are full
@@ -566,7 +585,10 @@ const onSelect: SchemaProp = [
           .map((p) => `'group|${p}'`)
           .join(', ')}]`,
       },
-      then: { $invoke: 'routeStore.navigate', args: [{ $: withView(`spaceStore.spacePath + '/' + ${ROW_ID}`) }] },
+      then: [
+        { $invoke: 'routeStore.navigate', args: [{ $: withView(`spaceStore.spacePath + '/' + ${ROW_ID}`) }] },
+        shutOnPhone,
+      ],
     },
   },
   // The flows page shows every flow until one is chosen, so choosing the group closes the one open.
@@ -576,6 +598,7 @@ const onSelect: SchemaProp = [
       then: [
         { $invoke: 'workflowStore.closeWorkflow' },
         { $invoke: 'routeStore.navigate', args: [{ $: withView(FLOWS_PAGE) }] },
+        shutOnPhone,
       ],
     },
   },
@@ -583,19 +606,19 @@ const onSelect: SchemaProp = [
   {
     $if: {
       condition: { $: "event.detail.value == 'group|dna'" },
-      then: [SOCIAL_DNA_HELD.press, showDna("'all'")],
+      then: [SOCIAL_DNA_HELD.press, showDna("'all'"), shutOnPhone],
     },
   },
   {
     $if: {
       condition: { $: "startsWith(event.detail.value, 'channel|')" },
-      then: { $invoke: 'routeStore.navigate', args: [{ $: channelPath(ROW_ID) }] },
+      then: [{ $invoke: 'routeStore.navigate', args: [{ $: channelPath(ROW_ID) }] }, shutOnPhone],
     },
   },
   {
     $if: {
       condition: { $: "startsWith(event.detail.value, 'call|')" },
-      then: { $invoke: 'routeStore.navigate', args: [{ $: callPath(ROW_ID) }] },
+      then: [{ $invoke: 'routeStore.navigate', args: [{ $: callPath(ROW_ID) }] }, shutOnPhone],
     },
   },
   {
@@ -604,6 +627,7 @@ const onSelect: SchemaProp = [
       then: [
         { $invoke: 'workflowStore.openWorkflow', args: [{ $: ROW_ID }] },
         { $invoke: 'routeStore.navigate', args: [{ $: withView(FLOWS_PAGE) }] },
+        shutOnPhone,
       ],
     },
   },
@@ -628,7 +652,7 @@ const onSelect: SchemaProp = [
   {
     $if: {
       condition: { $: "startsWith(event.detail.value, 'person|')" },
-      then: { $invoke: 'routeStore.navigate', args: [{ $: personPath(ROW_ID) }] },
+      then: [{ $invoke: 'routeStore.navigate', args: [{ $: personPath(ROW_ID) }] }, shutOnPhone],
     },
   },
   /*
@@ -638,7 +662,7 @@ const onSelect: SchemaProp = [
   {
     $if: {
       condition: { $: "startsWith(event.detail.value, 'dna|')" },
-      then: showDna(`${DEF_KIND} + '|' + ${DEF_ID}`),
+      then: [showDna(`${DEF_KIND} + '|' + ${DEF_ID}`), shutOnPhone],
     },
   },
   {
@@ -652,7 +676,7 @@ const onSelect: SchemaProp = [
   {
     $if: {
       condition: { $: "startsWith(event.detail.value, 'dnakind|')" },
-      then: [{ $toggleLocalIn: 'openRows', value: { $: 'event.detail.value' } }, showDna(ROW_ID)],
+      then: [{ $toggleLocalIn: 'openRows', value: { $: 'event.detail.value' } }, showDna(ROW_ID), shutOnPhone],
     },
   },
   // A template or a theme is worn by choosing it, as in the rail's pickers.
@@ -672,7 +696,7 @@ const onSelect: SchemaProp = [
   {
     $if: {
       condition: { $: "startsWith(event.detail.value, 'dnaprop|policy|')" },
-      then: showDna("'policy|' + split(event.detail.value, '|')[2]"),
+      then: [showDna("'policy|' + split(event.detail.value, '|')[2]"), shutOnPhone],
     },
   },
 ];
