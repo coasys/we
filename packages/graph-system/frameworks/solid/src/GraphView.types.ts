@@ -1055,6 +1055,15 @@ export interface GraphHostBindings {
    */
   watch?: (request: WatchQuery, onChange: (rows?: readonly Record<string, unknown>[]) => void) => () => void;
   /**
+   * Read, and keep watching what was read, in one — so opening a graph asks each read once rather
+   * than once to draw it and again as its watch opens. `rows` is exactly what `query` would return;
+   * `onChange` and `stop` are as for `watch`. Optional; see `ExpanderContext.watchRead`.
+   */
+  watchRead?: (
+    request: WatchQuery,
+    onChange: (rows?: readonly Record<string, unknown>[]) => void,
+  ) => { rows: Promise<readonly Record<string, unknown>[]>; stop: () => void };
+  /**
    * Say what happened inside a load, for whoever is debugging an empty canvas.
    *
    * Optional, and a host without a trace sink omits it. Not `warn`: a warning is for the reader and

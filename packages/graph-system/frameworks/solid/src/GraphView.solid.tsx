@@ -610,6 +610,9 @@ export function GraphView(props: GraphViewProps) {
       ...(untrack(() => props.host?.watch) && {
         watch: (request, onChange) => props.host!.watch!(request, onChange),
       }),
+      ...(untrack(() => props.host?.watch && props.host?.watchRead) && {
+        watchRead: (request, onChange) => props.host!.watchRead!(request, onChange),
+      }),
       defaultDataset: () => props.host?.defaultDataset() ?? null,
       models: (dataset) => props.host?.models(dataset) ?? [],
       warn: () => undefined,

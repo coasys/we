@@ -685,6 +685,143 @@ describe('following the data', () => {
     });
   });
 
+  describe('reading through a watch', () => {
+    /**
+     * Two reads, `Post` and `Note`, with a host that has `watchRead`. `log` records which call each
+     * read reached the host through; `stopped` the watches ended; `deliver` a watch reporting.
+     */
+    function readsThroughWatches(options: { live?: boolean; delay?: number } = {}) {
+      const answers: Record<string, Record<string, unknown>[]> = { Post: [{ id: 'p1' }], Note: [{ id: 'n1' }] };
+      const log: string[] = [];
+      const stopped: string[] = [];
+      const listeners = new Map<string, (rows?: readonly Record<string, unknown>[]) => void>();
+      let delay = options.delay ?? 0;
+      const answer = async (entity: string) => {
+        if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+        return [...answers[entity]];
+      };
+      const context: ExpanderContext = {
+        query: async (request) => {
+          log.push(`query ${request.entity as string}`);
+          return answer(request.entity as string);
+        },
+        watch(request, onChange) {
+          const entity = request.entity as string;
+          log.push(`watch ${entity}`);
+          listeners.set(entity, onChange);
+          return () => stopped.push(entity);
+        },
+        watchRead(request, onChange) {
+          const entity = request.entity as string;
+          log.push(`watchRead ${entity}`);
+          listeners.set(entity, onChange);
+          return { rows: answer(entity), stop: () => stopped.push(entity) };
+        },
+        defaultDataset: () => 'ds',
+        models: () => [],
+        warn: () => undefined,
+      };
+      const seed: SeedSource = {
+        id: 'test',
+        async seed(_options, ctx) {
+          const rows = [
+            ...(await ctx.query({ entity: 'Post', dataset: 'ds' })),
+            ...(await ctx.query({ entity: 'Note', dataset: 'ds' })),
+          ];
+          return {
+            nodes: rows.map((row) => ({ id: String(row.id), type: 'record', kind: 'entity' as const })),
+            edges: [],
+          };
+        },
+      };
+      const engine = new GraphEngine({
+        spec: { seeds: { source: 'test' }, layout: { type: 'grid' }, live: options.live },
+        registry: new PluginRegistry({ seeds: [seed], layouts }),
+        context,
+      });
+      return {
+        engine,
+        answers,
+        log,
+        stopped,
+        ids: () => [...engine.store.nodes()].map((node) => node.id).sort(),
+        deliver: (entity: string, rows?: Record<string, unknown>[]) => listeners.get(entity)!(rows),
+        quick: () => {
+          delay = 0;
+        },
+      };
+    }
+
+    it('asks each read once on opening, and keeps that as its watch', async () => {
+      const graph = readsThroughWatches();
+      await graph.engine.start();
+
+      // Before, every read reached the host twice: `query`, then `watch` running the same read again.
+      expect(graph.log).toEqual(['watchRead Post', 'watchRead Note']);
+      expect(graph.ids()).toEqual(['n1', 'p1']);
+      expect(graph.stopped).toEqual([]);
+    });
+
+    it('opens no watch for a graph that does not follow its data', async () => {
+      const graph = readsThroughWatches({ live: false });
+      await graph.engine.start();
+
+      expect(graph.log).toEqual(['query Post', 'query Note']);
+    });
+
+    it('stops the watches a load opened when that load is replaced', async () => {
+      vi.useFakeTimers();
+      try {
+        const graph = readsThroughWatches({ delay: 1000 });
+        const first = graph.engine.start();
+        await vi.advanceTimersByTimeAsync(10);
+        // A second load replaces the first while its Post read is still out.
+        graph.quick();
+        const second = graph.engine.refresh();
+        await vi.advanceTimersByTimeAsync(5000);
+        await Promise.all([first, second]);
+
+        // The replaced load's watch is stopped; the current load's watches are held.
+        expect(graph.stopped).toEqual(['Post']);
+        expect(graph.log.filter((entry) => entry.startsWith('watchRead'))).toEqual([
+          'watchRead Post',
+          'watchRead Post',
+          'watchRead Note',
+        ]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('opens nothing more on a refresh, whose reads are watched already', async () => {
+      const graph = readsThroughWatches();
+      await graph.engine.start();
+      graph.log.length = 0;
+
+      await graph.engine.refresh();
+
+      expect(graph.log).toEqual(['query Post', 'query Note']);
+      expect(graph.stopped).toEqual([]);
+    });
+
+    it('follows a change on a watch it opened by reading', async () => {
+      vi.useFakeTimers();
+      try {
+        const graph = readsThroughWatches();
+        await graph.engine.start();
+        graph.log.length = 0;
+
+        graph.deliver('Post', [{ id: 'p1' }, { id: 'p2' }]);
+        await vi.advanceTimersByTimeAsync(500);
+
+        expect(graph.ids()).toEqual(['n1', 'p1', 'p2']);
+        expect(graph.log).toEqual([]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
   it('watches nothing when the template asked for a graph that holds still', async () => {
     const fixture = watchableFixture('Post');
     const registry = new PluginRegistry({ seeds: [fixture.seed], layouts });

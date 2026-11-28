@@ -708,7 +708,8 @@ const onSelect: SchemaProp = [
  */
 const header: SchemaNode = {
   type: 'Row',
-  props: { gap: '300', ay: 'center', px: INSET, pt: '400', pb: '300' },
+  // Wraps: in a narrow sidebar the two buttons drop under the name rather than leaving it a letter.
+  props: { gap: '300', ay: 'center', wrap: true, px: INSET, pt: '400', pb: '300' },
   children: [
     {
       type: 'we-avatar',
@@ -723,7 +724,7 @@ const header: SchemaNode = {
     },
     {
       type: 'Column',
-      props: { flex: '1', minWidth: '0' },
+      props: { flex: '1', minWidth: '5rem' },
       children: [
         {
           type: 'we-text',
@@ -860,7 +861,15 @@ const findOrAsk: SchemaNode = {
   ],
 };
 
-/** Start a call here, or join the one running — whichever there is to do. */
+/**
+ * Start a call here. Shown only while no call is running, so this is only ever a new call.
+ *
+ * `startCall`, not `goToCall`: with nothing running, `goToCall` continues the call the address
+ * names, and on this space the address names one long after it ended. Joining a call puts it in
+ * `?call=`, nothing takes it out, and the router gives a page back its last query string. So a
+ * Calls list where a call was once started kept naming that call, and Start a call there rejoined
+ * the first call the space ever had. Picking a past call back up is its page's own button.
+ */
 const callButton: SchemaNode = {
   type: '$if',
   props: {
@@ -873,7 +882,7 @@ const callButton: SchemaNode = {
         {
           type: 'we-button',
           // Solid, in the accent: starting a call is the one thing the tree invites.
-          props: { variant: 'solid', onClick: { $invoke: 'modules.call.goToCall' } },
+          props: { variant: 'solid', onClick: { $invoke: 'modules.call.startCall' } },
           children: [{ type: 'we-icon', props: { name: 'phone' } }, 'Start a call'],
         },
       ],
