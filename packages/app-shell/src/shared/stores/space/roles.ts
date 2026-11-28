@@ -514,12 +514,21 @@ export function createSpaceRoles(deps: SpaceRolesDeps) {
     other dataset it cannot be told from one that is not a space, and is not judged, as before. So
     does a read that answers with no `Space` record for a known space: that is the record still
     syncing, not a dataset that is not a space, and it is refused as still arriving.
+
+    One space is matched by its local id even once it is shared: the creator's own, in the moment
+    between publishing it and writing its address onto its record. That write is the one that makes
+    the record match by address, so refusing it would leave the space never matching itself. Only
+    the creator's dataset holds a `Space` whose `uuid` is its own id — a joiner's never does, and a
+    listed copy in the discovery space names its creator's dataset — so a joiner still waits.
   */
   async function readGovernedSpace(ds: { id: string; sharedId?: string; handle: DatasetProxy }) {
-    const selves = (await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) }).catch((error: unknown) => {
-      if (knownSpace(ds)) throw error;
-      return [];
-    })) as Space[];
+    const read = (where: ReturnType<typeof spaceSelfWhere>) =>
+      Space.findAll(ds.handle, { where }).catch((error: unknown) => {
+        if (knownSpace(ds)) throw error;
+        return [];
+      }) as Promise<Space[]>;
+    let selves = await read(spaceSelfWhere(ds));
+    if (!selves.length && ds.sharedId) selves = await read({ uuid: ds.id });
     const [self] = selves;
     if (!self) {
       if (knownSpace(ds)) throw new SpaceArriving();
