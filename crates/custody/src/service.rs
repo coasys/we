@@ -24,7 +24,7 @@ use std::time::Duration;
 
 use ad4m_client::ws_rpc::WsRpcClient;
 use ad4m_identity_client::executor::IdentityStatus;
-use ad4m_identity_client::flows::create::{resume, CreateFlow, CreateScreen, Created};
+use ad4m_identity_client::flows::create::Created;
 use ad4m_identity_client::flows::link::{Claimed, LinkFlow};
 use ad4m_identity_client::flows::master::{
     complete_pending_mark, refresh_master, remove_master, retry_pushes, take_master, Refreshed,
@@ -35,7 +35,7 @@ use ad4m_identity_client::flows::restore::RestoreFlow;
 use ad4m_identity_client::flows::revoke::{
     finish_revoke, revoke, revoke_and_rotate, PendingRevoke, Revoked,
 };
-use ad4m_identity_client::flows::rotate::{rotate, Rotated};
+use ad4m_identity_client::flows::rotate::Rotated;
 use ad4m_identity_client::flows::unlink::unlink_key;
 use ad4m_identity_client::record::{self, Change};
 use ad4m_identity_client::vault::{MasterUse, Stored, Vault};
@@ -56,6 +56,13 @@ use zeroize::Zeroizing;
 use crate::enc::CustodyEncKey;
 use crate::seal::{self, PassphraseProblem};
 use crate::vault::{DesktopVault, Unlocking};
+// The steps the phone runs too (`crates/identity-steps`): make, restore, rotate with the words.
+pub use we_identity_steps::RestoreDevice;
+use we_identity_steps::{
+    enrol_again, finish_restore, joined, listed, lock_out_of, record_note, revoke_again,
+    rotate_with_words as rotate_words, words_refused, MakeWords, PublishError, NOT_THESE_WORDS,
+    WRONG_CONFIRM,
+};
 
 static CLOCK: SystemClock = SystemClock;
 static RANDOM: OsRandom = OsRandom;
@@ -700,17 +707,6 @@ pub struct RequestView {
     pub expires: u64,
 }
 
-/// One device on the restore's lock-out list.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RestoreDevice {
-    pub key_id: String,
-    /// The record's name; `None` when the record does not name it or could not be read.
-    pub name: Option<String>,
-    pub kind: Option<DeviceKind>,
-    pub lock_out: bool,
-}
-
 /// Where the executor's RPC is, and the admin credential for it. Nothing else of the executor: the
 /// identity store it uses, and whether it trusts it, are asked of it (`identity.status`).
 #[derive(Clone)]
@@ -901,13 +897,9 @@ fn names_no_store(e: &ClientError) -> bool {
     matches!(e, ClientError::Rpc(e) if e.code == 503 && e.message.starts_with("no-store-keys"))
 }
 
-/// Words that are all on the list and pass the checksum, yet make no master key of the identity.
-const NOT_THESE_WORDS: &str = "This recovery phrase doesn't match your identity. Check the \
-     spelling and order of each word. Nothing changed.";
-
 /// A step stopped because this computer lost its count of the changes to the master key it keeps
 /// (`custody-epochs.json`, or an identity's entry in it, gone from the custody folder). The way
-/// back is the words-gated recovery ([`recover_lost_epoch`]): in "Replace master key"
+/// back is the words-gated recovery (`we_identity_steps::recover_lost_epoch`): in "Replace master key"
 /// ([`rotate_with_words`]) on a linked computer, in "Restore with recovery phrase"
 /// ([`restore_on`]) on one not linked yet.
 const LOST_EPOCH: &str = "This computer lost track of changes to its master key, so it won't \
@@ -924,33 +916,6 @@ const KEYRING_LOCKED_WORDS: &str = "Your keyring is locked. Unlock it when your 
 /// Why a master key is not removed from this computer.
 const ONLY_COPY: &str = "This computer has the only copy of your master key. Send it to another \
      device before you remove it here. Nothing was removed.";
-
-/// Why the 12 words typed were refused, and the word it names (from 1). Names a word by its
-/// place only: the word typed, or the list word nearest it, may be one of the 12.
-fn words_refused(e: &ad4m_identity_core::words::WordsError) -> (String, Option<usize>) {
-    use ad4m_identity_core::words::WordsError;
-    match e {
-        WordsError::Count(n) => {
-            let noun = if *n == 1 { "word" } else { "words" };
-            (
-                format!("That's {n} {noun}. Enter all 12 words in order."),
-                None,
-            )
-        }
-        WordsError::UnknownWord { position, .. } => (
-            format!("Word {position} isn't a recovery phrase word. Check its spelling."),
-            Some(*position),
-        ),
-        WordsError::Checksum => (
-            "One or more words are wrong. Check the spelling and order of each word.".into(),
-            None,
-        ),
-        WordsError::Index(_) => (
-            "Your master key can't be replaced again with this recovery phrase.".into(),
-            None,
-        ),
-    }
-}
 
 /// Words a person reads, for each way a flow stops.
 fn failed(e: &ClientError) -> Screen {
@@ -1179,39 +1144,13 @@ async fn idle(
 async fn finish_pending<R: ExecutorRpc>(
     executor: &ViaExecutor<R>,
     vault: &Arc<DesktopVault>,
-) -> Result<Option<Created>, ClientError> {
-    let _one = FINISHING.lock().await;
-    finish_pending_locked(executor, vault).await
-}
-
-/// One publish of a kept incept at a time: a state read left running beside a step and the step
-/// (Create, a restore) can both finish it, and two publishes of the same incept would make the
-/// store answer the second with a conflict. The later caller finds nothing pending.
-static FINISHING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-
-async fn finish_pending_locked<R: ExecutorRpc>(
-    executor: &ViaExecutor<R>,
-    vault: &Arc<DesktopVault>,
-) -> Result<Option<Created>, ClientError> {
-    if vault.pending_incepts()?.is_empty() {
-        return Ok(None);
-    }
-    log::info!("custody: finishing an identity whose publish was not confirmed");
-    match resume(executor, &vault.unlocking(None)).await {
-        Err(ClientError::HasIdentity(held)) => {
-            let status = executor.status().await?;
-            if let Some(incept) = own_pending(vault, &status.device_key)? {
-                log::warn!(
-                    "custody: this computer speaks for {held}; forgetting the incept of {} it can \
-                     never publish",
-                    ad4m_identity_core::did_of(&incept.scid)
-                );
-                vault.forget_pending(&incept.scid)?;
-            }
-            Ok(None)
-        }
-        other => other,
-    }
+) -> Result<Option<Created>, PublishError> {
+    // One publish of the incept at a time, and none again once the store has refused it for good:
+    // both are the shared publish driver's, held by the vault.
+    vault
+        .publishing()
+        .finish(executor, &vault.unlocking(None))
+        .await
 }
 
 /// The kept incept that lists `device_key` — this executor's, when it is the executor's own key.
@@ -1221,50 +1160,16 @@ fn own_pending(vault: &Arc<DesktopVault>, device_key: &str) -> Result<Option<Eve
     }))
 }
 
-/// How a refused publish of a kept incept stands: `None` when trying again may work (the store or
-/// the executor did not answer, a rate limit, a head signed by a key this build does not trust);
-/// else the sentence that says why it never will, and whether this computer's key is the reason.
-fn refused_for_good(e: &ClientError, did: &str) -> Option<(String, bool)> {
-    match e {
-        ClientError::Rpc(e) if e.code == 409 && e.message.starts_with("key-taken") => Some((
-            format!(
-                "The identity store refused {did}: this computer's key is already in a key log, \
-                 so publishing it again cannot work."
-            ),
-            true,
-        )),
-        ClientError::Rpc(e) if e.code == 409 && e.message.starts_with("conflict") => Some((
-            format!(
-                "The identity store holds a different log for {did}, so publishing this one \
-                 cannot work."
-            ),
-            false,
-        )),
-        ClientError::Rpc(e) if e.code == 400 || e.code == 403 => Some((
-            format!("The identity store refused {did}: {}", e.message),
-            false,
-        )),
-        ClientError::Fold(why) => Some((
-            format!("The identity kept here for {did} does not check out ({why})."),
-            false,
-        )),
-        ClientError::Protocol(why) => Some((format!("{did} cannot be published: {why}"), false)),
-        _ => None,
-    }
-}
-
 /// [`finish_pending`] for a state read: skipped while a step is finishing the incept itself, so the
 /// read never waits on the step.
 async fn finish_pending_quietly<R: ExecutorRpc>(
     executor: &ViaExecutor<R>,
     vault: &Arc<DesktopVault>,
 ) {
-    let Ok(_one) = FINISHING.try_lock() else {
-        return;
-    };
-    if let Err(e) = finish_pending_locked(executor, vault).await {
-        log::warn!("custody: the pending identity is not finished yet: {e}");
-    }
+    vault
+        .publishing()
+        .finish_quietly(executor, &vault.unlocking(None))
+        .await;
 }
 
 async fn public_state(vault: &Arc<DesktopVault>, address: &ExecutorAddress) -> CustodyPublic {
@@ -1780,8 +1685,8 @@ async fn create_on<R: ExecutorRpc>(
         Err(e) => return answer(reply, Ok(failed(&ClientError::Rpc(e)))),
         Ok(status) => status.device_key,
     };
-    let (mut flow, first) = CreateFlow::start(&RANDOM);
-    let CreateScreen::ShowWords(words) = first else {
+    let mut flow = MakeWords::start(&RANDOM);
+    let Some(words) = flow.words() else {
         return answer(
             reply,
             Ok(Screen::Failed {
@@ -1789,8 +1694,8 @@ async fn create_on<R: ExecutorRpc>(
             }),
         );
     };
-    // The client hands the words over as a `Secret`, wiped when `words` drops below; the screen is
-    // the one place they leave it, to be drawn in the identity window.
+    // The words are handed over as a `Secret`, wiped when `words` drops below; the screen is the
+    // one place they leave it, to be drawn in the identity window.
     answer(
         reply,
         Ok(Screen::ShowWords {
@@ -1806,7 +1711,7 @@ async fn create_on<R: ExecutorRpc>(
         };
         match input {
             StepInput::WordsWritten if positions == [0, 0] => match flow.words_written(&RANDOM) {
-                Ok(CreateScreen::ConfirmWords { positions: p }) => {
+                Ok(p) => {
                     positions = p;
                     answer(
                         reply,
@@ -1816,7 +1721,6 @@ async fn create_on<R: ExecutorRpc>(
                         }),
                     );
                 }
-                Ok(_) => answer(reply, Err(CustodyError::WrongInput)),
                 Err(e) => return answer(reply, Ok(failed(&e))),
             },
             StepInput::Words { answers } if positions != [0, 0] => {
@@ -1828,9 +1732,7 @@ async fn create_on<R: ExecutorRpc>(
                         reply,
                         Ok(Screen::ConfirmWords {
                             positions,
-                            error: Some(
-                                "Those are not the words at those places. Check your paper.".into(),
-                            ),
+                            error: Some(WRONG_CONFIRM.into()),
                         }),
                     ),
                     Err(e) => return answer(reply, Ok(failed(&e))),
@@ -1890,7 +1792,7 @@ async fn offer_discard<R: ExecutorRpc>(
     address: &ExecutorAddress,
     rx: &mut Rx,
     reply: &mut Reply,
-    e: &ClientError,
+    e: &PublishError,
 ) -> bool {
     let incept = match executor.status().await {
         Ok(status) => own_pending(vault, &status.device_key).ok().flatten(),
@@ -1899,19 +1801,31 @@ async fn offer_discard<R: ExecutorRpc>(
     // Nothing of this executor's is pending (another account's incept, or no answer): say what
     // failed, and claim no identity made here.
     let Some(incept) = incept else {
-        answer(reply, Ok(failed(e)));
+        answer(
+            reply,
+            Ok(match e {
+                PublishError::Failed(e) => failed(e),
+                PublishError::Refused(refused) => Screen::Failed {
+                    message: refused.message.clone(),
+                },
+            }),
+        );
         return false;
     };
     let did = ad4m_identity_core::did_of(&incept.scid);
-    let Some((message, key_taken)) = refused_for_good(e, &did) else {
-        answer(reply, Ok(unfinished(e)));
-        return false;
+    let refused = match e {
+        PublishError::Refused(refused) => refused,
+        PublishError::Failed(e) => {
+            answer(reply, Ok(unfinished(e)));
+            return false;
+        }
     };
+    let key_taken = refused.key_taken;
     answer(
         reply,
         Ok(Screen::PendingRefused {
             did: did.clone(),
-            message,
+            message: refused.message.clone(),
         }),
     );
     loop {
@@ -1926,6 +1840,7 @@ async fn offer_discard<R: ExecutorRpc>(
             answer(reply, Ok(failed(&ClientError::Vault(e))));
             return false;
         }
+        vault.publishing().forget(&incept.scid);
         if key_taken {
             // New words would list the same key, and be refused the same way.
             answer(
@@ -4850,14 +4765,6 @@ fn replaced(
     }
 }
 
-/// Two notes as one, either or both absent.
-fn joined(first: Option<String>, second: Option<String>) -> Option<String> {
-    match (first, second) {
-        (Some(a), Some(b)) => Some(format!("{a} {b}")),
-        (a, b) => a.or(b),
-    }
-}
-
 /// Why a part of a step after its publish did not happen, in words a person reads. Never says that
 /// nothing changed, as [`failed`] does for a step that stopped before its publish: the publish
 /// stands.
@@ -4917,10 +4824,8 @@ async fn rotate_with_words<R: ExecutorRpc>(
                     .1
             }
         };
-        let rotated = match recover_lost_epoch(executor, vault, did, &words).await {
-            Ok(()) => rotate(executor, unlocking, did, &words, &[], &CLOCK, &RANDOM).await,
-            Err(e) => Err(e),
-        };
+        let rotated =
+            rotate_words(executor, unlocking, &**vault, did, &words, &CLOCK, &RANDOM).await;
         match rotated {
             Ok(rotated) => {
                 let stopped = stopped_at_record(executor, &rotated.record).await;
@@ -4930,62 +4835,6 @@ async fn rotate_with_words<R: ExecutorRpc>(
             Err(e) => return Some(Err(e)),
         }
     }
-}
-
-/// The way back from a lost custody epoch ([`LOST_EPOCH`]), taken by "Replace master key"
-/// before it rotates, and by "Restore with recovery phrase" on a computer not linked yet before its rotation
-/// stages and before each try at linking after it ([`restore_on`]). Only when the epoch of `did`'s key here is lost, and only once `words` are
-/// checked to make the identity's current master — the check `rotate` makes before it publishes
-/// ([`words_make_current_master`]) — is the epoch recovered
-/// ([`DesktopVault::recover_custody_epoch`], a fresh incarnation). Words that are not the
-/// identity's recover nothing ([`ClientError::NotTheseWords`]); the rotation that follows moves
-/// the recovered epoch as any change of the kept key does.
-async fn recover_lost_epoch<R: ExecutorRpc>(
-    executor: &ViaExecutor<R>,
-    vault: &Arc<DesktopVault>,
-    did: &str,
-    words: &Words,
-) -> Result<(), ClientError> {
-    let Some(scid) = ad4m_identity_core::scid_of(did) else {
-        return Ok(());
-    };
-    match vault.custody_epoch(scid) {
-        Ok(_) => return Ok(()),
-        Err(e) if crate::pending::is_lost_epoch(&e) => {}
-        Err(e) => return Err(e.into()),
-    }
-    words_make_current_master(executor, did, words).await?;
-    log::info!("custody: the words make the current master key; recover its custody epoch");
-    vault.recover_custody_epoch(scid)?;
-    Ok(())
-}
-
-/// Whether `words` make `did`'s current master key, as the key log the executor serves says it
-/// (the rule of `ad4m_identity_client::flows::rotate`, whose `current_index` is not public):
-/// master *n* of the words, *n* the current master's index, signs as the log's current master.
-/// [`ClientError::NotTheseWords`] when they do not.
-async fn words_make_current_master<R: ExecutorRpc>(
-    executor: &ViaExecutor<R>,
-    did: &str,
-    words: &Words,
-) -> Result<(), ClientError> {
-    let events = executor.events(did).await?;
-    let chain =
-        ad4m_identity_core::fold(&events).map_err(|e| ClientError::Protocol(e.to_string()))?;
-    let state = chain.state();
-    let current = state
-        .current_master()
-        .ok_or_else(|| ClientError::Protocol("the identity has ended".into()))?;
-    let index = u32::try_from(state.masters.len() - 1)
-        .map_err(|_| ClientError::Protocol("the log lists too many masters".into()))?;
-    let key =
-        ad4m_identity_core::words::master_key(&ad4m_identity_core::words::seed(words), index)?;
-    if ad4m_identity_core::build::Signer::key(&key) != current.sign {
-        return Err(ClientError::NotTheseWords(
-            "they do not derive the current master key".into(),
-        ));
-    }
-    Ok(())
 }
 
 /// Answers the screen a published rotation ended on, after the retry list is pushed again. On
@@ -5044,33 +4893,18 @@ fn handed_over(
     record: &Result<u64, ClientError>,
     stopped: bool,
 ) -> Option<String> {
-    let mut note = Vec::new();
-    let late: Vec<&str> = pushes
-        .iter()
-        .filter(|(_, pushed)| pushed.is_err())
-        .map(|(key_id, _)| key_id.as_str())
-        .collect();
-    for (key_id, pushed) in pushes {
-        if let Err(e) = pushed {
-            log::warn!("custody: the new master key did not reach {key_id} yet: {e}");
+    // Stopped before any push: there are no pushes to report, and the list never catches up here.
+    if stopped {
+        if let Err(e) = record {
+            log::warn!("custody: the record was not written after the rotation: {e}");
         }
+        return Some(NOT_HANDED_OVER.into());
     }
-    if !late.is_empty() {
-        note.push(format!(
-            "The new master key wasn't sent to {} yet. It's sent again the next time this \
-             computer unlocks.",
-            late.join(", ")
-        ));
-    }
-    if let Err(e) = record {
-        log::warn!("custody: the record was not written after the rotation: {e}");
-        note.push(if stopped {
-            NOT_HANDED_OVER.into()
-        } else {
-            "Your device list shows this after its next change.".into()
-        });
-    }
-    (!note.is_empty()).then(|| note.join(" "))
+    we_identity_steps::handed_over(
+        pushes,
+        record,
+        "It's sent again the next time this computer unlocks.",
+    )
 }
 
 /// The note of a rotation whose hand-over stopped at the record ([`stopped_at_record`]): the key
@@ -5313,20 +5147,8 @@ async fn restore_on<R: ExecutorRpc>(
             );
         }
     }
-    let devices: Vec<RestoreDevice> = flow
-        .devices()
-        .iter()
-        .map(|d| RestoreDevice {
-            key_id: d.key_id.as_str().to_string(),
-            name: d.name.clone(),
-            kind: d.kind,
-            lock_out: d.lock_out,
-        })
-        .collect();
-    let note = flow.record_error().map(|e| {
-        log::warn!("custody: the record could not be read for the restore: {e}");
-        "Couldn't read your device list, so devices show without names.".to_string()
-    });
+    let devices: Vec<RestoreDevice> = listed(&flow);
+    let note = record_note(&flow);
     answer(
         reply,
         Ok(Screen::RestoreDevices {
@@ -5344,30 +5166,30 @@ async fn restore_on<R: ExecutorRpc>(
                 key_ids,
                 name,
                 since,
-            } if key_ids
-                .iter()
-                .all(|k| devices.iter().any(|d| &d.key_id == k)) =>
-            {
-                break (key_ids, name, since)
-            }
+            } => match lock_out_of(&devices, &key_ids) {
+                Some(lock_out) => break (lock_out, name, since),
+                None => answer(reply, Err(CustodyError::WrongInput)),
+            },
             _ => answer(reply, Err(CustodyError::WrongInput)),
         }
     };
     // The vault's item carries the index; the record's comes from the hand-over that keeps it.
     let entry = this_computer(given_name(name), true, None);
     let name = entry.name.clone();
-    let lock_out: Vec<ad4m_identity_core::KeyId> = lock_out
-        .iter()
-        .map(|k| ad4m_identity_core::KeyId::from(k.as_str()))
-        .collect();
     // Before the stage the rotation makes: a custody epoch of this identity this computer lost
     // (a first restore stopped, a file of the custody folder gone) is recovered here, the words
     // checked first to make the identity's current master. "Replace master key", the way back
     // on a linked computer, refuses this one: it is not linked yet.
-    let mut finished = match recover_lost_epoch(executor, vault, &did, &words).await {
-        Ok(()) => flow.finish(&lock_out, since, entry.clone()).await,
-        Err(e) => Err(e),
-    };
+    let mut finished = finish_restore(
+        &mut flow,
+        executor,
+        &**vault,
+        &words,
+        &lock_out,
+        since,
+        entry.clone(),
+    )
+    .await;
     let restored = loop {
         match finished {
             Ok(restored) => break restored,
@@ -5385,7 +5207,7 @@ async fn restore_on<R: ExecutorRpc>(
                 else {
                     return;
                 };
-                finished = flow.revoke_locked_out(since, entry.clone()).await;
+                finished = revoke_again(&mut flow, since, entry.clone()).await;
             }
             Err(e) => return answer(reply, Ok(failed(&e))),
         }
@@ -5435,10 +5257,7 @@ async fn restore_on<R: ExecutorRpc>(
             }
         }
         // The same words, checked again, recover an epoch lost since the rotation.
-        enrolled = match recover_lost_epoch(executor, vault, &did, &words).await {
-            Ok(()) => flow.enrol(entry.clone()).await,
-            Err(e) => Err(e),
-        };
+        enrolled = enrol_again(&flow, executor, &**vault, &words, entry.clone()).await;
     }
 }
 
@@ -5523,6 +5342,7 @@ mod tests {
     use super::*;
     use std::cell::{Cell, RefCell};
 
+    use ad4m_identity_client::flows::create::{CreateFlow, CreateScreen};
     use ad4m_identity_client::vault::KeySigner;
     use ad4m_identity_client::{RpcError, Vault};
     use ad4m_identity_core::build::{cosign, Signer};
@@ -5548,6 +5368,8 @@ mod tests {
         refuse_publish: Cell<bool>,
         /// A refusal every publish answers with, as a store that never takes this incept.
         refuse_for_good: RefCell<Option<(u16, String)>>,
+        /// Every `identity.publish` the executor was asked for, taken or refused.
+        publish_attempts: Cell<u32>,
         /// A refusal every publish after the first `n` answers with, as a store that takes a
         /// rotation and refuses the revoke on top of it.
         refuse_after: RefCell<Option<(u32, u16, String)>>,
@@ -5591,6 +5413,7 @@ mod tests {
                 held: RefCell::new(None),
                 refuse_publish: Cell::new(false),
                 refuse_for_good: RefCell::new(None),
+                publish_attempts: Cell::new(0),
                 refuse_after: RefCell::new(None),
                 log_from: RefCell::new(None),
                 refuse_cosign: Cell::new(false),
@@ -5750,6 +5573,7 @@ mod tests {
                     Ok(json!({ "version": sealed.version }))
                 }
                 "identity.publish" => {
+                    self.publish_attempts.set(self.publish_attempts.get() + 1);
                     if let Some((code, message)) = self.refuse_for_good.borrow().clone() {
                         return Err(RpcError { code, message });
                     }
@@ -6446,8 +6270,7 @@ mod tests {
         assert_eq!(unknown.pending, None);
 
         // Once the store takes it, the state asking finishes it: published, nothing pending. A read
-        // that finds `FINISHING` held skips the publish and the main window's next read makes it;
-        // the lock is the process's, so a test running beside this one can hold it: ask again.
+        // that finds a publish running skips it and the main window's next read makes it: ask again.
         let mut public = public_state_on(Some(&executor), &vault).await;
         for _ in 0..100 {
             if public.did.is_some() {
@@ -6929,7 +6752,7 @@ mod tests {
         assert_eq!(failed(&refusal), expected);
         assert_eq!(unfinished(&refusal), expected);
         // Not a refusal for good: a build with a key finishes the same identity.
-        assert!(refused_for_good(&refusal, "did:scid:coasys:1:Qm").is_none());
+        assert!(we_identity_steps::refused_for_good(&refusal, "did:scid:coasys:1:Qm").is_none());
     }
 
     #[test]
@@ -6947,17 +6770,26 @@ mod tests {
             rpc(502, "bad-head-signature: the store's head is not signed"),
             ClientError::Vault(VaultError::Unavailable("locked".into())),
         ] {
-            assert!(refused_for_good(&transient, did).is_none(), "{transient:?}");
+            assert!(
+                we_identity_steps::refused_for_good(&transient, did).is_none(),
+                "{transient:?}"
+            );
         }
-        let (_, key) = refused_for_good(&rpc(409, "key-taken: z6Mk sits in a log"), did).unwrap();
-        assert!(key);
+        let key =
+            we_identity_steps::refused_for_good(&rpc(409, "key-taken: z6Mk sits in a log"), did)
+                .unwrap();
+        assert!(key.key_taken);
         for permanent in [
             rpc(409, "conflict: the store's head is seq 3 (h)"),
             rpc(400, "invalid: bad proof"),
             rpc(403, "forbidden: \"pow\""),
         ] {
-            let (message, key) = refused_for_good(&permanent, did).unwrap();
-            assert!(!key && message.contains(did), "{message}");
+            let refused = we_identity_steps::refused_for_good(&permanent, did).unwrap();
+            assert!(
+                !refused.key_taken && refused.message.contains(did),
+                "{}",
+                refused.message
+            );
         }
     }
 
@@ -7064,6 +6896,47 @@ mod tests {
             "{message}"
         );
         assert!(vault.pending_incepts().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_incept_the_store_refused_for_good_is_not_published_again_by_each_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        let vault = open_vault(dir.path());
+        executor.rpc().refuse_publish.set(true);
+        let _ = confirmed(34)
+            .finish(
+                &executor,
+                &vault.unlocking(pass()),
+                this_computer(None, true, Some((0, VaultId([1; 16])))),
+                &CLOCK,
+                &RANDOM,
+            )
+            .await;
+        let scid = vault.pending_incepts().unwrap()[0].scid.clone();
+        *executor.rpc().refuse_for_good.borrow_mut() =
+            Some((409, "conflict: the store's head is seq 2 (h)".into()));
+        let before = executor.rpc().publish_attempts.get();
+
+        // The first finish asks the store and is refused for good.
+        let first = finish_pending(&executor, &vault).await;
+        assert!(matches!(first, Err(PublishError::Refused(_))), "{first:?}");
+        assert_eq!(executor.rpc().publish_attempts.get(), before + 1);
+
+        // Neither a step nor any number of state reads publish it again.
+        let again = finish_pending(&executor, &vault).await;
+        assert!(matches!(again, Err(PublishError::Refused(_))), "{again:?}");
+        for _ in 0..3 {
+            let public = public_state_on(Some(&executor), &vault).await;
+            assert_eq!(public.pending.as_deref(), Some(did_of(&scid).as_str()));
+        }
+        assert_eq!(executor.rpc().publish_attempts.get(), before + 1);
+
+        // Discarded, it is forgotten: nothing is pending and the executor is asked nothing.
+        vault.forget_pending(&scid).unwrap();
+        vault.publishing().forget(&scid);
+        assert!(finish_pending(&executor, &vault).await.unwrap().is_none());
+        assert_eq!(executor.rpc().publish_attempts.get(), before + 1);
     }
 
     /// A co-signed-shape incept of fixed words listing another executor's device key: what another

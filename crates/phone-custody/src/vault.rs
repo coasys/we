@@ -362,6 +362,30 @@ fn lost_epoch(scid: &str) -> VaultError {
     ))
 }
 
+/// Whether `e` says a custody epoch was written here and is gone: this identity's entry
+/// ([`lost_epoch`]) or the whole master-key file ([`lost_file`]).
+fn is_lost_epoch(e: &VaultError) -> bool {
+    matches!(e, VaultError::Unavailable(why)
+        if why.contains("custody epoch was written in this folder and is gone")
+            || why.contains(LOST_FILE))
+}
+
+/// The words-gated way back from a lost custody epoch that a replace and a restore take
+/// (`we-identity-steps`), over [`PhoneVault::recover_custody_epoch`].
+impl we_identity_steps::EpochRecovery for PhoneVault {
+    fn custody_epoch(&self, scid: &str) -> Result<u64, VaultError> {
+        Vault::custody_epoch(self, scid)
+    }
+
+    fn recover_custody_epoch(&self, scid: &str) -> Result<u64, VaultError> {
+        PhoneVault::recover_custody_epoch(self, scid)
+    }
+
+    fn is_lost_epoch(&self, error: &VaultError) -> bool {
+        is_lost_epoch(error)
+    }
+}
+
 fn lost_mark(scid: &str) -> VaultError {
     VaultError::Unavailable(format!(
         "{scid}'s record mark was written in this folder and is gone; \
@@ -492,6 +516,8 @@ pub struct PhoneVault {
     device: Arc<dyn Sealer>,
     lock: Mutex<()>,
     allow_weak: AtomicBool,
+    /// The publishes of this vault's pending incepts: one at a time, a refusal for good remembered.
+    publishing: we_identity_steps::PublishGate,
 }
 
 impl PhoneVault {
@@ -508,7 +534,13 @@ impl PhoneVault {
             device,
             lock: Mutex::new(()),
             allow_weak: AtomicBool::new(false),
+            publishing: we_identity_steps::PublishGate::new(),
         })
+    }
+
+    /// The gate this vault's pending incepts are published through.
+    pub fn publishing(&self) -> &we_identity_steps::PublishGate {
+        &self.publishing
     }
 
     /// The person agreed to keep a master key at the protection the phone has, below StrongBox

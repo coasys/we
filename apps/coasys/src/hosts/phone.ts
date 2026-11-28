@@ -3,11 +3,11 @@
  * a session is had with the device key from the executor the phone was told to use, or through AD4M
  * Connect like a browser.
  *
- * A phone joins an identity; it does not make one, and it takes no 12 words — the master key and its
- * words stay with a computer. So of the first run's three doors only "Link to another device" opens here,
- * on the phone's join page, and the other two say why they are a computer's. Every step leaves for the
- * phone's identity page (`apps/we-mobile/src/identity`), the only place a secret is shown, and the app
- * boots again when that page sends the person back.
+ * The first run's three doors all open here: "Create new identity" makes one with its 12 words and
+ * keeps its master key on this phone, "Link to another device" joins one by a device's offer, and
+ * "Restore with recovery phrase" brings one back. Every step leaves for the phone's identity page
+ * (`apps/we-mobile/src/identity`), the only place a secret is shown or typed, and the app boots again
+ * when that page sends the person back.
  */
 import type { BackendConnector, BaseConnection, BaseHost, BaseIdentitySource } from '@we/app-shell/shared';
 import type { DeviceKeyPlugin } from '@we/app-web/platform/deviceKey';
@@ -36,10 +36,7 @@ export interface PhoneHostDeps extends Pick<ReachDeps, 'remembered' | 'reach'> {
   keyConnector?: (deps: DeviceKeyConnectorDeps) => BackendConnector;
 }
 
-export const MAKE_ON_A_COMPUTER = 'Create it on a computer, then link this phone.';
-export const WORDS_ON_A_COMPUTER = 'Restore on a computer, then link this phone.';
-
-/** The phone's identity, read from its plugin, with the join as the one door it opens. */
+/** The phone's identity, read from its plugin, and its three doors to the identity page. */
 export function phoneIdentitySource(
   plugin: DeviceKeyPlugin,
   nav: PageNav = browserNav,
@@ -55,9 +52,9 @@ export function phoneIdentitySource(
       return readCustody(state);
     },
     doors: {
-      make: { step: null, note: MAKE_ON_A_COMPUTER },
+      make: { step: { kind: 'create' } },
       link: { step: { kind: 'join' } },
-      words: { step: null, note: WORDS_ON_A_COMPUTER },
+      words: { step: { kind: 'restore' } },
     },
     open(step) {
       if (step.kind === 'join') {

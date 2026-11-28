@@ -390,6 +390,22 @@ pub fn is_lost_epoch(error: &VaultError) -> bool {
         if why.contains(LOST_EPOCH) || why.contains(&format!("{EPOCHS_FILE_NAME} {LOST_FILE}")))
 }
 
+/// The desktop vault's custody epochs, for the words-gated recovery the steps shared with the
+/// phone make before a rotation (`we_identity_steps::recover_lost_epoch`).
+impl we_identity_steps::EpochRecovery for crate::vault::DesktopVault {
+    fn custody_epoch(&self, scid: &str) -> Result<u64, VaultError> {
+        crate::vault::DesktopVault::custody_epoch(self, scid)
+    }
+
+    fn recover_custody_epoch(&self, scid: &str) -> Result<u64, VaultError> {
+        crate::vault::DesktopVault::recover_custody_epoch(self, scid)
+    }
+
+    fn is_lost_epoch(&self, error: &VaultError) -> bool {
+        is_lost_epoch(error)
+    }
+}
+
 /// What a lost epoch's error says, and [`is_lost_epoch`] looks for.
 const LOST_EPOCH: &str = "custody epoch was made in this custody folder and is gone";
 

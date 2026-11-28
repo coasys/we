@@ -1,6 +1,7 @@
 package org.coasys.app.devicekey
 
 import android.content.Intent
+import android.view.WindowManager
 import androidx.activity.result.ActivityResult
 import androidx.appcompat.app.AlertDialog
 import com.getcapacitor.JSArray
@@ -28,6 +29,7 @@ import uniffi.we_phone_custody.DeviceKeys
 import uniffi.we_phone_custody.DevicePublic
 import uniffi.we_phone_custody.DeviceView
 import uniffi.we_phone_custody.HolderLink
+import uniffi.we_phone_custody.IdentitySteps
 import uniffi.we_phone_custody.IdentityView
 import uniffi.we_phone_custody.KeyStatus
 import uniffi.we_phone_custody.LinkStep
@@ -71,6 +73,24 @@ import uniffi.we_phone_custody.StoreConfig
  *   linkCancel({link})              → {}
  *   scanCode({prefix, title?})      → {text}                                   (the camera; rejects `Cancelled` or `CameraDenied`)
  *
+ * Make, restore and replace the master key on the phone, with no computer (a step machine each,
+ * `crates/phone-custody/src/steps.rs`; the screens and inputs are [IdentityStepsJson]'s):
+ *
+ *   startMake()                     → {flow, screen}   (first screen: show-words, or identity-ready for one made before and published now)
+ *   startRestore()                  → {flow, screen}   (first screen: enter-words, purpose "restore")
+ *   startRotate()                   → {flow, screen}   (first screen: enter-words, purpose "replace"; needs a joined phone)
+ *   identityStep({flow, input})     → {screen, ended}  (rejects `WrongInput` and stays on the screen; any other refusal ends the flow)
+ *   identityCancel({flow})          → {}               (wipes the words the flow holds)
+ *   pendingIdentity()               → {did | null}     (an identity made here and not published yet; no network)
+ *   finishPending()                 → {did | null}     (publishes it; `Unavailable` while the store does not answer)
+ *   retryMasterPushes()             → {note | null}    (one prompt when an app is still to be sent the new master key)
+ *   setSecure({on})                 → {}               (FLAG_SECURE on the window: no screenshots, no recents thumbnail)
+ *
+ * A start refuses `NoKeys`, `AlreadyJoined` (make, restore), `NoIdentity` (rotate) and
+ * `NoBiometrics`, and asks the weak-protection question before any word exists when the Keystore
+ * is not secure hardware (`WeakProtection` when declined). The master key is kept behind one
+ * biometric prompt, at the step that keeps it, and it names what the key is about to do.
+ *
  * Who may call: only over Capacitor's web-message transport ([viaWebMessageListener]; every call is
  * refused on its silent `addJavascriptInterface` fallback). [CallerDocument] tracks which document
  * real navigations brought in, from the `url` of [CallerWebViewClient]'s callbacks (never the history
@@ -82,7 +102,9 @@ import uniffi.we_phone_custody.StoreConfig
  * already running (the biometric unlock in `takeMaster`, `answer` and `revoke`; a `linkNext` poll
  * waiting for the other device) is not cancelled by a navigation: only its result is refused, which
  * is acceptable because the identity page made the call and the person unlocked it. The page cannot
- * supply a scanned code or say the match codes agree.
+ * supply a scanned code or say the match codes agree. Making, restoring and replacing, everything
+ * that touches the 12 words, and publishing what was made are the identity page's alone;
+ * `pendingIdentity` only reads.
  *
  * The TypeScript side of this surface is `apps/we-web/src/platform/deviceKey.ts`. Every call runs
  * off the main thread, on a pool of the plugin's own (a link's `linkNext` waits minutes for the
@@ -97,6 +119,8 @@ class DeviceKeyPlugin : Plugin() {
   private val master by lazy { BiometricMasterSealer(context.applicationContext) { activity } }
   private val prompt by lazy { ActionPrompt(context.applicationContext) { activity } }
   private val links = ConcurrentHashMap<String, Held>()
+  /** The identity flows the page is in, by the id [startFlow] gave it. */
+  private val flows = ConcurrentHashMap<String, IdentitySteps>()
   /** Which document is loaded, from real loads only. */
   private val document = CallerDocument()
   /** The ticket a camera call was admitted under, by its callback id, until the scan returns. */
@@ -391,7 +415,96 @@ class DeviceKeyPlugin : Plugin() {
     JSObject()
   }
 
-  /** Opens the camera on a QR code whose text starts with `prefix`; the text, uninterpreted. */
+  @PluginMethod
+  fun startMake(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) {
+    startFlow(IdentityFlow.MAKE, it)
+  }
+
+  @PluginMethod
+  fun startRestore(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) {
+    startFlow(IdentityFlow.RESTORE, it)
+  }
+
+  @PluginMethod
+  fun startRotate(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) {
+    startFlow(IdentityFlow.ROTATE, it)
+  }
+
+  @PluginMethod
+  fun identityStep(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) {
+    val input = try {
+      IdentityStepsJson.inputOf(call.getObject("input"))
+    } catch (e: IllegalArgumentException) {
+      throw Refusal("Invalid", e.message ?: "the step needs its input")
+    }
+    val id = call.getString("flow") ?: throw Refusal("Invalid", "the step needs its flow")
+    val flow = flows[id] ?: throw Refusal("Ended", "This step has ended. Start again.")
+    try {
+      val screen = flow.step(input)
+      val ended = flow.ended()
+      if (ended) endFlow(id, flow)
+      JSObject().put("screen", IdentityStepsJson.screenJson(screen)).put("ended", ended)
+    } catch (e: PhoneKeyException) {
+      if (e !is PhoneKeyException.WrongInput) endFlow(id, flow)
+      throw e
+    }
+  }
+
+  @PluginMethod
+  fun identityCancel(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) {
+    val id = call.getString("flow") ?: throw Refusal("Invalid", "identityCancel needs the flow")
+    flows[id]?.let { endFlow(id, it) }
+    JSObject()
+  }
+
+  @PluginMethod
+  fun pendingIdentity(call: PluginCall) = run(call, Caller.APP) {
+    JSObject().put("did", identity().pendingIdentity() ?: JSONObject.NULL)
+  }
+
+  @PluginMethod
+  fun finishPending(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) {
+    JSObject().put("did", identity().finishPending() ?: JSONObject.NULL)
+  }
+
+  @PluginMethod
+  fun retryMasterPushes(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) {
+    JSObject().put("note", identity().retryMasterPushes() ?: JSONObject.NULL)
+  }
+
+  /**
+   * Marks the window secure (`on: true`) while words are on screen, and clears it: Android leaves
+   * a secure window out of screenshots, screen recording and the recent-apps thumbnail. Answered
+   * once the flag is set, on the main thread.
+   */
+  @PluginMethod
+  fun setSecure(call: PluginCall) {
+    val ticket = callerTicket(call, Caller.IDENTITY_PAGE) ?: return
+    val on = call.getBoolean("on")
+    if (on == null) {
+      call.reject("setSecure needs on: true or false", "Invalid")
+      return
+    }
+    val host = activity
+    if (host == null) {
+      call.reject("the app has no window", "Unavailable")
+      return
+    }
+    host.runOnUiThread {
+      // A document that loaded while this waited for the main thread did not ask for this change.
+      if (!document.holds(ticket)) {
+        call.reject("The page changed. Start again.", "NotAllowed")
+        return@runOnUiThread
+      }
+      if (on) {
+        host.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+      } else {
+        host.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+      }
+      call.resolve()
+    }
+  }
+
   /** Opens the camera on a QR code whose text starts with `prefix`; the text, uninterpreted. */
   @PluginMethod
   fun scanCode(call: PluginCall) {
@@ -426,7 +539,60 @@ class DeviceKeyPlugin : Plugin() {
 
   override fun handleOnDestroy() {
     links.keys.toList().forEach { id -> links.remove(id)?.let { it.link.cancel(); it.link.close() } }
+    flows.keys.toList().forEach { id -> flows[id]?.let { endFlow(id, it) } }
     super.handleOnDestroy()
+  }
+
+  private enum class IdentityFlow { MAKE, RESTORE, ROTATE }
+
+  /**
+   * Starts [kind] and answers its first screen with the flow's id. The protection question is
+   * asked here, before any word is made or typed: a phone with no strong biometric is refused, and
+   * one whose Keystore is software only goes on once the person has agreed.
+   */
+  private fun startFlow(kind: IdentityFlow, ticket: CallerDocument.Ticket): JSObject {
+    if (!master.canAuthenticate()) {
+      throw Refusal("NoBiometrics", "Set up fingerprint or face unlock to keep the master key on this phone.")
+    }
+    val identity = identity()
+    val start = { weak: Boolean ->
+      when (kind) {
+        IdentityFlow.MAKE -> identity.startMake(weak)
+        IdentityFlow.RESTORE -> identity.startRestore(weak)
+        IdentityFlow.ROTATE -> identity.startRotate(weak)
+      }
+    }
+    val flow = try {
+      start(false)
+    } catch (e: PhoneKeyException.WeakProtection) {
+      if (!agreeToWeakProtection()) {
+        throw Refusal("WeakProtection", e.message ?: "The master key wasn't kept on this phone.")
+      }
+      stillHolds(ticket)
+      start(true)
+    }
+    val id = UUID.randomUUID().toString()
+    flows[id] = flow
+    try {
+      val screen = flow.next()
+      val ended = flow.ended()
+      if (ended) endFlow(id, flow)
+      return JSObject()
+        .put("flow", id)
+        .put("screen", IdentityStepsJson.screenJson(screen))
+        .put("ended", ended)
+    } catch (e: Exception) {
+      endFlow(id, flow)
+      throw e
+    }
+  }
+
+  /** Removes the flow, cancels it (its thread wipes what it holds) and frees the native handle. */
+  private fun endFlow(id: String, flow: IdentitySteps) {
+    if (flows.remove(id, flow)) {
+      flow.cancel()
+      flow.close()
+    }
   }
 
   /**

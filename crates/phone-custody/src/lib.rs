@@ -23,6 +23,7 @@
 
 uniffi::setup_scaffolding!();
 
+mod brake;
 mod checkpoint;
 mod claim;
 mod file;
@@ -30,6 +31,7 @@ mod holder;
 mod identity;
 mod ports;
 mod session;
+mod steps;
 mod vault;
 
 use std::path::PathBuf;
@@ -42,10 +44,11 @@ pub use claim::{ClaimProgress, PreparedClaim};
 pub use holder::{HolderLink, LinkStep};
 pub use identity::{
     AnswerView, AskedView, DeviceView, IdentityView, MasterTaken, PhoneIdentity, RequestView,
-    StoreConfig,
+    StoreConfig, REMOVED,
 };
 pub use ports::{Header, StoreReply, StoreRequest, StoreTransport, TransportError};
 pub use session::{SessionPurpose, SessionRequest};
+pub use steps::{IdentitySteps, PhoneInput, PhoneScreen, RestoreDeviceView};
 pub use vault::{MasterSealError, MasterSealer};
 
 use file::KeyFile;
@@ -146,6 +149,9 @@ pub enum PhoneKeyError {
     /// The offer, ticket or request ended (expired, cancelled, answered elsewhere).
     #[error("{reason}")]
     Ended { reason: String },
+    /// The input does not answer the screen shown (identity steps): the flow stays where it was.
+    #[error("that does not answer the screen shown")]
+    WrongInput,
 }
 
 impl From<SealError> for PhoneKeyError {
@@ -349,6 +355,38 @@ impl DeviceKeys {
 
     pub(crate) fn sealer(&self) -> Arc<dyn Sealer> {
         self.sealer.clone()
+    }
+
+    /// Records `scid` as the identity this phone is in, after this phone made or restored it
+    /// (a claim records its own through [`DeviceKeys::claim_answer`]). `store` is where its log
+    /// is. The same identity again changes nothing; another refuses `AlreadyJoined`, since a
+    /// phone is in one identity. A pending claim is dropped: the phone is in an identity now.
+    pub(crate) fn record_identity(
+        &self,
+        scid: &str,
+        seq: Option<u64>,
+        store: &str,
+    ) -> Result<(), PhoneKeyError> {
+        let mut guard = self.lock();
+        let file = guard.as_mut().ok_or(PhoneKeyError::NoKeys)?;
+        if let Some(joined) = &file.identity {
+            if joined.scid == scid {
+                return Ok(());
+            }
+            return Err(PhoneKeyError::AlreadyJoined {
+                did: ad4m_identity_core::did_of(&joined.scid),
+            });
+        }
+        let mut next = file.clone();
+        next.identity = Some(file::Joined {
+            scid: scid.to_string(),
+            seq,
+            store: Some(store.to_string()),
+        });
+        next.pending = None;
+        file::write(&self.path, &next)?;
+        *file = next;
+        Ok(())
     }
 
     /// The directory the key file is in: the master-key file sits beside it.

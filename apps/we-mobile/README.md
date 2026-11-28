@@ -6,11 +6,15 @@ executor with the WebView's own `WebSocket` and `fetch`, the same way it does in
 is replaced or patched in.
 
 The Coasys app boots before any session (`apps/coasys/README.md`). On the phone it finds the
-`DeviceKey` plugin and uses the phone's host: the first run asks the person to link the phone to
-their identity (the phone joins one; making one and the 12 words are a computer's, and the screen
-says so), and the connection choice offers the key host the phone was given (`we-phone/key-host`)
+`DeviceKey` plugin and uses the phone's host: the first run asks how the phone comes in (make an
+identity here, link to one, or use the 12 words), and the connection choice offers the key host the phone was given (`we-phone/key-host`)
 and AD4M Connect. With no network it shows the offline screen rather than a connect screen that
 cannot answer. WE's app mounts in the same page once a connection is chosen.
+
+The phone can make an identity of its own, restore one from its 12 words and replace its master key
+with them, with no computer and no executor (below, "Make, restore and replace"). The first run's
+three doors open them (`apps/coasys/src/hosts/phone.ts`), and Settings opens replacing the master
+key ("Replace master key").
 
 The app adds one page of its own: the page Capacitor opens when the phone's Android System WebView
 is too old to run WE, or when WE's page fails to load (`src/error/`).
@@ -102,7 +106,8 @@ run, against a throwaway store and executor.
 ## The identity on the phone
 
 The phone runs its identity itself, through the identity store, with no computer in the loop: it
-joins, keeps the master key, adds devices and answers their requests.
+makes, restores or joins an identity, keeps the master key, replaces it with the words, adds
+devices and answers their requests.
 
 Why through the store and not through the executor the phone signs in to: that executor has its own
 device key, in the same identity or another. Its operator-only identity calls (`claimOffer`,
@@ -147,8 +152,9 @@ record key is unwrapped in Rust with the phone's own enc seed, and never sent to
   (`@we/identity-window`, the same screens the desktop opens) over the `DeviceKey` plugin. It is a
   page of its own, so no template, module or store code runs beside it. It wears the Coasys app's
   theme, name and mark, worked into static CSS when `www/` is built. WE opens it in two cases:
-  - on the first boot of a phone with no identity, to join one (`?join=`). "Not now" falls back to
-    WE's own sign-in;
+  - from the first run of a phone with no identity: to join one (`?join=`; "Not now" falls back to
+    WE's own sign-in), to make one (`?change={"kind":"create"}`) or to restore one
+    (`?change={"kind":"restore"}`);
   - for each change Settings asks for (`?change=<json>`), through the phone's custody host
     (`apps/we-web/src/platform/phoneCustody.ts`).
 
@@ -178,6 +184,75 @@ record key is unwrapped in Rust with the phone's own enc seed, and never sent to
   (`PhoneIdentity::devices`), only over the version it read, so a change another device made since
   is never overwritten.
 
+- **Make, restore and replace.** `crates/phone-custody/src/steps.rs` runs the three 12-word flows
+  over the store with no executor. The steps are `crates/identity-steps`, the crate the desktop's
+  custody service runs too, so both decide and say the same things. Each flow is a step machine on
+  a thread of its own. The page drives it through the plugin (`startMake`, `startRestore`,
+  `startRotate`, then `identityStep({flow, input})`): each input is answered by one screen (the
+  screens and inputs are listed in `IdentityStepsJson.kt`).
+  - **Make:** the 12 new words are shown once, then the person writes them down. Two words are
+    asked back, the phone is named, and master #0 is kept here behind one fingerprint. Then the
+    incept, co-signed by the phone's device key, is published.
+  - **Restore:** the 12 words are typed and the identity's devices are listed, with its apps ticked
+    to lock out. One rotation revokes the ticked devices and keeps the new master key here, and
+    the phone joins as a device. The revoke is always from now: the phone has no "missing since"
+    input. If the store refuses the revoke after the rotation is published, the page shows
+    "Devices not revoked yet" (`rotated-not-revoked`). Try again publishes only the revoke, with
+    no words typed again, and then joins the phone.
+  - **Replace:** the 12 words are typed and the next master key is kept here. The other devices
+    that keep the master key are sent it.
+
+  The master key is kept under the same rule as a taken one. A weak keystore gets the same
+  question before any word is made or typed.
+
+  The words exist only in Rust memory, in types that zero their bytes. They go to the page once,
+  to be written down, and are wiped once two are typed back right or when the flow ends any other
+  way (cancelled, an error, idle for 30 minutes). Typed words are wiped when the step that read
+  them is done. The page shows words with the window marked secure (`setSecure({on})`: no
+  screenshots, no recent-apps thumbnail), and nothing touches the clipboard.
+
+  A make that kept its identity and could not publish it leaves it pending. The make's stop screen
+  says so, and its Try again publishes it. Once the flow is gone, `finishPending()` publishes it:
+  the phone's custody host calls it whenever it reads the identity and finds none but a pending one
+  (`pendingIdentity()`), which is at every boot and every time Settings reads the identity, and
+  the first run's alert says so until it is published. A new make does that too before it makes
+  anything.
+
+  **The screens** (`src/identity/transport.ts`, drawn by the shared window, so a phone and a
+  computer read the same words, with "phone" where a computer's say "computer"):
+
+  | Flow    | Screens                                                                                                          |
+  | ------- | ---------------------------------------------------------------------------------------------------------------- |
+  | Make    | `show-words` → `confirm-words` (again, with the error, while wrong) → `name-device` → `identity-ready`           |
+  | Restore | `enter-words` (again, naming the wrong word's place) → `restore-devices` (tick devices to lock out) → `restored` |
+  | Replace | `enter-words` → `master-replaced`                                                                                |
+
+  The stops, each with Try again: `make-stopped` (pending: publish again; otherwise make again from
+  the same words), `rotated-not-revoked`, `restore-not-linked` and `master-not-kept`. A flow that cannot start (no
+  biometric, the person declined a weak keystore, a phone already in an identity, the store down) is
+  a `failed` screen in the page's words.
+
+  The DID is shown on `identity-ready` only, where it is made; no other new screen draws one
+  (`packages/identity-window/src/screens.test.ts` checks the window's source for it).
+
+  The window is secure from before the flow starts (so before the plugin makes a word) until the
+  first screen that neither shows nor asks for the words, and is cleared when the page leaves
+  (Done, Close or Cancel), which also cancels a flow still open. If it cannot be made secure, the
+  page shows no words and asks for none (`NOT_SECURE`). The transport keeps only the last screen's
+  name, never a screen, and the window clears its word fields when another screen is drawn.
+
+  A new log's first event carries a proof of work. The pinned store checks one only when it is
+  sent, but the phone always sends one so it keeps working once the store requires it. It solves it
+  (`src/brake.rs`, ad4m's solver) at the bits the store names (`GET /v1/pow`), and refuses more
+  than 28 bits. At the store's default of 22 bits, a solve in a release build on a desktop CPU took
+  143 ms to 2.3 s (median about 0.5 s); the whole make against the store binary, 0.05 to 3.5 s. The
+  spread is the search's own: some solves take several times the median. An unoptimised (debug)
+  build is far slower, about 39 s once, so time it only in release. A phone is slower.
+
+- **What it cannot.** A revoke that rotates in the same step (revoking a device that keeps the
+  master key, and replacing the master key with it): the phone revokes the device and the person
+  then chooses "Replace master key". A revoke request that asks for a rotation is answered on
+  a computer. Removing the master key from the phone and adding a bot are a computer's too.
 - **Who may call the plugin.** WE runs installed modules and cartridges in the same origin as its
   own pages, so "a call from this app" says nothing about who made it. The plugin binds the
   principal to the **document**, not to an address: `CallerDocument.kt` records which document is
@@ -218,7 +293,8 @@ record key is unwrapped in Rust with the phone's own enc seed, and never sent to
   person confirmed or unlocked it; nothing a different page asked for is ever started.
   What a script cannot fake is the rule:
   - Everything that links a device, sends the master key, renames, revokes, answers a request,
-    joins, takes or asks for the master key, or opens the camera is accepted **only from the
+    joins, takes or asks for the master key, makes or restores an identity, replaces the master key
+    (or touches the 12 words in any way), finishes a pending publish, or opens the camera is accepted **only from the
     identity page** (`/mobile/identity.html`, `IDENTITY_PAGE` in `phoneCustody.ts`); any other page
     is refused with `NotAllowed`. That page runs no template, module or store code.
   - Reads of public state (`status`, `identityStatus`, `devices`, `requests`, `masterWaiting`) and
@@ -244,9 +320,6 @@ record key is unwrapped in Rust with the phone's own enc seed, and never sent to
     navigation's callbacks, and that `onPageCommitVisible` arrives for `identity.html` (if it does
     not, the identity page is refused). WebView debugging stays off unless a build asks for
     it (below), since a call from DevTools would come from the page it is on.
-- **What it cannot.** Anything that needs the 12 words: replacing the master key, restoring, and a
-  revoke that rotates. The phone takes no words (`takesWords: false`), and those requests are left
-  for a computer.
 - **The camera.** `ScanActivity.kt`: CameraX and ML Kit's bundled barcode scanner (the model ships
   in the app; no Play services, nothing sent anywhere). A QR that is not the expected kind is passed
   over. A refused camera permission comes back as `denied`, and the page offers pasting.
@@ -421,8 +494,10 @@ WebView version, not an Android version. `minSdk` stays 30.
 
 ## What is left on the phone
 
-- The 12-word changes on the phone: replacing the master key, restoring, a rotating revoke. They run
-  on a computer.
+- A revoke that rotates in one step, on the phone. It runs on a computer; the phone does the
+  two one after the other.
+- Retrying the pushes of a replaced master key to the other holders (`retryMasterPushes`) from
+  the page: the plugin method and its TS binding exist, and no screen calls it yet.
 - Pause, and choosing the host from a list.
 
 ## Files
@@ -442,13 +517,17 @@ WebView version, not an Android version. `minSdk` stays 30.
 | `…/devicekey/CallerPage.kt`, `MatchCode.kt`, `ActionPrompt.kt`, `PromptText.kt` | Which page may call, the native match-code compare, and the prompts that name each action                     |
 | `…/devicekey/StoreHttp.kt`                                                      | The identity store's HTTP, to the client's `HttpClient` contract                                              |
 | `…/devicekey/ScanActivity.kt`                                                   | The camera: CameraX and ML Kit's bundled barcode scanner                                                      |
+| `…/devicekey/IdentityStepsJson.kt`                                              | The make, restore and replace flows' screens and inputs, as the page's JSON                                   |
 | `src/identity/`                                                                 | The phone's identity page: the shared identity window over the plugin                                         |
 | `tests/identityTransport.test.ts`                                               | The identity page's transport over a fake plugin                                                              |
 | `android/app/src/test/…/DeviceKeysJvmTest.kt`                                   | The plugin's Kotlin over the real Rust library, on the JVM                                                    |
 | `android/app/src/test/…/CallerGuardJvmTest.kt`                                  | The calling-page rule, the match-code compare and the prompt wording, on the JVM                              |
 | `android/app/src/test/…/PhoneIdentityJvmTest.kt`, `ScanCodeJvmTest.kt`          | The identity flows over a real store's ports, and the scanner's code parsing, on the JVM                      |
+| `android/app/src/test/…/IdentityStepsJvmTest.kt`                                | The make flow through the plugin's handle, and the steps' JSON, on the JVM                                    |
 | `android/app/src/androidTest/…/KeystoreSealerTest.kt`                           | The Keystore half, on a device or emulator                                                                    |
 | `../../crates/phone-custody/`                                                   | The keys, the claim and the session statements, in Rust                                                       |
 | `../../crates/phone-custody/src/{ports,identity,vault,holder,checkpoint}.rs`    | The store over the phone's ports, the identity flows, the master key's vault, adding a device, checkpoints    |
+| `../../crates/phone-custody/src/{steps,brake}.rs`                               | Make, restore and replace with the words; the proof of work a new log's first event carries                   |
+| `../../crates/identity-steps/`                                                  | The steps of make, restore and replace, and the publish driver, shared with the desktop's `crates/custody`    |
 | `../we-web/src/platform/deviceKey*.ts`, `keySession.ts`, `keyHost.ts`           | The plugin's TS surface, key login and renewal, the key host                                                  |
 | `../we-web/src/platform/phoneCustody.ts`                                        | Settings' custody host on the phone: the plugin's reads, changes sent to the identity page                    |

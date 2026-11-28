@@ -1929,6 +1929,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "we-identity-steps"
+version = "0.1.0"
+dependencies = [
+ "ad4m-identity-client",
+ "ad4m-identity-core",
+ "futures-util",
+ "log",
+ "serde",
+ "zeroize",
+]
+
+[[package]]
 name = "we-phone-custody"
 version = "0.1.0"
 dependencies = [
@@ -1945,6 +1957,7 @@ dependencies = [
  "http-body-util",
  "identity-store",
  "libc",
+ "log",
  "rand_core",
  "serde",
  "serde_json",
@@ -1953,6 +1966,7 @@ dependencies = [
  "tokio",
  "tower",
  "uniffi",
+ "we-identity-steps",
  "zeroize",
 ]
 

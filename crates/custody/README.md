@@ -52,7 +52,9 @@ unlock too would close the gap, but the main window's state reads it on every ca
 The crate runs the identity client's flows — make the identity, add a device, unlink one, revoke
 one — and reaches the executor only over its RPC with the custody credential. It is its own crate so
 nothing of it links the executor; `tests/boundary.rs` keeps it so. No Windows: the desktop apps
-start there without identity.
+start there without identity. The word steps (make from new words, restore, replace the master key)
+are `crates/identity-steps`, which the phone's `crates/phone-custody` runs too; this crate holds the
+identity window's conversation and its vault around them.
 
 An **unlink** retires a device: it signs nothing new, and what it signed before stays valid. A
 **revoke** is for one lost or stolen, and takes the time the person no longer trusts it from

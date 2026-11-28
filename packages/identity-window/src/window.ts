@@ -16,6 +16,7 @@ import './identity.css';
 import brand from 'virtual:we-identity-brand';
 
 import {
+  blankedBefore,
   BOT_ACTIONS,
   BOT_DAYS_DEFAULT,
   BOT_DAYS_MAX,
@@ -25,6 +26,8 @@ import {
   heading,
   isLast,
   oneAtATime,
+  type PageFrames,
+  painted,
   refusedField,
   remaining,
   type Screen,
@@ -46,10 +49,10 @@ export interface IdentityTransport {
   /**
    * Ends the step and closes the window: `null`. A step that could not be ended (a new device that had
    * already joined, a cancel the identity service did not confirm) answers the screen to show instead,
-   * and the window stays.
+   * and the window stays. The window's screen is blank, and drawn so, before this is called.
    */
   cancel(): Promise<Screen | null>;
-  /** Closes the window after the step's last screen. */
+  /** Closes the window after the step's last screen. The screen is blank before this is called. */
   finish(): Promise<void>;
   /**
    * Reads a QR code with the device's camera: the text of one that starts with `prefix`, or `null`
@@ -121,7 +124,10 @@ function errorSlot(text: string | null): { line: HTMLParagraphElement; show: (me
     },
   };
 }
-/** Marked at each screen drawn and each step sent: a wait's answer is drawn only while it holds. */
+/**
+ * Marked at each screen drawn, each step sent and each cancel: a step's or a wait's answer is drawn
+ * only while it holds.
+ */
 const turn = screenTurns();
 
 type Child = Node | string;
@@ -153,30 +159,64 @@ function secretField(label: string): { label: HTMLLabelElement; input: HTMLInput
   return { label: el('label', {}, label, input), input };
 }
 
-/** Runs a call, draws the screen it answers, and clears the fields it read. */
-async function run(call: () => Promise<Screen>, clear: HTMLInputElement[] = []) {
+/**
+ * Runs a call, draws the screen it answers, and clears the fields it read. The buttons are off while
+ * it runs, but those in `live`. An answer that comes after a cancel is not drawn.
+ */
+async function run(call: () => Promise<Screen>, clear: HTMLInputElement[] = [], live: HTMLButtonElement[] = []) {
   turn.mark();
-  for (const b of Array.from(root.querySelectorAll('button'))) b.disabled = true;
+  for (const b of Array.from(root.querySelectorAll('button'))) if (!live.includes(b)) b.disabled = true;
+  const current = turn.hold();
   try {
-    draw(await call());
+    const screen = await call();
+    if (current()) draw(screen);
   } catch (error) {
-    draw({ screen: 'failed', message: String(error) });
+    if (current()) draw({ screen: 'failed', message: String(error) });
   } finally {
     for (const input of clear) input.value = '';
   }
 }
 
-const step = (input: StepInput, clear: HTMLInputElement[] = []) => run(() => host.step(input), clear);
+const step = (input: StepInput, clear: HTMLInputElement[] = [], live: HTMLButtonElement[] = []) =>
+  run(() => host.step(input), clear, live);
 /*
   Cancel and Done close the window through the host. Where the host cannot be reached (its custody
   service has stopped), the window says so and closes itself, rather than leaving a button that does
   nothing and a window the person has to close by hand. A cancel that could not end the step answers
   the screen to show instead, and the window stays on it. While a cancel is out the window's buttons
-  are off, and a second click answers the cancel already sent rather than sending another.
+  are off, and a second click answers the cancel already sent rather than sending another. A cancel
+  ends the turn of the step that runs: its answer, if one comes, is not drawn.
+
+  Both blank the screen first, and wait for a frame that shows it blank: on the phone the host then
+  lets screenshots in again, and the words must not be on the screen then.
 */
+function blank() {
+  if (offerTimer !== undefined) {
+    window.clearInterval(offerTimer);
+    offerTimer = undefined;
+  }
+  forgetWords();
+  root.replaceChildren();
+}
+
+/** The page's frames, for [`painted`]: a blank screen counts as shown only while the page is. */
+const page: PageFrames = {
+  hidden: () => document.visibilityState === 'hidden',
+  shown(then) {
+    const seen = () => {
+      if (document.visibilityState === 'hidden') return;
+      document.removeEventListener('visibilitychange', seen);
+      then();
+    };
+    document.addEventListener('visibilitychange', seen);
+  },
+  frame: (then) => void requestAnimationFrame(() => then()),
+  after: (ms, then) => void window.setTimeout(then, ms),
+};
+
 async function leave(call: () => Promise<Screen | null | void>) {
   try {
-    const instead = await call();
+    const instead = await blankedBefore(blank, () => painted(page), call);
     if (instead) draw(instead);
   } catch (error) {
     draw({ screen: 'failed', message: String(error) });
@@ -583,7 +623,8 @@ function body(screen: Screen): Child[] {
         box.checked = d.lockOut;
         return { keyId: d.keyId, box, label: d.name || d.keyId };
       });
-      const name = textField('Name for this computer', '', 'Home desktop');
+      const noun = host.deviceNoun ?? 'computer';
+      const name = textField(`Name for this ${noun}`, '', noun === 'phone' ? 'My phone' : 'Home desktop');
       // Drawn for the devices ticked to start with, which is how the service sends the screen again.
       const since = sincePicker(devicesKey(screen.devices.filter((d) => d.lockOut).map((d) => d.keyId)));
       const problem = errorSlot(null);
@@ -598,8 +639,8 @@ function body(screen: Screen): Child[] {
           ...(at === undefined ? {} : { since: at }),
         });
       };
+      // No DID here: the person knows the identity by its devices, and sees a DID only where it is made.
       return [
-        el('div', { className: 'link', textContent: screen.did }),
         ...ticks.map((t) => el('label', { className: 'check' }, t.box, `Remove ${t.label}`)),
         since.label,
         name.label,
@@ -701,7 +742,6 @@ function body(screen: Screen): Child[] {
     }
     case 'restore-not-linked':
       return [
-        el('div', { className: 'link', textContent: screen.did }),
         el(
           'div',
           { className: 'row' },
@@ -709,8 +749,28 @@ function body(screen: Screen): Child[] {
           button('Close', cancel),
         ),
       ];
+    case 'name-device': {
+      const name = textField('Name', screen.name);
+      // On the phone this step can solve the store's proof of work, for a minute or more: Cancel stays
+      // live while it runs, and reaches the flow's cancel.
+      const stop = button('Cancel', cancel);
+      const go = () => step({ kind: 'name-device', name: typed(name.input) }, [], [stop]);
+      return [name.label, el('div', { className: 'row' }, button('Continue', go, 'primary'), stop)];
+    }
+    case 'make-stopped': {
+      // Closing leaves a pending identity pending: it is published when the app next opens. The publish
+      // tried again can solve the proof of work too, so Close stays live while it runs.
+      const close = button('Close', cancel);
+      return [
+        el(
+          'div',
+          { className: 'row' },
+          button('Try again', () => step({ kind: 'try-again' }, [], [close]), 'primary'),
+          close,
+        ),
+      ];
+    }
     case 'restored':
-      return [el('div', { className: 'link', textContent: screen.did })];
     case 'master-replaced':
     case 'master-removed':
       return [];

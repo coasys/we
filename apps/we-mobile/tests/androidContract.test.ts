@@ -89,9 +89,9 @@ describe('who may call the identity plugin', () => {
     for (const [, name, rest] of methods) {
       const asked =
         rest.includes('run(call, Caller.') ||
-        plugin.includes(
-          `fun ${name}(call: PluginCall) {\n    val ticket = callerTicket(call, Caller.IDENTITY_PAGE) ?: return`,
-        );
+        new RegExp(
+          `fun ${name}\\(call: PluginCall\\) \\{\\n    (val ticket = )?callerTicket\\(call, Caller\\.IDENTITY_PAGE\\) \\?: return`,
+        ).test(plugin);
       expect(asked, name).toBe(true);
     }
     expect(plugin).not.toMatch(/\brun\(call\)/);
@@ -190,6 +190,8 @@ describe('who may call the identity plugin', () => {
     expect(plugin).toMatch(
       /fun linkConfirm[\s\S]*?askForMatchCode[\s\S]*?stillHolds\(ticket\)[\s\S]*?held\.link\.confirm/,
     );
+    expect(plugin).toMatch(/fun startFlow[\s\S]*?agreeToWeakProtection[\s\S]*?stillHolds\(ticket\)\s+start\(true\)/);
+    expect(plugin).toMatch(/fun setSecure[\s\S]*?runOnUiThread \{[\s\S]*?document\.holds\(ticket\)[\s\S]*?FLAG_SECURE/);
   });
 
   it('takes the code of a device to add from the camera, never from the call', () => {

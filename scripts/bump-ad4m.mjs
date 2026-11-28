@@ -5,8 +5,9 @@
  *
  * Moves WE's pin of @coasys/ad4m and @coasys/ad4m-connect: the root `pnpm.overrides`, which decide
  * what every workspace package installs. Nothing else declares a version (the packages say `*`), so
- * a bump is that and the lockfile — and the ad4m revs and Cargo.lock of each crate under `crates/`,
- * which build the desktop and phone apps' Rust against the same commit.
+ * a bump is that and the lockfile — and the ad4m revs and Cargo.lock of the Rust crates (custody,
+ * identity-steps, phone-custody), which build the desktop's and the phone's Rust against the same
+ * commit.
  *
  * Two kinds of target (scripts/ad4m-pin.mjs has why):
  *
@@ -43,7 +44,7 @@
  */
 import { createHash } from 'node:crypto';
 import { execSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
@@ -263,11 +264,38 @@ const lockHasIntegrity = () => {
   return listed.length === PACKAGES.length && listed.every((s) => s.integrity === tarballs[s.tarball]);
 };
 
+/*
+  The Rust crates build against the same ad4m, by commit: the desktop's custody crate
+  (`crates/custody/tests/boundary.rs` checks it agrees with the pin), the identity steps it shares
+  with the phone, and the phone's (`crates/identity-steps/tests/boundary.rs` checks all three name
+  one rev, or the ad4m types the steps take would not be the types the others pass). Their revs
+  move with the pin, and their lockfiles with them; a bump that moved only the JavaScript left the
+  desktop app's Rust on the old ad4m, unnoticed until a release. Every manifest moves before any
+  lockfile is updated: custody and the phone resolve the identity steps by path.
+*/
+const RUST_CRATES = [
+  { dir: 'identity-steps', packages: ['ad4m-identity-client', 'ad4m-identity-core'] },
+  { dir: 'custody', packages: ['ad4m-identity-client', 'ad4m-identity-core', 'ad4m-client', 'ad4m-ldk'] },
+  {
+    dir: 'phone-custody',
+    packages: ['ad4m-identity-client', 'ad4m-identity-core', 'ad4m-hash-chain', 'ad4m-ldk', 'identity-store'],
+  },
+];
+
 const same =
   before &&
   before.kind === next.kind &&
   (next.kind === 'snapshot' ? before.commit === next.commit : before.version === next.version);
-if (same && lockHasIntegrity()) {
+// A merge can bring the JavaScript pin in while a crate keeps the old rev: done only when every
+// crate names the commit too.
+const cratesOnPin = () =>
+  !to ||
+  RUST_CRATES.every((crate) =>
+    [...readFileSync(join(ROOT, 'crates', crate.dir, 'Cargo.toml'), 'utf8').matchAll(AD4M_REV)].every((m) =>
+      m[0].includes(to),
+    ),
+  );
+if (same && lockHasIntegrity() && cratesOnPin()) {
   console.log(`Already on ${describePin(next)}.`);
   process.exit(0);
 }
@@ -316,37 +344,33 @@ for (const name of PACKAGES) root.pnpm.overrides[name] = spec(name);
 writeFileSync(rootPath, JSON.stringify(root, null, 2) + '\n');
 console.log(`Pinned ${PACKAGES.join(' and ')} to ${describePin(next)}${commit ? ` (${commit})` : ''}.`);
 
-/*
-  The Rust crates build against the same ad4m, by commit (`crates/custody/tests/boundary.rs`
-  checks the two agree). Every crate under `crates/` that names ad4m by rev (custody for the
-  desktop app, phone-custody for the phone) moves with the pin, and its lockfile with it; a bump
-  that moved only the JavaScript left the apps' Rust on the old ad4m, unnoticed until a release.
-*/
-const AD4M_CRATE = /^([\w-]+) = \{ git = "https:\/\/github\.com\/coasys\/ad4m"/gm;
-for (const crate of readdirSync(join(ROOT, 'crates'))) {
-  const crateDir = join(ROOT, 'crates', crate);
-  const manifest = join(crateDir, 'Cargo.toml');
-  if (!existsSync(manifest)) continue;
-  const text = readFileSync(manifest, 'utf8');
-  if (!text.match(AD4M_REV)) continue;
-  if (!to) {
-    console.warn(
-      `\nThe ad4m commit of ${describePin(next)} is unknown, so crates/${crate}/Cargo.toml still names the old one: move its revs by hand.`,
-    );
-    continue;
+if (!to) {
+  console.warn(
+    `\nThe ad4m commit of ${describePin(next)} is unknown, so ${RUST_CRATES.map((c) => `crates/${c.dir}`).join(', ')} ` +
+      'still name the old one: move their revs by hand.',
+  );
+} else {
+  const moved = [];
+  for (const crate of RUST_CRATES) {
+    const manifest = join(ROOT, 'crates', crate.dir, 'Cargo.toml');
+    const text = readFileSync(manifest, 'utf8');
+    const next = text.replace(AD4M_REV, `$1${to}$3`);
+    if (next === text) continue;
+    writeFileSync(manifest, next);
+    console.log(`Moved crates/${crate.dir} to ad4m ${to.slice(0, 9)}.`);
+    moved.push(crate);
   }
-  const moved = text.replace(AD4M_REV, `$1${to}$3`);
-  if (moved === text) continue;
-  writeFileSync(manifest, moved);
-  console.log(`Moved crates/${crate} to ad4m ${to.slice(0, 9)}.`);
-  const update = `cargo update ${[...new Set([...text.matchAll(AD4M_CRATE)].map((m) => `-p ${m[1]}`))].join(' ')}`;
-  try {
-    // From the crate's folder, so rustup takes the toolchain its `rust-toolchain.toml` pins.
-    execSync(update, { cwd: crateDir, stdio: 'inherit' });
-  } catch {
-    fail(
-      `crates/${crate}/Cargo.lock could not be updated (is cargo installed?). From crates/${crate}, run:\n  ${update}`,
-    );
+  for (const crate of moved) {
+    const update = `cargo update ${crate.packages.map((p) => `-p ${p}`).join(' ')}`;
+    try {
+      // From the crate's folder, so rustup takes the toolchain its `rust-toolchain.toml` pins.
+      execSync(update, { cwd: join(ROOT, 'crates', crate.dir), stdio: 'inherit' });
+    } catch {
+      fail(
+        `crates/${crate.dir}/Cargo.lock could not be updated (is cargo installed?). From crates/${crate.dir}, run:\n` +
+          `  ${update}`,
+      );
+    }
   }
 }
 
