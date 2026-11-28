@@ -12,15 +12,15 @@ The **manifest** is the neutral declaration of WE's entities: an `EntityManifest
 2. `src/manifest/index.ts` collects them in `CORE_DEFS`. It builds `CORE_MANIFEST` (version `'1'`) from them plus `WeNode` (`WE_NODE_ENTITY`). An entity with `base: 'WeNode'` gets `WE_NODE_RELATIONS` merged after its own relations.
 3. `pnpm --filter @we/entities generate:types` runs `scripts/generateTypes.mjs`. It writes `src/manifest/types.ts`: one `<Entity>Record` interface per entity, over `RecordInstance` (`base.ts` holds `WeNodeRecord`).
 4. `pnpm --filter @we/backend-ad4m generate:classes` runs `scripts/generateClasses.mjs`. It writes one decorated class per entity to `packages/backend-system/ad4m/src/entities/`, plus `index.ts` and `conformance.ts` (the type assertions).
-5. `validateManifest` (in `@we/backend-shared`) checks any manifest before use. For example, an entity with `blockable: true` must declare a `version` property.
+5. `validateManifest` (in `@we/backend-shared`) checks any manifest before use. For example, a concrete entity with `blockable: true` must declare a `version` property.
 
-| `EntitySchema` field | Meaning |
-|---|---|
-| `properties` | scalar fields (`PropertySchema`: `type`, `required`, `format: 'file'`, …) |
-| `relations` | `RelationSchema`: `target`, `cardinality`, `predicate`, `reverseOf`, `containment` |
-| `blockable` | the entity is a block and can be composed into documents |
-| `extractable` | the entity is eligible as an interpretation target |
-| `authoring`, `display` | the fields a generated form offers, and how a record is summarised |
+| `EntitySchema` field   | Meaning                                                                            |
+| ---------------------- | ---------------------------------------------------------------------------------- |
+| `properties`           | scalar fields (`PropertySchema`: `type`, `required`, `format: 'file'`, …)          |
+| `relations`            | `RelationSchema`: `target`, `cardinality`, `predicate`, `reverseOf`, `containment` |
+| `blockable`            | the entity is a block and can be composed into documents                           |
+| `extractable`          | the entity is eligible as an interpretation target                                 |
+| `authoring`, `display` | the fields a generated form offers, and how a record is summarised                 |
 
 Block types and their composer belong to [Blocks](../../modules/blocks/README.md). A module declares its own entities in its `entities` contribution ([Contributions](../../modules/contract/contributions.md)).
 

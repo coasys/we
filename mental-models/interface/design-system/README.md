@@ -17,14 +17,14 @@ The **design system** is the set of packages that a template draws with. They ar
 
 <details><summary>How it works</summary>
 
-| Layer | Package | Folder |
-|---|---|---|
-| 1 | `@we/tokens` | `design-system/1-tokens` |
-| 2 | `@we/themes` | `design-system/2-themes` |
-| 3 | `@we/primitives` | `design-system/3-primitives` |
-| 4 | `@we/components` | `design-system/4-components` |
-| 5 | `@we/widgets` | `design-system/5-widgets` |
-| — | `@we/design-types`, `@we/design-utils`, `@we/drag` | `design-system/types`, `utils`, `drag` |
+| Layer | Package                                            | Folder                                 |
+| ----- | -------------------------------------------------- | -------------------------------------- |
+| 1     | `@we/tokens`                                       | `design-system/1-tokens`               |
+| 2     | `@we/themes`                                       | `design-system/2-themes`               |
+| 3     | `@we/primitives`                                   | `design-system/3-primitives`           |
+| 4     | `@we/components`                                   | `design-system/4-components`           |
+| 5     | `@we/widgets`                                      | `design-system/5-widgets`              |
+| —     | `@we/design-types`, `@we/design-utils`, `@we/drag` | `design-system/types`, `utils`, `drag` |
 
 1. A schema node sets design-system props (`p`, `gap`, `bg`, `r`, `tone`, …) on any primitive or layout component. `@we/design-utils` turns these props into CSS for both layers.
 2. A theme writes variables on a root. Primitives and components read these variables through roles and families, never through fixed values.

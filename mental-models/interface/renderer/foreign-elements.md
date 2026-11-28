@@ -9,12 +9,14 @@ A **foreign element** is a custom element from a third-party library that a depl
 <details><summary>How it works</summary>
 
 **Elements.**
+
 1. A seed entry is `{ package, define, tags }`. `define` defaults to the package itself. `tags` defaults to the tags in the package's custom elements manifest.
 2. `pnpm --filter @we/app-shell generate-elements` checks each entry. The package must be a dependency of `@we/app-shell`. Each tag must be a valid custom element name, must not start with `we-`, and must come from one package only.
 3. The generator writes `foreignElements.generated.ts`: one import per `define` entry, and `foreignElementTags`. `componentRegistry.tsx` imports this file.
 4. WE's own seed has no `elements` list, so `foreignElementTags` is empty.
 
 **Content security policy.**
+
 1. `buildContentSecurityPolicy({ host, dev, seed, meta })` builds the policy for `electron`, `tauri` or `web`.
 2. `img-src`, `media-src` and `frame-src` list sources, not all of `https:`. `DEFAULT_SOURCES` holds what WE itself loads from. `seedSources(seed)` adds the seed's `contentSecurity.images`, `media` and `frames` origins, and the origin of each embedded app's `paths.webUrl`. A malformed origin stops the build.
 3. A production `script-src` has no `'unsafe-inline'`. `object-src` is `'none'`.

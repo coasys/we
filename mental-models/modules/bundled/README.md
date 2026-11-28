@@ -7,6 +7,7 @@ The bundled modules are the module packages in `packages/module-system/` that WE
 **Parent:** [Modules](../README.md)
 
 ## Parts
+
 - [Calls](calls/README.md): the call module, the call record, its WebRTC mesh, backend sessions, and the live module that shares cursors and views in a call.
 - [Transcription](transcription/README.md): capture of each agent's own microphone into the call record, and the interpretation passes over it.
 - [Feed](feed.md): the space's timeline of posts and calls, and `@we/messages`, which draws one message line.
@@ -15,18 +16,18 @@ The bundled modules are the module packages in `packages/module-system/` that WE
 
 <details><summary>How it works</summary>
 
-| Module | Scope | Kernels | Surface |
-|---|---|---|---|
-| `call` | space | records, presence, ephemeral, media, peerConnection, call | chrome |
-| `transcribe` | space | records, presence, media, transcription, interpretation | chrome |
-| `feed` | space | records, interpretation | chrome |
-| `live` | space | presence, ephemeral, view | chrome |
-| `notes` | agent | agentData, records | chrome |
-| `pocket` | agent | agentData | chrome |
-| `polls` | space | records | content |
-| `globe` | space | — | capability |
-| `graph` | space | — | capability |
-| `flux` | space | — (requires the `ad4m` backend) | capability |
+| Module       | Scope | Kernels                                                   | Surface    |
+| ------------ | ----- | --------------------------------------------------------- | ---------- |
+| `call`       | space | records, presence, ephemeral, media, peerConnection, call | chrome     |
+| `transcribe` | space | records, presence, media, transcription, interpretation   | chrome     |
+| `feed`       | space | records, interpretation                                   | chrome     |
+| `live`       | space | presence, ephemeral, view                                 | chrome     |
+| `notes`      | agent | agentData, records                                        | chrome     |
+| `pocket`     | agent | agentData                                                 | chrome     |
+| `polls`      | space | records                                                   | content    |
+| `globe`      | space | —                                                         | capability |
+| `graph`      | space | —                                                         | capability |
+| `flux`       | space | — (requires the `ad4m` backend)                           | capability |
 
 The graph module is on the [Graph system](../graph-system/README.md) page, with the engine that it lends to templates.
 

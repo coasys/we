@@ -8,16 +8,16 @@
 
 <details><summary>How it works</summary>
 
-| Service slice | Published by |
-|---|---|
-| `dataset`, `datasetUri`, `datasetRefKey`, `selfId`, `ephemeral`, `call`, `transcription`, `languageModel`, `interpretation` | `DatasetStore` |
-| `datasetByUri`, `createEntity`, `linkEntity`, `unlinkEntity`, `updateEntity`, `removeEntity`, `findEntities`, `subscribeEntities`, `documents`, `agentData` | `TemplateProvider` |
-| `presence` | `PresenceStore` |
-| `notify`, `identities` | `ProfileStore` |
-| `callOnScreen`, `showCallOnScreen`, `showPart`, `datasets`, `ensureBoardFor`, `spaceRoot` | `SpaceStore` |
+| Service slice                                                                                                                                                                                                         | Published by                                  |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `dataset`, `datasetUri`, `datasetRefKey`, `selfId`, `ephemeral`, `call`, `transcription`, `languageModel`, `interpretation`                                                                                           | `DatasetStore`                                |
+| `datasetByUri`, `createEntity`, `linkEntity`, `unlinkEntity`, `updateEntity`, `removeEntity`, `findEntities`, `subscribeEntities`, `documents`, `agentData`                                                           | `TemplateProvider`                            |
+| `presence`                                                                                                                                                                                                            | `PresenceStore`                               |
+| `notify`, `identities`                                                                                                                                                                                                | `ProfileStore`                                |
+| `callOnScreen`, `showCallOnScreen`, `showPart`, `datasets`, `ensureBoardFor`, `spaceRoot`                                                                                                                             | `SpaceStore`                                  |
 | `interpretationTargets`, `interpretationTargetsLoaded`, `setInterpretationTarget`, `setAutoInterpret`, `interpretCollection`, `watchCollection`, `unwatchCollection`, `reconcileCollection`, `proposalsForCollection` | `SpaceStore`, through `interpretationRuntime` |
-| `interpretationAvailable`, `interpretationActivity`, `interpretationProposalsRevision`, `autoInterpretEnabled` | `InterpretationStore` |
-| `view` | `LiveView` |
+| `interpretationAvailable`, `interpretationActivity`, `interpretationProposalsRevision`, `autoInterpretEnabled`                                                                                                        | `InterpretationStore`                         |
+| `view`                                                                                                                                                                                                                | `LiveView`                                    |
 
 - `provideModuleHostServices(slice)` merges a slice and returns a function that withdraws only the entries it still owns.
 - Each forwarding accessor reads a revision signal (`tracked`), and each provide bumps it. An effect that a store starts before a service exists therefore runs again when the service arrives. Without this, the effect would track nothing and never run again.

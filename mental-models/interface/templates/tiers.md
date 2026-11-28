@@ -8,9 +8,9 @@ A **template tier** is a list of **capability groups** that a template gets. The
 
 <details><summary>How it works</summary>
 
-| Tier | Groups |
-|---|---|
-| `SPACE_TIER` | `content`, `navigation`, `view-state`, `signals`, `presence`, `identity`, `space-settings`, `appearance` |
+| Tier          | Groups                                                                                                                                   |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `SPACE_TIER`  | `content`, `navigation`, `view-state`, `signals`, `presence`, `identity`, `space-settings`, `appearance`                                 |
 | `CHROME_TIER` | `SPACE_TIER` plus `host-layout`, `space-admin`, `library`, `agent`, `session`, `runtime-admin`, `editor`, `clipboard`, `keys`, `devices` |
 
 1. `TEMPLATE_SURFACE` classifies each member of each store. A `state` member (read in expressions) or an action (called with `$invoke`) is in one group. An action can be `destructive` or `ambient`. A wiring member is in no template bag at any tier.
@@ -20,6 +20,7 @@ A **template tier** is a list of **capability groups** that a template gets. The
 5. `TemplateProvider` provides two bags: `chromeBag` (`CHROME_TIER`) for the app template and shell overlays, and `templateBag` (`SPACE_TIER`) for the space template.
 
 **Acceptance.** `acceptTemplate(decoded, { origin, grants })` runs on each template that the host loads:
+
 - A template that fails `validateStructure` is refused, so it is not added to the list ([Validation](../schema/validation.md)).
 - A reference outside the tier, or an HTML element that a template may not mount, is admitted and reported. `inspectTemplateSurface` finds these references.
 - `describeCapabilities`, `describeAcceptance` and `describeRefusal` give the text for an install screen or a log.

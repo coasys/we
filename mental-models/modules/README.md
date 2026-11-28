@@ -7,6 +7,7 @@ A **feature module** is a capability that a space turns on: calls, transcription
 **Parent:** [WE](../README.md)
 
 ## Parts
+
 - [Module contract](contract/README.md): `ModuleDefinition`, its manifest, contributions, kernels, store surface, settings and tests.
 - [Module registry](registry/README.md): how the shell lints, registers, enables and serves modules, and how the seed's `modules` list becomes the registry.
 - [Bundled modules](bundled/README.md): the modules in `packages/module-system/`: calls and live, transcription, feed, notes and Pocket, polls, globe, Flux.

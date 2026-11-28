@@ -10,15 +10,16 @@ The live module (`@we/module-live`) shows each participant's pointer to the othe
 
 **Who is where is presence.** The channel has no join, leave or roster message. The module declares three activities:
 
-| Activity | Shape | Meaning |
-|---|---|---|
-| `live` | `{ cursors: true }` | My cursors are on, so send me yours. |
-| `driving` | `{ since }` | I have the wheel. The earliest `since` wins. |
-| `following` | `{ id }` | I follow this driver. |
+| Activity    | Shape               | Meaning                                      |
+| ----------- | ------------------- | -------------------------------------------- |
+| `live`      | `{ cursors: true }` | My cursors are on, so send me yours.         |
+| `driving`   | `{ since }`         | I have the wheel. The earliest `since` wins. |
+| `following` | `{ id }`            | I follow this driver.                        |
 
 Presence expires on a TTL. So a driver who closes the laptop releases every follower, and nobody sends a message (`protocol.ts` header).
 
 **What the channel carries.** Two ephemeral channels, `live` and `live-view`, both coalesced. A `LiveMessage` is `{ v, seq, kind: 'cursor', at }` or `{ v, seq, kind: 'view', frame }`.
+
 - `seq` increases for each sender and kind. A receiver drops a message that is not newer, because sends can arrive out of order.
 - `parseLiveMessage` drops a different `v` and returns `null` for an unknown kind.
 - A cursor older than `CURSOR_TTL_MS` (3 s) is not drawn. A driver sends the view again every `VIEW_REPEAT_MS` (2 s), for a follower who joins while the driver does not move.

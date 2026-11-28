@@ -7,6 +7,7 @@ An **entity** is a type of stored thing (`Space`, `TextBlock`, `Signal`); a **re
 **Parent:** [Data](../README.md)
 
 ## Parts
+
 - [Manifest](manifest.md): `CORE_DEFS`, `CORE_MANIFEST`, `EntitySchema`, and the two generators.
 - [Entity proxies](proxies.md): `defineEntity`, the entity registry, and the entities registered for one dataset.
 - [Write path](writes.md): the write check, the transaction runner and the file store that a backend registers.
@@ -14,12 +15,12 @@ An **entity** is a type of stored thing (`Space`, `TextBlock`, `Signal`); a **re
 
 <details><summary>How it works</summary>
 
-| Word | Meaning in WE |
-|---|---|
-| entity | a type, declared in the manifest |
-| record | one instance of an entity |
-| block | an entity with `blockable: true`; it must declare a `version` property |
-| model | an AI model, not a data type |
+| Word   | Meaning in WE                                                                  |
+| ------ | ------------------------------------------------------------------------------ |
+| entity | a type, declared in the manifest                                               |
+| record | one instance of an entity                                                      |
+| block  | a concrete entity with `blockable: true`; it must declare a `version` property |
+| model  | an AI model, not a data type                                                   |
 
 1. An author edits one file in `src/manifest/` for each entity.
 2. `generate:types` writes the neutral record types (`SpaceRecord`, …) to `src/manifest/types.ts`.

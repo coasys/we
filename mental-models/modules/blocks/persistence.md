@@ -10,15 +10,16 @@ Persistence writes a composition as records and reads it back. `createBlocks` sa
 
 **Modes** (`CollectionMode`):
 
-| Mode | Who writes | Write path |
-|---|---|---|
-| `document` | One agent authors one artifact: a post, a reply, a message. | `createBlocks`, then `reconcileBlocks`. |
-| `feed` | Many agents append: a channel, a board, a call record. No `editorState`. | Append (`createBlocks` with an `anchor`, or `record.create`). |
-| `collaborative` | Many agents edit one artifact in one live session. | A save writes the merged session document to the records. |
+| Mode            | Who writes                                                               | Write path                                                    |
+| --------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------- |
+| `document`      | One agent authors one artifact: a post, a reply, a message.              | `createBlocks`, then `reconcileBlocks`.                       |
+| `feed`          | Many agents append: a channel, a board, a call record. No `editorState`. | Append (`createBlocks` with an `anchor`, or `record.create`). |
+| `collaborative` | Many agents edit one artifact in one live session.                       | A save writes the merged session document to the records.     |
 
 `isReconcilable` is an allow-list: `document`, `collaborative`, and an absent mode. `kind` is a free label with no registry.
 
 **Save** (`createBlocks(dataset, document, { kind, mode, anchor, batchId, fields, relations })`):
+
 1. Uploads file assets first, so the records and the blob agree about each asset.
 2. Creates one record for each block, linked through `children`, in one write group (`runEntityTransaction`).
 3. Writes the Portable Text blob and the `textContent` search text on the root, and the mention relations.

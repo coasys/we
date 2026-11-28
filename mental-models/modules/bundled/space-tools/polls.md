@@ -2,7 +2,7 @@
 
 The polls module (`@we/module-polls`) lets a member ask the space a question with a list of choices, and shows the votes as they arrive. A poll can be a block in a post, a card that a template places, or a section of the space.
 
-**Why:** The module is the contract's test: the smallest module that uses every kind of contribution that a third party will probably want. Almost all of it is data. The store has one job, because to cast a vote is to find the vote that the agent cast before, and a schema cannot read and then write from one click (`index.ts` header).
+**Why:** The module is the contract's test: the smallest module that uses every kind of contribution that a third party is likely to need. Almost all of it is data. The store has one job, because to cast a vote is to find the vote that the agent cast before, and a schema cannot read and then write from one click (`index.ts` header).
 
 **Parent:** [Space tools](README.md)
 

@@ -8,18 +8,18 @@
 
 <details><summary>How it works</summary>
 
-| Member | Use |
-|---|---|
-| `installRoot(dataset)` | the app configuration entities, for we-root |
-| `installSpace(dataset, moduleSchemas)` | WE's space entities plus the given module entities |
-| `installModules(dataset, moduleSchemas)` | module entities only |
-| `refreshSpace(dataset)` | update stored space schemas that are behind this build; returns what it wrote |
-| `ensure(dataset, schema)` | one schema payload |
-| `hasCoreSchema` / `hasAnySchema` | "is this a WE space" / "does it hold any schema" |
-| `foreignSchemas` / `foreignEntries` | another app's entities in the dataset: register them, or only read them |
-| `declare`, `entries`, `declareInDataset` | compile a manifest, project it to entries, or compile and register it for one dataset |
-| `interpretationHints`, `setInterpretationHints`, `resetInterpretationHints` | per-dataset hints for interpretation |
-| `shapes?` | `ShapeStore`: where a space keeps its own shapes ([Shapes](../spaces/shapes.md)) |
+| Member                                                                      | Use                                                                                   |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `installRoot(dataset)`                                                      | the app configuration entities, for we-root                                           |
+| `installSpace(dataset, moduleSchemas)`                                      | WE's space entities plus the given module entities                                    |
+| `installModules(dataset, moduleSchemas)`                                    | module entities only                                                                  |
+| `refreshSpace(dataset)`                                                     | update stored space schemas that are behind this build; returns what it wrote         |
+| `ensure(dataset, schema)`                                                   | one schema payload                                                                    |
+| `hasCoreSchema` / `hasAnySchema`                                            | "is this a WE space" / "does it hold any schema"                                      |
+| `foreignSchemas` / `foreignEntries`                                         | another app's entities in the dataset: register them, or only read them               |
+| `declare`, `entries`, `declareInDataset`                                    | compile a manifest, project it to entries, or compile and register it for one dataset |
+| `interpretationHints`, `setInterpretationHints`, `resetInterpretationHints` | per-dataset hints for interpretation                                                  |
+| `shapes?`                                                                   | `ShapeStore`: where a space keeps its own shapes ([Shapes](../spaces/shapes.md))      |
 
 Each module's schemas install on their own. When the backend refuses some modules, the others still install, and the call then rejects with `ModuleSchemasRefused`, which names the refused modules. A refused module writes nothing. `manifestEntries` projects a manifest to `EntityManifestEntry` rows: each property and relation with its predicate.
 

@@ -7,6 +7,7 @@ A `ModuleDefinition` has three fields: a `manifest` (who the module is and what 
 **Parent:** [Modules](../README.md)
 
 ## Parts
+
 - [Contributions](contributions.md): parts, panels, slots, anchors, launchers, `holds`, entities, blocks, views, functions, components and embeds.
 - [Kernels](kernels.md): the named host capabilities that a store reaches through `deps.kernels`.
 - [Store surface](store-surface.md): which store members a template can read or call, and how a store marks them.
@@ -17,14 +18,14 @@ A `ModuleDefinition` has three fields: a `manifest` (who the module is and what 
 
 `ModuleManifest`:
 
-| Field | Meaning |
-|---|---|
-| `id` | A lower-case letter, then lower-case letters, digits and dashes. It namespaces `modules.<id>.*`, part ids (`<id>.<name>`), dock ids (`<id>:<name>`) and predicates (`we://module/<id>/`). |
-| `name`, `description`, `icon`, `version` | How the module is listed. |
-| `scope` | `'space'` (the default) or `'agent'`. A space module's chrome shows where the space has the module on. An **agent-scoped module** shows wherever its agent has it installed. |
-| `requires.backends`, `requires.frameworks` | The backends and frameworks the module runs on. An omitted list means any. |
-| `requires.kernels` | The kernels the store receives. A kernel not named here is absent from `deps.kernels`. |
-| `requires.permissions` | `ModulePermission`: `microphone`, `camera`, `screen-share`, `notifications`, `network:<host>`, `data:<name>`. Settings → Modules shows these in the module's capability list. |
+| Field                                      | Meaning                                                                                                                                                                                   |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                                       | A lower-case letter, then lower-case letters, digits and dashes. It namespaces `modules.<id>.*`, part ids (`<id>.<name>`), dock ids (`<id>:<name>`) and predicates (`we://module/<id>/`). |
+| `name`, `description`, `icon`, `version`   | How the module is listed.                                                                                                                                                                 |
+| `scope`                                    | `'space'` (the default) or `'agent'`. A space module's chrome shows where the space has the module on. An **agent-scoped module** shows wherever its agent has it installed.              |
+| `requires.backends`, `requires.frameworks` | The backends and frameworks the module runs on. An omitted list means any.                                                                                                                |
+| `requires.kernels`                         | The kernels the store receives. A kernel not named here is absent from `deps.kernels`.                                                                                                    |
+| `requires.permissions`                     | `ModulePermission`: `microphone`, `camera`, `screen-share`, `notifications`, `network:<host>`, `data:<name>`. Settings → Modules shows these in the module's capability list.             |
 
 `createStore(deps: ModuleStoreDeps)` runs once, at registration. `deps` injects reactivity (`signal`, `effect`, `onDispose`), the space context (`dataset`, `datasetUri`, `spaceRoot`, `selfId`), host services (`notify`, `identities`, `showPart`, `settings`, `firstScreen`, the call on screen) and the kernels. A store that uses `deps.signal` imports no framework.
 

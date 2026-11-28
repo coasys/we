@@ -7,6 +7,7 @@
 **Parent:** [Modules](../README.md)
 
 ## Parts
+
 - [Seed](seed.md): `we-seed.json`, the `modules` list, and how `generate-modules` makes the bundled-module registry from it.
 - [Lint and compatibility](lint.md): `lintModule`, `checkModuleCompatibility`, and the surface type of a module.
 - [Enablement](enablement.md): the four layers that decide whether a module runs here, the chrome gate, and the module rail.

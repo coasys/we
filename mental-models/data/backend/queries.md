@@ -14,12 +14,12 @@ The **query IR** (`QueryIR`) is the backend-neutral, versioned description of th
 4. `adapter.lower(ir)` returns the `QueryOptions` that the entity handle's `query` reads.
 5. `routeQuery` also adds an `emptyId` diagnostic for a `where: { id: '' }`. The caller decides how to report each diagnostic.
 
-| Disposition | Meaning |
-|---|---|
-| `native` | the backend does it |
-| `compute-up` | the backend does not, but JS can derive it from the returned rows |
-| `degraded` | the backend runs the query but ignores this one feature |
-| `unsupported` | it cannot run; the query fails loud |
+| Disposition   | Meaning                                                           |
+| ------------- | ----------------------------------------------------------------- |
+| `native`      | the backend does it                                               |
+| `compute-up`  | the backend does not, but JS can derive it from the returned rows |
+| `degraded`    | the backend runs the query but ignores this one feature           |
+| `unsupported` | it cannot run; the query fails loud                               |
 
 - `executeQueryIR(query, dataset)` is the reference engine: filter, sort, paginate, hydrate relations and aggregate over in-memory rows. The in-memory adapter runs on it.
 - A query whose `entity` is a list is a union. `combineEntityRows` merges the per-entity answers; `unionByFanOut` makes one handle over several.

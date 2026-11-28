@@ -8,12 +8,12 @@
 
 <details><summary>How it works</summary>
 
-| Tier | Where | Example |
-|---|---|---|
-| Location | the path | a section, `/record/:entity?id=…` |
-| View state | query parameters, through `syncParam` on a `$localState` field | sort, filter, search text |
-| Preferences | `persist` (device) or `AgentSettings` (agent) | density, a panel width |
-| Ephemeral | plain `$localState` | an open modal, a drag |
+| Tier        | Where                                                          | Example                           |
+| ----------- | -------------------------------------------------------------- | --------------------------------- |
+| Location    | the path                                                       | a section, `/record/:entity?id=…` |
+| View state  | query parameters, through `syncParam` on a `$localState` field | sort, filter, search text         |
+| Preferences | `persist` (device) or `AgentSettings` (agent)                  | density, a panel width            |
+| Ephemeral   | plain `$localState`                                            | an open modal, a drag             |
 
 1. A `syncParam` field mirrors its value to a query parameter. The URL value comes first on mount, then the stored value, then `initial`. A value equal to `initial` removes its parameter ([Handler tokens](../schema/handlers.md)).
 2. A record id is a URI with `:` and `/` in it, so it goes in the query (`?id=`), never in the path. `routeStore.navigate(to, { query })` writes it, and a template reads `routeStore.params.id`.

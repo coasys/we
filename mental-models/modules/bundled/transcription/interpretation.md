@@ -10,15 +10,16 @@ Interpretation is a pass of the backend's language model over one conversation (
 
 **The kernel** (`InterpretationKernel`):
 
-| Group | Members |
-|---|---|
-| Can it run | `available` (the node has a model), `autoEnabled(collectionId?)` (the space or the call decided to interpret as the conversation grows) |
-| Group decisions for one call | `setAuto`, `targets` (one row per entity, ticked when on), `targetsLoaded`, `setTarget` |
-| Passes | `runOnCollection`, `watchCollection`, `unwatchCollection`, `reconcileCollection`, `passSettled` |
-| Readout | `activity` (this agent's and the peers' passes, as strings for a schema), `proposalsRevision` |
-| Review | `proposals`, `accept`, `reject` (a whole record or one property), `connections` |
+| Group                        | Members                                                                                                                                 |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Can it run                   | `available` (the node has a model), `autoEnabled(collectionId?)` (the space or the call decided to interpret as the conversation grows) |
+| Group decisions for one call | `setAuto`, `targets` (one row per entity, ticked when on), `targetsLoaded`, `setTarget`                                                 |
+| Passes                       | `runOnCollection`, `watchCollection`, `unwatchCollection`, `reconcileCollection`, `passSettled`                                         |
+| Readout                      | `activity` (this agent's and the peers' passes, as strings for a schema), `proposalsRevision`                                           |
+| Review                       | `proposals`, `accept`, `reject` (a whole record or one property), `connections`                                                         |
 
 **The host side.** `interpretationRuntime` (owned by `SpaceStore`) gathers the turns (`gatherTranscriptTurns`), runs the pass, and files the results with relations of the collection:
+
 - `runs`: a `ModelRun` with `kind: 'extraction'` for each pass.
 - `extracted`: a record that a model proposed from the conversation. It is also a child, so the call's board shows it.
 - `recognised`: a record that a pass matched and did not make.

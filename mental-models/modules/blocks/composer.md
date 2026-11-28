@@ -9,6 +9,7 @@
 <details><summary>How it works</summary>
 
 **The editor** (`frameworks/solid/src/editor/`):
+
 - `schema.ts` makes the ProseMirror schema. `createBlockSchema` makes one atom node for each registered custom block, with its fields in a `props` attribute. Its `toDOM` is the only definition of a text block's DOM, and the renderer uses it too.
 - `converter.ts` converts a ProseMirror document to content blocks and back (code points on one side, UTF-16 on the other).
 - `nodeViews.tsx` mounts each custom block's input component. Plugins give handles and drag, hover and focus as decorations, the keymap, markdown input rules, `@` mentions, links, the formatting toolbar and the `/` menu.

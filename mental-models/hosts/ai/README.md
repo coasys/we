@@ -2,7 +2,7 @@
 
 Three parts of WE work with a language model. `@we/ai-context` says what a model knows about WE: it generates the reference that coding agents and the in-app assistant read. `@we/agent-tools` says what a model can do with WE: tools that read, make and edit templates and themes by WE's rules. The app shell's editor and shape wizard run a model through the backend's ports.
 
-**Why:** What makes a valid template is WE's decision, and it changes with each WE release. So one framework-free package holds the tools, and the editor's AI panel and a backend that runs agents use the same rules (`backend-shared/src/agents.ts`). AI runs on the executor's language model through `BackendPorts.languageModel`: AD4M owns the interface to the model, and WE keeps the tool definitions, the loop and what to do with the results (decision record `2026-04-15-ai-through-the-node.md`).
+**Why:** What makes a valid template is WE's decision: to the backend a template is a file, and only WE can say whether it renders. So one framework-free package holds the tools, and the editor's AI panel and a backend that runs agents use the same rules (`backend-shared/src/agents.ts`). AI runs on the executor's language model through `BackendPorts.languageModel`: AD4M owns the interface to the model, and WE keeps the tool definitions, the loop and what to do with the results (decision record `2026-04-15-ai-through-the-node.md`).
 
 **Parent:** [Hosts](../README.md)
 

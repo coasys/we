@@ -8,11 +8,11 @@ A **theme** is an object of settings, not a stylesheet: a polarity and a lightne
 
 <details><summary>How it works</summary>
 
-| Theme tier | What it says | Where it is |
-|---|---|---|
-| System | colour families and roles, the palette, type roles, shape and density per family | top-level settings |
-| Components | one component, or one variant, apart from its family | `components.<name>[.variants.<variant>]` |
-| CSS | effects that no setting expresses | the theme's `css`, against public `::part()` names |
+| Theme tier | What it says                                                                     | Where it is                                        |
+| ---------- | -------------------------------------------------------------------------------- | -------------------------------------------------- |
+| System     | colour families and roles, the palette, type roles, shape and density per family | top-level settings                                 |
+| Components | one component, or one variant, apart from its family                             | `components.<name>[.variants.<variant>]`           |
+| CSS        | effects that no setting expresses                                                | the theme's `css`, against public `::part()` names |
 
 1. A component reads its own value first, then its family's value, then its default. For a `soft` button's radius: the `radius` prop, then `--we-theme-button--soft-radius`, then `--we-theme-button-radius`, then `--we-theme-control-radius`, then the button's default.
 2. `applyThemeVars` lays the person's display preferences over the theme (`withDisplay`), writes each setting, and then `deriveRoleVars` measures the result. It moves each role that the theme did not pin until it is legible, by WCAG 2 and APCA.
@@ -23,7 +23,7 @@ A **theme** is an object of settings, not a stylesheet: a polarity and a lightne
    - an element with `tone`, which re-points only the accent roles.
 4. The person chooses the mode: colour scheme, contrast, text size, density and motion (`AgentSettings.displayPreferences`). The mode applies over every theme. A theme can carry `light`, `dark` and `contrast.more` blocks for those modes.
 5. `sanitiseCss` removes `@import` and each `url()` that is not a `data:` URL, and namespaces `@keyframes`. A space's CSS is confined with `@scope`.
-6. `parseOverrides` reads each stored theme and migrates older settings.
+6. `parseOverrides` reads each stored theme. `migrateOverrides` runs it forward from the vocabulary version that it carries (`schemaVersion`) to the current version.
 7. The built-in presets are `light`, `dark`, `black`, `retro` and `cyberpunk` (`THEME_PRESETS`). `themeRegistry` adds their CSS, the showcase presets in a build with developer features, and the themes of the seed's bundles.
 
 </details>

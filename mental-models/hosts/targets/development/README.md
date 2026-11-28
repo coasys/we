@@ -7,6 +7,7 @@ The development hosts run WE's code outside the shipped targets. The preview hos
 **Parent:** [Targets](../README.md)
 
 ## Parts
+
 - [Preview host](preview.md): `@we/app-preview`, the app shell over fixture data, made to be photographed.
 - [Playgrounds](playgrounds.md): browser harnesses for one part of the stack each.
 - [CLI](cli.md): `@we/cli`, with `we-build`, `we-banner` and `we-render`.

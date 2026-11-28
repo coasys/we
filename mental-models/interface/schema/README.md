@@ -7,6 +7,7 @@ A template is a tree of **schema nodes**. Each node names a `type` and carries `
 **Parent:** [Interface](../README.md)
 
 ## Parts
+
 - [Schema nodes](nodes.md): the node fields, the root `meta`, node identity, and shared definitions (`$defs` and `$ref`).
 - [Expressions](expressions.md): the `{ $ }` grammar, its roots and its function library.
 - [Handler tokens](handlers.md): `$invoke`, the local-state tokens and the `$if` handler, plus `$localState`.
@@ -17,15 +18,15 @@ A template is a tree of **schema nodes**. Each node names a `type` and carries `
 
 `resolveProp(value, stores, context, memo)` in [dispatcher.ts](../../../packages/schema-system/shared/src/propResolvers/dispatcher.ts) is the one entry for a prop value:
 
-| Value | Resolved by |
-|---|---|
-| `{ $: '…' }` | `resolveExpressionProp` (expression.ts) |
-| `{ $setLocal }`, `{ $touch }`, `{ $resetLocal }`, `{ $toggleLocal }`, `{ $toggleLocalIn }`, `{ $callLocal }` | local.ts |
-| `{ $invoke }` | `resolveInvokeProp` (invoke.ts) |
-| `{ $if: { … } }` | `resolveIfHandler` (conditional.ts) |
-| `{ $query }` | the renderer ([Template queries](../renderer/queries.md)) |
-| array, plain object | each element or key, recursively (depth limit 10) |
-| string, number, boolean, function | unchanged |
+| Value                                                                                                        | Resolved by                                               |
+| ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------- |
+| `{ $: '…' }`                                                                                                 | `resolveExpressionProp` (expression.ts)                   |
+| `{ $setLocal }`, `{ $touch }`, `{ $resetLocal }`, `{ $toggleLocal }`, `{ $toggleLocalIn }`, `{ $callLocal }` | local.ts                                                  |
+| `{ $invoke }`                                                                                                | `resolveInvokeProp` (invoke.ts)                           |
+| `{ $if: { … } }`                                                                                             | `resolveIfHandler` (conditional.ts)                       |
+| `{ $query }`                                                                                                 | the renderer ([Template queries](../renderer/queries.md)) |
+| array, plain object                                                                                          | each element or key, recursively (depth limit 10)         |
+| string, number, boolean, function                                                                            | unchanged                                                 |
 
 A key of the form `onX` with an array value becomes one function. That function resolves each array item when the event fires, with `event` in the context.
 

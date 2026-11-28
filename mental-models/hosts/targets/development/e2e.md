@@ -8,16 +8,16 @@
 
 <details><summary>How it works</summary>
 
-| Entry | Gives |
-|---|---|
-| `env` | `ROOT`, `executorBinary()` (the binary that `scripts/ad4m-executor.mjs` chooses), `chromePath()` (`WE_CHROME`) |
-| `executor` | `startExecutor()` (data in a temp folder with the prefix `DATA_PREFIX`, `we-live-web-`), `signUp`, `registerLlm`, `registerTranscriber`, `freePort` |
-| `app` | `serveDist(dir)`, `productionCsp()`, `currentSeed()` |
-| `browser` | `launchBrowser()`, `device()` (a signed-in browser context), `openConnections`, `videoFlow` |
-| `waits` | `until`, `within`, `sleep` |
-| `artifacts` | `captureFailure` (a screenshot and an aria snapshot of each page, and the executor log), `capturing`, `artifactsDir` (`WE_E2E_ARTIFACTS`) |
-| `fake-ai` | `fakeAiAdmin()`: the `ai` calls of an admin client, refused as the executor refuses them, for tests that start no executor |
-| `mcp` | `mcpSession(url, token)` |
+| Entry       | Gives                                                                                                                                               |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `env`       | `ROOT`, `executorBinary()` (the binary that `scripts/ad4m-executor.mjs` chooses), `chromePath()` (`WE_CHROME`)                                      |
+| `executor`  | `startExecutor()` (data in a temp folder with the prefix `DATA_PREFIX`, `we-live-web-`), `signUp`, `registerLlm`, `registerTranscriber`, `freePort` |
+| `app`       | `serveDist(dir)`, `productionCsp()`, `currentSeed()`                                                                                                |
+| `browser`   | `launchBrowser()`, `device()` (a signed-in browser context), `openConnections`, `videoFlow`                                                         |
+| `waits`     | `until`, `within`, `sleep`                                                                                                                          |
+| `artifacts` | `captureFailure` (a screenshot and an aria snapshot of each page, and the executor log), `capturing`, `artifactsDir` (`WE_E2E_ARTIFACTS`)           |
+| `fake-ai`   | `fakeAiAdmin()`: the `ai` calls of an admin client, refused as the executor refuses them, for tests that start no executor                          |
+| `mcp`       | `mcpSession(url, token)`                                                                                                                            |
 
 `pnpm e2e <suite>` runs a suite. The journeys are `calls`, `spaces` and `feed-scale`, in `apps/we-web/e2e/`. Steps that more than one journey uses are in `apps/we-web/e2e/steps/`.
 

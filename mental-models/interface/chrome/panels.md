@@ -8,12 +8,12 @@ A **panel** is a surface that a module, the editor or a template opens beside th
 
 <details><summary>How it works</summary>
 
-| State | What it means |
-|---|---|
-| Floating | A card over the content. It takes no room. |
-| Snapped | Floating, at one of eight snap points (four corners, four edge centres). |
-| Displacing | At an edge-centre snap, it spans its panel lane and moves the content edge inward. |
-| Maximised | The full window. The other panels, the sidebar and the rail hide, but stay mounted. |
+| State      | What it means                                                                       |
+| ---------- | ----------------------------------------------------------------------------------- |
+| Floating   | A card over the content. It takes no room.                                          |
+| Snapped    | Floating, at one of eight snap points (four corners, four edge centres).            |
+| Displacing | At an edge-centre snap, it spans its panel lane and moves the content edge inward.  |
+| Maximised  | The full window. The other panels, the sidebar and the rail hide, but stay mounted. |
 
 1. `PanelHost` draws the content of each panel one time. A place holds a `PanelSlot`, and the host moves the panel's element into the slot that shows it, with `moveBefore` where the browser has it. So a panel keeps its state when it moves.
 2. Each panel has one frame (`frameBox`). `PanelFrame` is `window` (a titlebar), `flush` (part of the page) or `none`.

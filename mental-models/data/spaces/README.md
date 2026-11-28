@@ -7,6 +7,7 @@ A **space** is a community or a context, backed by one dataset, with a `Space` r
 **Parent:** [Data](../README.md)
 
 ## Parts
+
 - [Creating and sharing](create.md): `createSpace`, `share`, `listInGlobal`, `removeSpace`.
 - [Joining](join.md): `joinSpace`, `finishJoin`, `initializeAsWeSpace`.
 - [Shapes](shapes.md): where a space keeps the entities its community defines, and `ShapeStore`.

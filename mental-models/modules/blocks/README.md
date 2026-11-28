@@ -7,12 +7,14 @@ A **block** is one unit of content in a composition: a text block, or a typed re
 **Parent:** [Modules](../README.md)
 
 ## Parts
+
 - [Persistence](persistence.md): save, edit and load of a composition, and the three collection modes.
 - [Composer](composer.md): the ProseMirror editor, the renderer, and live co-editing with Yjs.
 
 <details><summary>How it works</summary>
 
 **The content format** (`ContentBlock`, `content.ts`):
+
 - A text block (`_type: 'block'`) is one `text` string and standoff `marks` (`{ start, end, type, … }`, offsets in Unicode code points), with `style`, `listItem` and `level`. A text block without `marks` is one unmarked span, so transcription and notes write only `text`.
 - Decorators are a closed set (`strong`, `em`, `underline`, `strike`, `code`). Annotations are open, for example `link`, `mention` and `nodeLink`.
 - Some marks are drawn and never stored: bare URLs (`withFoundLinks`) and markdown in a typed line (`markdownToBlocks`).

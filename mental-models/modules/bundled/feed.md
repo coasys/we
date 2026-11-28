@@ -13,6 +13,7 @@ The feed module (`@we/module-feed`) shows everything said and written in a space
 **Bot notices** (`botWatch.ts`). A line that a bot writes in the space on screen raises a notice with a way to open the feed, unless the reader looks at the newest line. A bot is an agent whose profile says so (`ModuleIdentity.kind`). Lines from one author within `BOT_BURST_MS` (2 s) are one notice.
 
 **Placements:**
+
 - The `feed` panel (order 92, right edge).
 - The part `feedView`, a page of the feed.
 - The part `callFeed`, the feed of one call. Its subject is `routeStore.params.call` by default.
@@ -22,6 +23,7 @@ Both parts use `whileShown`, so the feed reads only while it is on screen.
 **Settings:** `timelineOrder` and `botNotices` (agent level), and `showCallTranscripts` (agent-in-space, default false), because spoken lines can hide typed messages in a space with many calls.
 
 **`@we/messages`:**
+
 - `SPOKEN`, `TYPED`, `CORRECTED`: the `source` of a line. `sourceAfterEdit` makes an edited spoken line `corrected`. A bot's line has no source.
 - `threadLines`: a page of lines with each line's `thread` put in beside it, and each reply with a quote of what it answers, sorted by time. It is also the expression function `threadLines` (`threadLinesFunction`).
 - `repliesInclude`: the `include: { thread: true }` that brings the replies.

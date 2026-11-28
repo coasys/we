@@ -8,21 +8,21 @@
 
 <details><summary>How it works</summary>
 
-| Check | Result |
-|---|---|
-| `manifest.id` is missing or does not match `^[a-z][a-z0-9-]*$`; `manifest.name` is missing | problem |
-| A panel has no name, or two panels have one name | problem |
-| `components` without `requires.frameworks` | problem |
-| An entity predicate outside `we://module/<id>/`, or an entity manifest that `validateManifest` refuses (`WeNode` and the core entities are allowed as external) | problem |
-| A block names an entity that is not declared, a card that is not a part, or an input that is not a component | problem |
-| A view without an id, or without `meta.role: 'view'`; a launcher without an action | problem |
-| A part, panel or slot reads `modules.<other>.<member>`, or places another module's part | problem |
-| The same in a contributed view | warning (a view is a template; use `meta.requires.modules`) |
-| A panel with `open` and no `close`, or `show`/`close` without `open` | warning |
-| A `restrict` setting that defaults to `false`; an `enum` without options; a `secret` above the agent level or without the `secrets` kernel | warning |
-| A block entity that is not `blockable` | warning |
-| A part reads a name or a local that nothing inside it binds, or declares an input it never reads | warning |
-| A panel or part pastes in a published part's node instead of placing it with `$part` | warning |
+| Check                                                                                                                                                           | Result                                                      |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `manifest.id` is missing or does not match `^[a-z][a-z0-9-]*$`; `manifest.name` is missing                                                                      | problem                                                     |
+| A panel has no name, or two panels have one name                                                                                                                | problem                                                     |
+| `components` without `requires.frameworks`                                                                                                                      | problem                                                     |
+| An entity predicate outside `we://module/<id>/`, or an entity manifest that `validateManifest` refuses (`WeNode` and the core entities are allowed as external) | problem                                                     |
+| A block names an entity that is not declared, a card that is not a part, or an input that is not a component                                                    | problem                                                     |
+| A view without an id, or without `meta.role: 'view'`; a launcher without an action                                                                              | problem                                                     |
+| A part, panel or slot reads `modules.<other>.<member>`, or places another module's part                                                                         | problem                                                     |
+| The same in a contributed view                                                                                                                                  | warning (a view is a template; use `meta.requires.modules`) |
+| A panel with `open` and no `close`, or `show`/`close` without `open`                                                                                            | warning                                                     |
+| A `restrict` setting that defaults to `false`; an `enum` without options; a `secret` above the agent level or without the `secrets` kernel                      | warning                                                     |
+| A block entity that is not `blockable`                                                                                                                          | warning                                                     |
+| A part reads a name or a local that nothing inside it binds, or declares an input it never reads                                                                | warning                                                     |
+| A panel or part pastes in a published part's node instead of placing it with `$part`                                                                            | warning                                                     |
 
 A bare `modules.<id>` (is the module installed?) is allowed. Two modules that import one package at build time are allowed.
 

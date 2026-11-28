@@ -8,12 +8,12 @@ A playground is a small Vite app that runs one part of WE's stack in a browser, 
 
 <details><summary>How it works</summary>
 
-| Playground | Package | What it runs |
-|---|---|---|
-| `solid/graph-explorer` | `@we/playground-graph-explorer` | the graph engine, its expanders and layouts over an in-memory dataset |
-| `solid/portable-ui-slice` | `@we/playground-portable-slice` | the renderer and the design system over an in-memory backend (port 3200) |
-| `solid/render-bench` | `@we/playground-render-bench` | the cost of the renderer and the design system against raw DOM and plain Solid controls (port 3300; `bench` for timings) |
-| `vanilla/flicker-probe` | `@we/playground-flicker-probe` | the same buttons through the design system and through bare CSS, with the painted colour sampled each frame (port 3310) |
+| Playground                | Package                         | What it runs                                                                                                             |
+| ------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `solid/graph-explorer`    | `@we/playground-graph-explorer` | the graph engine, its expanders and layouts over an in-memory dataset                                                    |
+| `solid/portable-ui-slice` | `@we/playground-portable-slice` | the renderer and the design system over an in-memory backend (port 3200)                                                 |
+| `solid/render-bench`      | `@we/playground-render-bench`   | the cost of the renderer and the design system against raw DOM and plain Solid controls (port 3300; `bench` for timings) |
+| `vanilla/flicker-probe`   | `@we/playground-flicker-probe`  | the same buttons through the design system and through bare CSS, with the painted colour sampled each frame (port 3310)  |
 
 </details>
 

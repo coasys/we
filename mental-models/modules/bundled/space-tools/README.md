@@ -7,17 +7,18 @@ Three modules that a space uses for its content and not for its chrome: polls, w
 **Parent:** [Bundled modules](../README.md)
 
 ## Parts
+
 - [Polls](polls.md): the contract's smallest complete module, with entities, a block, a view, a part, a function, a setting and a store.
 - [Globe](globe.md): the globe family of packages, the `CesiumGlobe` component, and the choice of engine.
 - [Flux](flux.md): one AD4M query for the messages in a Flux conversation subgroup.
 
 <details><summary>How it works</summary>
 
-| Module | Requires | Contributes | Store |
-|---|---|---|---|
-| `polls` | kernel `records` | entities `Poll`, `Vote`; block; view `pollsView`; parts; function `tally`; setting | `vote` |
-| `globe` | framework `solid`; network permissions for imagery | component `CesiumGlobe`; five settings | `engine`, `drawsSpace` |
-| `flux` | backend `ad4m` | nothing | `subgroupMessages` |
+| Module  | Requires                                           | Contributes                                                                        | Store                  |
+| ------- | -------------------------------------------------- | ---------------------------------------------------------------------------------- | ---------------------- |
+| `polls` | kernel `records`                                   | entities `Poll`, `Vote`; block; view `pollsView`; parts; function `tally`; setting | `vote`                 |
+| `globe` | framework `solid`; network permissions for imagery | component `CesiumGlobe`; five settings                                             | `engine`, `drawsSpace` |
+| `flux`  | backend `ad4m`                                     | nothing                                                                            | `subgroupMessages`     |
 
 The graph module is also a capability module. It is on the [Graph system](../../graph-system/README.md) page.
 

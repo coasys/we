@@ -8,11 +8,11 @@ A connection between two records lives in one of three tiers: a free-text `label
 
 <details><summary>How it works</summary>
 
-| Tier | Authored by | Query by it | Carries its own data |
-|---|---|---|---|
-| free-text `label` | any member | no | yes |
-| `RelationshipType` | the community, as a record | `where: { relationshipTypeId }` | yes |
-| declared relation | whoever owns the schema | fully | no |
+| Tier               | Authored by                | Query by it                     | Carries its own data |
+| ------------------ | -------------------------- | ------------------------------- | -------------------- |
+| free-text `label`  | any member                 | no                              | yes                  |
+| `RelationshipType` | the community, as a record | `where: { relationshipTypeId }` | yes                  |
+| declared relation  | whoever owns the schema    | fully                           | no                   |
 
 - Containment uses `CONTAINMENT_PREDICATE` (`we://child`): `CollectionBlock.children`, read back as `WeNode.partOf`. A record has at most one container. The AD4M adapter stores it as `ad4m://has_child` and translates at its boundary (`installContainmentPredicate`).
 - A response is never a child. Where a response was said is derived: `inThread`, then `partOf`.

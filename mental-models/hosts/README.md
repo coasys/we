@@ -7,6 +7,7 @@ A **target** runs WE. It gives the app shell a **platform adapter** (where WE ru
 **Parent:** [WE](../README.md)
 
 ## Parts
+
 - [Boot](boot/README.md): how the app shell starts: providers, the session's boot states, the first screen, new builds.
 - [Platform](platform/README.md): the platform adapter, the backend connector, local accounts and embedded apps.
 - [Targets](targets/README.md): web, Electron, Tauri, and the hosts for development and tests.

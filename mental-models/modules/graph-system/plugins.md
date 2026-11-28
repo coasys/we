@@ -10,16 +10,17 @@ A plugin is code that a template names from data: an expander, a seed source, a 
 
 `GraphPlugins` is `{ expanders, seeds, layouts, behaviours, renderers, metrics, controls }`. `GraphView` registers `defaultExpanders()`, `defaultLayouts()`, `defaultBehaviours()`, `defaultMetrics()` and `defaultControls()`. It reads its `reified` prop one time, so a change to it needs a new mount.
 
-| Kind | Ids that WE ships | Package |
-|---|---|---|
-| Seed source (`seeds.source`) | `query`, `schema`, `dataset`, `canvas`, `vocabulary` | `@we/graph-expanders` |
-| Expander (`expansion.expanders`) | `entity`, `collection`, `schema`, `schema-instances`, `schema-properties`, `property`, `property-values`, `vocabulary`, `vocabulary-records` | `@we/graph-expanders` |
-| Layout (`layout.type`) | `force`, `tree`, `forest`, `radial`, `grid`, `manual` | `@we/graph-layouts` |
-| Behaviour (`behaviours`) | `pan-zoom`, `select`, `marquee-select`, `drag-node`, `arrange-nodes`, `connect-nodes`, `node-double-click`, `canvas-double-click`, `expand-on-click`, `expand-on-double-click` | `@we/graph-core` |
-| Control (`controls`) | `zoom-in`, `zoom-out`, `fit` (the default three), `relayout`, `pin`, `lock` | `@we/graph-core` |
-| Metric | `degree`, `community`, `field` | `@we/graph-core` |
+| Kind                             | Ids that WE ships                                                                                                                                                              | Package               |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------- |
+| Seed source (`seeds.source`)     | `query`, `schema`, `dataset`, `canvas`, `vocabulary`                                                                                                                           | `@we/graph-expanders` |
+| Expander (`expansion.expanders`) | `entity`, `collection`, `schema`, `schema-instances`, `schema-properties`, `property`, `property-values`, `vocabulary`, `vocabulary-records`                                   | `@we/graph-expanders` |
+| Layout (`layout.type`)           | `force`, `tree`, `forest`, `radial`, `grid`, `manual`                                                                                                                          | `@we/graph-layouts`   |
+| Behaviour (`behaviours`)         | `pan-zoom`, `select`, `marquee-select`, `drag-node`, `arrange-nodes`, `connect-nodes`, `node-double-click`, `canvas-double-click`, `expand-on-click`, `expand-on-double-click` | `@we/graph-core`      |
+| Control (`controls`)             | `zoom-in`, `zoom-out`, `fit` (the default three), `relayout`, `pin`, `lock`                                                                                                    | `@we/graph-core`      |
+| Metric                           | `degree`, `community`, `field`                                                                                                                                                 | `@we/graph-core`      |
 
 **Notes on the sets:**
+
 - `entity` follows an instance's relations. `readRelations` reads them, and `reified` lets a record that stands for a relation (with a source and a target) be drawn as one edge.
 - `property-values` is `property` with values as shared nodes, for a map where nodes with the same value must meet.
 - `schema-instances` opens an entity's records node into its records. It has its own id, so a graph that opens an entity into its properties does not also open it into all of its records.

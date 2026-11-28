@@ -8,12 +8,12 @@ Whether a module runs here is four answers that intersect: the deployment regist
 
 <details><summary>How it works</summary>
 
-| Layer | Stored in | When unset |
-|---|---|---|
-| Registered | `moduleRegistry` (from the seed) | — |
-| Installed (agent, everywhere) | `AgentSettings.installedModules` | Every registered module |
-| Enabled (community, this space) | `Space.enabledModules` | The seed's modules that do not say `enabled: false` (`defaultEnabledModules`) |
-| Muted (agent, this space) | `SpacePreference.mutedModules` | Nothing muted |
+| Layer                           | Stored in                        | When unset                                                                    |
+| ------------------------------- | -------------------------------- | ----------------------------------------------------------------------------- |
+| Registered                      | `moduleRegistry` (from the seed) | —                                                                             |
+| Installed (agent, everywhere)   | `AgentSettings.installedModules` | Every registered module                                                       |
+| Enabled (community, this space) | `Space.enabledModules`           | The seed's modules that do not say `enabled: false` (`defaultEnabledModules`) |
+| Muted (agent, this space)       | `SpacePreference.mutedModules`   | Nothing muted                                                                 |
 
 `resolveEnabledModules(raw, fallback)` reads a stored list. Unset means "not decided", not "none", and malformed JSON falls back with a warning.
 

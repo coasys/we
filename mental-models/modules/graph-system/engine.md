@@ -9,6 +9,7 @@
 <details><summary>How it works</summary>
 
 **Two layers:**
+
 - **Scene**: `Viewport`, `SpatialIndex`, selection, positions and `foldGraph`. These draw a set of placed nodes and let a reader use them. They do not know where the nodes came from.
 - **Exploration**: `GraphStore`, `ExpansionState` and `GraphEngine`. These run the expanders, keep the expansion state, collapse, bundle edges and keep the node budget.
 
@@ -17,6 +18,7 @@
 **Expansion is paged and has a budget.** A hub with thousands of neighbours must not stop the frame. When the engine gets to `maxNodes`, it stops expanding and shows this in the status strip. It does not remove nodes without a message.
 
 **Collapse** (`ExpansionState`):
+
 - Collapse is reference-counted. Each node records which open nodes put it on the graph. A collapse removes only the nodes that no other open node holds. A seed node has the opener `SEED_OPENER`, so it stays after every collapse.
 - Collapse bundles edges. An edge that crossed the collapse boundary attaches again to the collapsed node, as one weighted edge. A cluster is a collapsed node that the engine made.
 

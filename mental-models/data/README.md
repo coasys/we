@@ -7,6 +7,7 @@ The Data branch covers what WE stores and how the app reads and writes it. **Ent
 **Parent:** [WE](../README.md)
 
 ## Parts
+
 - [Entities](entities/README.md): the record types, the manifest that declares them, and the write path.
 - [Backend contract](backend/README.md): `BackendPorts`, the data source, datasets, schemas, queries and the ephemeral ports.
 - [Adapters](adapters/README.md): the AD4M and in-memory implementations of the contract, and the conformance suite.

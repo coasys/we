@@ -8,12 +8,12 @@
 
 <details><summary>How it works</summary>
 
-| Dataset | Holds | Schema |
-|---|---|---|
-| `we-root` (`rootDataset`) | `AgentSettings`, installed templates and themes, per-space preferences, read markers, the mute list | `installRoot` on every boot |
-| `we-personal` (`personalDataset`) | notes, the Pocket, agent-scoped module records | `installSpace` with module and agent schemas when it is new or has no core schema; else `installModules` and `refreshSpace` |
-| `we-test` (`testDataset`) | the development sandbox | |
-| global (`globalDataset`), marketplace (`marketplaceDataset`) | shared datasets named by the seed | recognised: the joined dataset whose `sharedUri` equals the seed's URL |
+| Dataset                                                      | Holds                                                                                               | Schema                                                                                                                      |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `we-root` (`rootDataset`)                                    | `AgentSettings`, installed templates and themes, per-space preferences, read markers, the mute list | `installRoot` on every boot                                                                                                 |
+| `we-personal` (`personalDataset`)                            | notes, the Pocket, agent-scoped module records                                                      | `installSpace` with module and agent schemas when it is new or has no core schema; else `installModules` and `refreshSpace` |
+| `we-test` (`testDataset`)                                    | the development sandbox                                                                             |                                                                                                                             |
+| global (`globalDataset`), marketplace (`marketplaceDataset`) | shared datasets named by the seed                                                                   | recognised: the joined dataset whose `sharedUri` equals the seed's URL                                                      |
 
 1. `initSystemDatasets` finds or creates the system datasets in parallel. The boot waits for the root and for the datasets a first run must make. It does not wait for the personal dataset.
 2. `switchDataset(uuid, { stillWanted })` gets the `DatasetRef` and checks the schema:

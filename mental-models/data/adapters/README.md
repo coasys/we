@@ -7,20 +7,21 @@ An **adapter** implements the [backend contract](../backend/README.md) for one b
 **Parent:** [Data](../README.md)
 
 ## Parts
+
 - [AD4M adapter](ad4m.md): `createAd4mBackendPorts`, the AD4M classes, SDNA install, the query adapter and the patches on `Ad4mModel`.
 - [In-memory adapter](inmemory.md): `createInMemoryBackend`, `createInMemoryBackendPorts`, and the reference query adapter.
 - [Conformance suite](conformance.md): `describeBackendConformance`, the harness, known gaps.
 
 <details><summary>How it works</summary>
 
-| Contract part | AD4M | In memory |
-|---|---|---|
-| ports | `createAd4mBackendPorts` | `createInMemoryBackendPorts` |
-| entity classes | generated classes in `src/entities/`, plus classes compiled from a manifest at runtime | `compileEntities` over in-memory tables |
-| query adapter | `createAd4mQueryAdapter`, `ad4mCapabilities` | `inMemoryQueryAdapter`; reads run `executeQueryIR` |
-| sharing | `publish`/`join` on neighbourhoods | simulated: `publish` mints an `inmemory://` URI |
-| ephemeral | `createAd4mEphemeralPort` | `createInMemoryEphemeralPort` |
-| shapes | `createAd4mShapeStore` (SHACL) | `createJsonShapeStore` (`Shape` records) |
+| Contract part  | AD4M                                                                                   | In memory                                          |
+| -------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| ports          | `createAd4mBackendPorts`                                                               | `createInMemoryBackendPorts`                       |
+| entity classes | generated classes in `src/entities/`, plus classes compiled from a manifest at runtime | `compileEntities` over in-memory tables            |
+| query adapter  | `createAd4mQueryAdapter`, `ad4mCapabilities`                                           | `inMemoryQueryAdapter`; reads run `executeQueryIR` |
+| sharing        | `publish`/`join` on neighbourhoods                                                     | simulated: `publish` mints an `inmemory://` URI    |
+| ephemeral      | `createAd4mEphemeralPort`                                                              | `createInMemoryEphemeralPort`                      |
+| shapes         | `createAd4mShapeStore` (SHACL)                                                         | `createJsonShapeStore` (`Shape` records)           |
 
 The host picks the adapter through its [backend connector](../../hosts/platform/backend-connector.md).
 

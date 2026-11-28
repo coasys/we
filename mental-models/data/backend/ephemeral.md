@@ -1,6 +1,6 @@
 # Ephemeral and presence
 
-The **ephemeral port** carries transient agent-to-agent state that is lossy, last-write-wins and gone on reload: presence, WebRTC signalling, cursors. `EphemeralPort` maps a dataset to an `EphemeralScope`, and each protocol takes a named `channel(tag)` in that scope. **Presence** is the first protocol on it: `createHeartbeatPresence` publishes this agent's state on a timer and derives the list of peers.
+The **ephemeral port** carries transient agent-to-agent state that is lossy, last-write-wins and gone on reload: presence, WebRTC signalling, cursors. `EphemeralPort` maps a dataset to an `EphemeralScope`, and each protocol takes a named `channel(tag)` in that scope. **Presence** is one protocol on it: `createHeartbeatPresence` publishes this agent's state on a timer and derives the list of peers.
 
 **Why:** The rule for this port is: if it must still be there after a refresh, it is not ephemeral. Ephemeral state has no manifest entity, no stable id and no persistence, so it does not go through the query IR. Durable messages go through the data source. The payload is opaque, so one transport carries every protocol, and a feature module gets a tag namespace of its own.
 

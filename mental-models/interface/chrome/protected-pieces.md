@@ -9,17 +9,20 @@ A **protected piece** is a part of the interface that no template, theme, seed o
 <details><summary>How it works</summary>
 
 **The password field.**
+
 1. A sign-in screen places `CredentialField` like a component. The value goes to the `credential` module, which is not a store, a prop or an event, so no expression can read it.
 2. Input and key events stop at the field. A template gets only `onEdit`, `onSubmit`, `credentialEntered` and `credentialConfirmed`.
 3. `sessionStore.unlock()` reads the held value. `login` and `createAgent` are wiring, so they are in no template bag.
 4. `judgeBundle` refuses a bundle sign-in screen with no `CredentialField`. A screen that places `host.signIn.form` has the field.
 
 **The safety prompts.**
+
 1. `PROTECTED_SLOTS` holds `core:consentPrompt`, `core:consentSecret`, `core:removeAccount`, `core:screenSource`, `core:installPrompt`, `core:bundlePrompt` and `core:destructivePrompt`. The slot registry refuses to replace, remove or register these slots again.
 2. The prompts render in their own layer. While a prompt is open, that layer holds the top layer (`top-layer.ts`) and the rest of the app is `inert`.
 3. The host asks before each destructive action, and `describeDestructive` writes the question. So a space template does not show its own confirmation.
 
 **Safe mode.**
+
 1. Safe mode draws WE's own templates and themes for the tab, and changes or deletes nothing.
 2. The ways in are `?safe` on any address, Ctrl+Alt+Shift+S (Cmd+Option+Shift+S), and a render that did not finish. `commitTemplate` writes a render record (`beginRender`) before a template that is not bundled renders, and the record is cleared after `SETTLE_MS` (4 s) of a responsive app. A record from another tab counts only after `STALE_MS` (10 s).
 3. `safeMode()` decides one time, when `TemplateStore` is created.

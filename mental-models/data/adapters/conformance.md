@@ -14,10 +14,10 @@
 4. `TEMPLATE_QUERY_CASES` are `$query`s taken from shipped templates, routed as the renderer routes them (`routeQuery`, then `findAll`) against one seeded space. The expected answers are written by hand, and the in-memory backend is the reference for them.
 5. A case in `knownGaps` runs inverted: it passes while the gap is open and fails when the gap closes. A case in `knownIntermittent` is retried on a fresh subject.
 
-| Backend | Where it runs | How |
-|---|---|---|
-| in memory | `inmemory/tests/portsConformance.test.ts` | the ordinary tests |
-| AD4M | `ad4m/tests/live/conformance.live.ts` | `test:live` (`vitest.live.config.ts`), against a running executor |
+| Backend   | Where it runs                             | How                                                               |
+| --------- | ----------------------------------------- | ----------------------------------------------------------------- |
+| in memory | `inmemory/tests/portsConformance.test.ts` | the ordinary tests                                                |
+| AD4M      | `ad4m/tests/live/conformance.live.ts`     | `test:live` (`vitest.live.config.ts`), against a running executor |
 
 </details>
 

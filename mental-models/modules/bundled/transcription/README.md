@@ -2,11 +2,12 @@
 
 The transcribe module (`@we/module-transcribe`) turns what each participant says in a call into `TextBlock` records ([Entities](../../../data/entities/README.md)) in the [call record](../calls/README.md). Each agent transcribes only its own microphone, so the author of a block is the speaker. Being in a call starts it.
 
-**Why:** Because each agent records only itself, the transcript needs no speaker detection: the speaker field is the block's `author` (`docs/architecture/transcripts.md`). Recording starts by itself, because when one person had to press a button, a meeting was recorded only sometimes, and the transcript then cannot show "we chose not to" apart from "nobody pressed it" (`index.ts` header).
+**Why:** Because each agent records only itself, the transcript needs no speaker detection: the speaker field is the block's `author` (`docs/architecture/transcripts.md`). Recording starts by itself. With a button to press, a meeting is recorded only when somebody remembers, and the transcript then cannot show "we chose not to" apart from "nobody pressed it" (`index.ts` header).
 
 **Parent:** [Bundled modules](../README.md)
 
 ## Parts
+
 - [Capture](capture.md): the microphone stream, voice-activity detection on the audio thread, the transcription stream and its recovery.
 - [Interpretation](interpretation.md): the passes that turn a call's transcript into proposed records, and the `interpretation` kernel.
 
@@ -17,6 +18,7 @@ The transcribe module (`@we/module-transcribe`) turns what each participant says
 **Where the words go.** `ensureCollection` adopts the record id from the call's presence activity. It does not create a record. Its answer is `ready`, `waiting` (the record id has not arrived yet, so the words go back into the buffer) or `nowhere` (no call). Each written block is `{ text, source: SPOKEN, generatedBy? }`, a child of the record. Then the agent links itself into the record's `participants`, so the record shows who was present, also a person who did not speak.
 
 **When it records.** An effect starts recording when all of these are true:
+
 - The agent is in a call, and has not stopped recording by hand in this call.
 - There is a dataset and an audio input.
 - The backend can transcribe (`transcription.available()`).
@@ -25,6 +27,7 @@ The transcribe module (`@we/module-transcribe`) turns what each participant says
 Stopping is per microphone. It removes this agent's words from the record, and does not stop the record.
 
 **Contributions:**
+
 - Panels `transcript` (order 90) and `interpretation` (order 91, `busyWhen: 'passRunning'`).
 - Parts such as `transcriptFeed`, `transcriptLines`, `transcriptComposer`, `captureMeter`, `captureStatus` and `coverage`.
 - Modals in `overlay`, and the function `threadLines` from `@we/messages`.

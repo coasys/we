@@ -16,14 +16,14 @@ The five rules:
 4. **Nothing settles while a write is still going.** A hold counts the writes behind it (`writing`) and is judged only after the last one returns, against a fresh baseline.
 5. **A backstop.** A hold older than `ttlMs` (`DEFAULT_TTL_MS`, 10 000 ms) is not believed.
 
-| Member | Use |
-|---|---|
-| `hold(key, value)` | a write goes out |
-| `preview(key, value)` | show a value with no write behind it, for example a slider during a drag |
-| `done(key)` / `release(key)` | the write returned / failed |
-| `toDraw(key, observed)` | the held value, or `undefined` when the data has overtaken it |
-| `settle(observedBy)` | report what a draw was made from |
-| `inFlight()`, `forget(key)`, `holds()`, `reset()` | inspect or drop holds |
+| Member                                            | Use                                                                      |
+| ------------------------------------------------- | ------------------------------------------------------------------------ |
+| `hold(key, value)`                                | a write goes out                                                         |
+| `preview(key, value)`                             | show a value with no write behind it, for example a slider during a drag |
+| `done(key)` / `release(key)`                      | the write returned / failed                                              |
+| `toDraw(key, observed)`                           | the held value, or `undefined` when the data has overtaken it            |
+| `settle(observedBy)`                              | report what a draw was made from                                         |
+| `inFlight()`, `forget(key)`, `holds()`, `reset()` | inspect or drop holds                                                    |
 
 `createOptimism(signal, rules)` takes the host's signal factory and `Rules` (`same`, `ttlMs`). Users: `RecordStore` (card styles, connections), `boardOptimism.ts`, `signalOptimism.ts`, `involvementOptimism.ts` and the polls module store.
 

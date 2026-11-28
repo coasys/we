@@ -8,24 +8,24 @@ A **dataset** is the neutral name for one queryable data container; on AD4M it i
 
 <details><summary>How it works</summary>
 
-| `DatasetRef` field | Meaning |
-|---|---|
-| `id` | the backend-local id; it has no meaning on another agent's machine |
-| `name` | the dataset name |
-| `sharedUri` | the global address with its scheme, once published or joined |
-| `sharedId` | the global id without a scheme; shared records store and compare this one |
-| `handle` | the opaque `DatasetHandle` ([Data source](data-source.md)) |
+| `DatasetRef` field | Meaning                                                                   |
+| ------------------ | ------------------------------------------------------------------------- |
+| `id`               | the backend-local id; it has no meaning on another agent's machine        |
+| `name`             | the dataset name                                                          |
+| `sharedUri`        | the global address with its scheme, once published or joined              |
+| `sharedId`         | the global id without a scheme; shared records store and compare this one |
+| `handle`           | the opaque `DatasetHandle` ([Data source](data-source.md))                |
 
-| `DatasetLifecyclePort` member | What it does |
-|---|---|
-| `list({ fresh })`, `get(id)` | read the datasets; `fresh` asks the backend again |
-| `create(name)`, `remove(id)` | make or delete a local dataset |
-| `publish?(id, { sharing, server })` | share a local dataset; returns `uri` and `sharedId` |
-| `join?(idOrUri)` | join a shared dataset; accepts a full URI or a bare shared id |
-| `whenSynced?(id)` | resolves when a joined dataset holds the shared data |
-| `members?(id)` | the other agents that hold a shared dataset |
-| `sharingOptions?()` | the ways `publish` can sync: `peer-to-peer` or `server` |
-| `subscribe({ onAdded, onUpdated, onRemoved })` | change events; returns an unsubscribe function |
+| `DatasetLifecyclePort` member                  | What it does                                                  |
+| ---------------------------------------------- | ------------------------------------------------------------- |
+| `list({ fresh })`, `get(id)`                   | read the datasets; `fresh` asks the backend again             |
+| `create(name)`, `remove(id)`                   | make or delete a local dataset                                |
+| `publish?(id, { sharing, server })`            | share a local dataset; returns `uri` and `sharedId`           |
+| `join?(idOrUri)`                               | join a shared dataset; accepts a full URI or a bare shared id |
+| `whenSynced?(id)`                              | resolves when a joined dataset holds the shared data          |
+| `members?(id)`                                 | the other agents that hold a shared dataset                   |
+| `sharingOptions?()`                            | the ways `publish` can sync: `peer-to-peer` or `server`       |
+| `subscribe({ onAdded, onUpdated, onRemoved })` | change events; returns an unsubscribe function                |
 
 A backend with no sharing concept omits `publish` and `join`. `parseServerUrl` refuses a server that is not an http(s) address. What WE does with these calls is on [Spaces](../spaces/README.md).
 

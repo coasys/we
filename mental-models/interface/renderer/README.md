@@ -7,6 +7,7 @@ The **renderer** is `RenderSchema` in `@we/schema-solid`. It walks a schema tree
 **Parent:** [Interface](../README.md)
 
 ## Parts
+
 - [Component registry](component-registry.md): the map from a `type` name to a Solid component, and how modules add to it.
 - [Template queries](queries.md): `$query` and `$queries`, and the subscription pool that shares one live question between nodes.
 - [Foreign elements](foreign-elements.md): custom elements from a library, named in the seed, and the content security policy.

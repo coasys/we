@@ -6114,8 +6114,8 @@ temporary files. Use `finally` or the dispose hook, not only the success path.
 in the same commit. A comment never claims a guard, a platform or a guarantee the code does not have.
 
 **Decide on a stable key or shape.** Do not branch on display text, on the text of an error message,
-or on `instanceof`: a label can change, and a bundled SDK has its own copy of each error class. Read
-a key or the error's shape (as `rpcStatus` does).
+or on `instanceof` of an error class from another package: a label can change, and a bundled SDK has
+its own copy of each class. Read a key or the error's shape (as `rpcStatus` does).
 
 **Generate the generated files again after a merge.** Merge the hand-written sources, then run the
 generators; do not keep either side's generated file. A second generation gives no diff.

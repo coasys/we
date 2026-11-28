@@ -2,18 +2,18 @@
 
 The **store surface** is the set of store members that a template can reach as `modules.<id>.<name>`. A member is private until the store marks it with `markState` or `markAction`, and each mark carries a required `doc`.
 
-**Why:** Any template can reach a public member, so a public member is public API and a statement about safety. The `store.ts` header records the option that lost: an opt-out list (`chromeOnlyStoreMembers`), where a new member was public until somebody remembered to hide it. The required `doc` feeds the generated reference, so a template author sees what each member does.
+**Why:** Any template can reach a public member, so a public member is public API and a statement about safety. With an opt-out list, a module author who forgets the list makes a private member public to every template. With private by default, the same mistake hides the member from templates only (`store.ts` header). The required `doc` feeds the generated reference, so a template author sees what each member does.
 
 **Parent:** [Module contract](README.md)
 
 <details><summary>How it works</summary>
 
-| Mark | Kind | What a template can do |
-|---|---|---|
-| `markState(value, doc)` | `state` | Read it in an expression. The host tags it reactive. A value that is not a function is wrapped in an accessor. |
-| `markAction(fn, doc)` | `action` | Call it with `$invoke`. An expression that reads it gets nothing. |
-| `markAction(fn, doc, { ambient: true })` | `action`, ambient | Call it with nobody asking. |
-| (no mark) | — | Nothing. Only chrome sees it. |
+| Mark                                     | Kind              | What a template can do                                                                                         |
+| ---------------------------------------- | ----------------- | -------------------------------------------------------------------------------------------------------------- |
+| `markState(value, doc)`                  | `state`           | Read it in an expression. The host tags it reactive. A value that is not a function is wrapped in an accessor. |
+| `markAction(fn, doc)`                    | `action`          | Call it with `$invoke`. An expression that reads it gets nothing.                                              |
+| `markAction(fn, doc, { ambient: true })` | `action`, ambient | Call it with nobody asking.                                                                                    |
+| (no mark)                                | —                 | Nothing. Only chrome sees it.                                                                                  |
 
 - `deps.state` and `deps.action` are the same two markers, so a store can mark without an import.
 - An action that is not ambient runs only while a person is doing something (a press, a key, typing). Otherwise the host's gesture gate (`gated` in `templateSurface.ts`) warns and, when it enforces, does not run the action. The `markAction` comment gives the rule for `ambient`: the action changes only what this agent looks at. It stores nothing, publishes nothing and touches no device.

@@ -7,6 +7,7 @@ The call module (`@we/module-call`) runs audio, video and screen-share calls in 
 **Parent:** [Bundled modules](../README.md)
 
 ## Parts
+
 - [Mesh](mesh.md): one `RTCPeerConnection` per peer over the ephemeral channel, the call protocol, and local media.
 - [Backend sessions](sessions.md): the `call` kernel, mesh or SFU topology, and the space's call policy.
 - [Live](live.md): the live module, which shares cursors and lets one participant drive the others' view.
@@ -31,6 +32,7 @@ A failed connection is not a peer that left, so the mesh never tells presence wh
 - `holds: 'active'` keeps the call's chrome on screen in a space that does not enable calls.
 
 Contributions:
+
 - The `stage` panel, whose bid comes from the store (`stageBid`).
 - Slots in `dock-bottom` (`problem`, `audioSink`, `stageStrip`) and in `overlay` (the device settings).
 - A launcher ("Start call" / "Go to the call").

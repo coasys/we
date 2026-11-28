@@ -7,6 +7,7 @@ The **backend contract** is the set of ports in `@we/backend-shared` that every 
 **Parent:** [Data](../README.md)
 
 ## Parts
+
 - [Data source](data-source.md): `DataSource`, `EntityClass`, `LiveQuery` and the renderer's data bindings.
 - [Dataset lifecycle](lifecycle.md): `DatasetHandle`, `DatasetRef`, `DatasetLifecyclePort` and `AgentSessionPort`.
 - [Schemas](schemas.md): `SchemaPort`, which installs entities into a dataset and reads them back.
@@ -15,16 +16,16 @@ The **backend contract** is the set of ports in `@we/backend-shared` that every 
 
 <details><summary>How it works</summary>
 
-| Port | Required | What it does |
-|---|---|---|
-| `agentSession` | yes | sign up, sign in, the current agent ([Dataset lifecycle](lifecycle.md)) |
-| `lifecycle` | yes | list, create, publish, join and remove datasets ([Dataset lifecycle](lifecycle.md)) |
-| `schemas` | yes | install and read entities in a dataset ([Schemas](schemas.md)) |
-| `profiles` | yes | `ProfileDirectoryPort`: `get`, `publish`, `uploadFile` for agent profiles |
-| `ephemeral` | yes | unstored signals per dataset ([Ephemeral and presence](ephemeral.md)) |
-| `dataBindings` | yes | the bindings the schema renderer reads ([Data source](data-source.md)) |
-| `transcription` | no | `TranscriptionPort`: lists the transcription models (`TranscriptionRecord`) and opens a stream that takes utterances and returns text |
-| `runtime`, `models`, `languageModel`, `agents`, `interpretation`, `workflows`, `references`, `call`, `identity`, `persons` | no | runtime administration, AI models, text generation, agents, interpretation, workflows, referrers of a value, calls, identity and persons |
+| Port                                                                                                                       | Required | What it does                                                                                                                             |
+| -------------------------------------------------------------------------------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `agentSession`                                                                                                             | yes      | sign up, sign in, the current agent ([Dataset lifecycle](lifecycle.md))                                                                  |
+| `lifecycle`                                                                                                                | yes      | list, create, publish, join and remove datasets ([Dataset lifecycle](lifecycle.md))                                                      |
+| `schemas`                                                                                                                  | yes      | install and read entities in a dataset ([Schemas](schemas.md))                                                                           |
+| `profiles`                                                                                                                 | yes      | `ProfileDirectoryPort`: `get`, `publish`, `uploadFile` for agent profiles                                                                |
+| `ephemeral`                                                                                                                | yes      | unstored signals per dataset ([Ephemeral and presence](ephemeral.md))                                                                    |
+| `dataBindings`                                                                                                             | yes      | the bindings the schema renderer reads ([Data source](data-source.md))                                                                   |
+| `transcription`                                                                                                            | no       | `TranscriptionPort`: lists the transcription models (`TranscriptionRecord`) and opens a stream that takes utterances and returns text    |
+| `runtime`, `models`, `languageModel`, `agents`, `interpretation`, `workflows`, `references`, `call`, `identity`, `persons` | no       | runtime administration, AI models, text generation, agents, interpretation, workflows, referrers of a value, calls, identity and persons |
 
 `BackendPortsContext` gives the adapter `selfId` and `afterFirstScreen`. The connector that builds the ports belongs to [Backend connector](../../hosts/platform/backend-connector.md). The space policy format (`policy.ts`) also lives in this package; its owner page is [Policy](../spaces/policy.md).
 

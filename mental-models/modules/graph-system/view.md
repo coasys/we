@@ -9,18 +9,21 @@
 <details><summary>How it works</summary>
 
 **`GraphView`** makes a `PluginRegistry` and a `GraphEngine` for each mount (see [Plugins](plugins.md) and [Engine](engine.md)). It draws nodes as DOM elements and edges as SVG. Its props:
+
 - The spec: `seeds`, `expansion`, `layout`, `nodeStyle`, `edgeStyle`, `behaviours`, `controls`, `live`, and `reified`.
 - How it looks: `width`, `height`, `bg`, `backdrop`, `showStatus`, `showControls`, and the empty state (`empty`, `emptyIcon`, `emptyAction`).
 - Events: `onNodeClick`, `onNodeDoubleClick`, `onEdgeClick`, `onEdgeCreate`, `onSelectionChange`, `onNodeDragEnd`, `onNodeArrange`, `onDrop`, `onNodeAction`, and others. `focus` selects a node from outside.
 - `host`: the data bindings. The host's component registry supplies them, and a template never writes them.
 
 **`GraphHost`** (app shell):
+
 - It builds the `ExpanderContext` port from `sessionStore.backendPorts().dataBindings(…)`, with the current dataset, its entities and the profiles.
 - It follows live reads for the `live` spec (`graphWatch.ts`).
 - It imports the graph's stylesheet. `@we/graph-solid` ships the stylesheet as a separate entry. Without it, the graph is in the DOM but nothing is visible.
 - The component registry has `GraphView: GraphViewOnDemand`, which loads `GraphHost` only when a template draws a graph.
 
 **The graph module** (`createGraphModule(graphViewComponent)`, id `graph`):
+
 - `requires: { frameworks: ['solid'] }`, because the component is Solid. It names no backend, because all reads go through the host's port.
 - `components: { GraphView }`. No store and no entities.
 - Parts: `schemaMap` (the space's entity types and their relations, `schema` seed, `force`), `contentTree` (collections as a `tree`), `staticDiagram` (a fixed three-step diagram with a literal seed) and `knowledgeMapPosts` (`knowledgeMap({ entity: 'Post' })`, a `query` seed that opens on double-click).

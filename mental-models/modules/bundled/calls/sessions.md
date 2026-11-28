@@ -10,14 +10,15 @@ Where the connected backend can run a call, the call module uses the `call` kern
 
 **The kernel** (`CallKernel`):
 
-| Member | What it does |
-|---|---|
-| `available()` | True when the backend has a call port. |
+| Member                                                  | What it does                                                                |
+| ------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `available()`                                           | True when the backend has a call port.                                      |
 | `session(callId, { iceServers, topology, datasetUri })` | Builds the backend's session in the named space, or in the space on screen. |
-| `config()` / `setConfig(config)` | Reads and writes the call policy of the space on screen. |
-| `configurable()` | True when the space on screen has a call policy (not a personal space). |
+| `config()` / `setConfig(config)`                        | Reads and writes the call policy of the space on screen.                    |
+| `configurable()`                                        | True when the space on screen has a call policy (not a personal space).     |
 
 **Topology.** `CallTopology` is `mesh` or `sfu` (a relay server).
+
 - The space's policy decides only how a new call starts.
 - Each participant publishes `CallTopologyChoice` `{ mode, at, by? }` in its call activity. A joiner adopts the newest one (`newestCallTopology`), so a change of the setting during a call cannot split the call.
 - `switchTopology(mode)` sets `by` to this agent, publishes, and calls `reconnectSession`, which ends the session and builds a new one. If that fails, it tries the previous topology again and says which one it is on.

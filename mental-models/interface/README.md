@@ -7,6 +7,7 @@ In WE, the interface is data. A **template** is a JSON tree of **schema nodes**.
 **Parent:** [WE](../README.md)
 
 ## Parts
+
 - [Schema language](schema/README.md): the node tree, expressions, handler tokens, node operators, shared definitions and validation.
 - [Renderer](renderer/README.md): `RenderSchema` in `@we/schema-solid`, the reactivity port, the component registry, queries and foreign elements.
 - [Templates](templates/README.md): shell, view, app and page templates, the packages that hold them, fragments, bundles, template tiers and the editor.

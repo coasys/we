@@ -8,10 +8,10 @@ A **shape** is an entity that a space defines for itself. It is stored once, in 
 
 <details><summary>How it works</summary>
 
-| Backend | Where a shape lives | `ShapeStore` port |
-|---|---|---|
-| AD4M | the class's SHACL, plus annotation links on its nodes for what SHACL cannot say | `createAd4mShapeStore` |
-| no schema language of its own | a `Shape` record that holds the manifest as a document | `createJsonShapeStore` |
+| Backend                       | Where a shape lives                                                             | `ShapeStore` port      |
+| ----------------------------- | ------------------------------------------------------------------------------- | ---------------------- |
+| AD4M                          | the class's SHACL, plus annotation links on its nodes for what SHACL cannot say | `createAd4mShapeStore` |
+| no schema language of its own | a `Shape` record that holds the manifest as a document                          | `createJsonShapeStore` |
 
 1. `SchemaPort.shapes` has `list(dataset)`, `save(dataset, shape, id?)` and `remove(dataset, id)`.
 2. The adoption rail: on a switch into a WE space, `ShapeStore` lists the shapes and checks each with `validateManifest` (against core vocabulary, sibling shapes and foreign entities). `adoptShape` compiles it with `declareInDataset` (module id `shape/<id>`) and, for an editable shape, installs its schema with `installModules`. After that, `$query { entity: "<ShapeName>" }`, the record forms and extraction work on it.
