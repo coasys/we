@@ -56,6 +56,37 @@ export function wholeAnswer<T>(page: Page<T>, limit: number | undefined): readon
   return limit !== undefined && results.length >= limit ? results : undefined;
 }
 
+export interface ReadThroughOptions<T> extends FollowOptions {
+  /** The read's `limit`, for `wholeAnswer`. */
+  limit: number | undefined;
+  /** The read asked the ordinary way, for a first page that is not the whole answer. */
+  complete: () => Promise<readonly T[]>;
+  /** The read's answer, as it is handed back: what a later first answer is compared with. */
+  onRead: (rows: readonly T[], through: 'watch' | 'read') => void;
+}
+
+/**
+ * Read through the watch that will follow the read: the live query's first page is the read's
+ * answer, so the read reaches the backend once rather than once to draw and again as the watch
+ * opens. A first page that is only part of the answer, or a live query that would not open, is
+ * completed by `complete`. Changes after the first page reach `onChange` as `followRead` reports
+ * them. Returns the answer and the function that stops following.
+ */
+export function readThroughWatch<T>(
+  subscription: LiveRead<T>,
+  { limit, complete, onRead, ...follow }: ReadThroughOptions<T>,
+): { rows: Promise<readonly T[]>; stop: () => void } {
+  const stop = followRead(subscription, follow);
+  const rows = (async () => {
+    const page = await subscription.first.catch(() => undefined);
+    const whole = page ? wholeAnswer(page, limit) : undefined;
+    const answer = whole ?? (await complete());
+    onRead(answer, whole ? 'watch' : 'read');
+    return answer;
+  })();
+  return { rows, stop };
+}
+
 /** Follow a read; returns the function that stops following it. */
 export function followRead<T>(subscription: LiveRead<T>, { seen, onChange, onError }: FollowOptions): () => void {
   let live = true;

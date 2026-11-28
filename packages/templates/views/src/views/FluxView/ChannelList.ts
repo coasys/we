@@ -9,7 +9,8 @@ const messageCard: SchemaNode = {
     // Message content
     {
       type: 'Column',
-      props: { flex: '1', gap: '100' },
+      // `minWidth: 0`: the card fits its lane, and the author's name truncates, not the page.
+      props: { flex: '1', minWidth: '0', gap: '100' },
       children: [
         // Meta: the author's name (never their DID) + timestamp
         {
@@ -22,7 +23,8 @@ const messageCard: SchemaNode = {
                 variant: 'footnote',
                 color: 'text-faint',
                 fontWeight: 'semibold',
-                flex: '0 0 auto',
+                // Gives way to the timestamp on a narrow card, with an ellipsis.
+                flex: '0 1 auto',
                 maxWidth: '220px',
                 truncate: true,
               },

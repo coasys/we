@@ -905,6 +905,17 @@ export class GraphEngine {
     /** This load has been replaced, so whatever it found is about a graph nobody is looking at. */
     const superseded = () => generation !== this.loadGeneration;
 
+    /*
+      Watches this load opened as it read, through `watchRead`, not yet handed to `syncWatchers`.
+      They belong to this load until it finishes: kept if its reads are wanted, stopped otherwise —
+      and all stopped if it is replaced, since its reads are no longer anybody's.
+    */
+    const opened = new Map<string, () => void>();
+    const release = () => {
+      for (const stop of opened.values()) stop();
+      opened.clear();
+    };
+
     const recording: ExpanderContext = {
       ...this.context,
       query: (request) => {
@@ -919,12 +930,23 @@ export class GraphEngine {
           return Promise.resolve([...answered]);
         }
         const asked = this.watchDeliveries.get(key) ?? 0;
-        return this.context.query(request).then((rows) => {
+        const keep = (rows: readonly Record<string, unknown>[]) => {
           if (this.watching() && !superseded() && (this.watchDeliveries.get(key) ?? 0) === asked) {
             this.watchedRows.set(key, rows);
           }
-          return rows;
-        });
+          return [...rows];
+        };
+        /*
+          A read that is about to need a watch is read through it. Otherwise the watch `syncWatchers`
+          opens after the load runs the same read again on the backend, a moment after this one — on
+          a large canvas, the whole canvas read twice every time it is opened.
+        */
+        if (this.context.watchRead && this.watching() && !this.watchers.has(key) && !opened.has(key)) {
+          const { rows, stop } = this.context.watchRead(target, this.onWatchedChange(key));
+          opened.set(key, stop);
+          return rows.then(keep);
+        }
+        return this.context.query(request).then(keep);
       },
     };
 
@@ -944,7 +966,10 @@ export class GraphEngine {
                   if (!superseded()) this.warn(`seed "${seed.source}" failed: ${describe(error)}`);
                   return undefined;
                 });
-        if (superseded()) return null;
+        if (superseded()) {
+          release();
+          return null;
+        }
         if (!fragment) {
           if (!('literal' in seed) && !this.registry.seed(seed.source)) {
             this.warn(`no seed source registered as "${seed.source}"`);
@@ -968,10 +993,15 @@ export class GraphEngine {
       Registering a superseded load's reads would tear down the live graph's subscriptions and put
       back the old graph's — `syncWatchers` reconciles against exactly the set it is handed.
     */
-    if (superseded()) return null;
+    if (superseded()) {
+      release();
+      return null;
+    }
     this.fetchedSeeds = fetched;
     this.lastSeedReads = read;
-    this.syncWatchers(read);
+    this.syncWatchers(read, opened);
+    // What `syncWatchers` did not take — a graph that stopped following while it loaded.
+    release();
     return { nodes, edges };
   }
 
@@ -1054,7 +1084,7 @@ export class GraphEngine {
    * different type every time somebody uses it. Watches nothing when the host cannot report changes,
    * or when the template asked for a graph that does not move.
    */
-  private syncWatchers(read: ReadonlyMap<string, WatchTarget>): void {
+  private syncWatchers(read: ReadonlyMap<string, WatchTarget>, opened: Map<string, () => void> = new Map()): void {
     const wanted = this.watching() ? read : new Map<string, WatchTarget>();
 
     for (const [key, stop] of this.watchers) {
@@ -1068,17 +1098,26 @@ export class GraphEngine {
 
     for (const [key, target] of wanted) {
       if (this.watchers.has(key)) continue;
-      this.watchers.set(
-        key,
-        this.context.watch!(target, (rows) => {
-          // A watch that brings no rows leaves this read to be asked again.
-          this.watchDeliveries.set(key, (this.watchDeliveries.get(key) ?? 0) + 1);
-          if (rows) this.watchedRows.set(key, rows);
-          else this.watchedRows.delete(key);
-          this.onDataChanged();
-        }),
-      );
+      // Opened by the read itself (`watchRead`): already following, from the moment it read.
+      const adopted = opened.get(key);
+      if (adopted) {
+        opened.delete(key);
+        this.watchers.set(key, adopted);
+        continue;
+      }
+      this.watchers.set(key, this.context.watch!(target, this.onWatchedChange(key)));
     }
+  }
+
+  /** What a watch on `key` does when it reports, whichever call opened it. */
+  private onWatchedChange(key: string) {
+    return (rows?: readonly Record<string, unknown>[]) => {
+      // A watch that brings no rows leaves this read to be asked again.
+      this.watchDeliveries.set(key, (this.watchDeliveries.get(key) ?? 0) + 1);
+      if (rows) this.watchedRows.set(key, rows);
+      else this.watchedRows.delete(key);
+      this.onDataChanged();
+    };
   }
 
   /**
