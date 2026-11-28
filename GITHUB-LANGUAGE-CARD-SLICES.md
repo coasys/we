@@ -1,110 +1,121 @@
 # GitHub language card slices (n247)
 
-n247 is an umbrella. This file maps its a12 leaves onto 1–3 hour boundaries. It implements nothing: no GitHub write, no comment, no language package, no template binding.
+n247 is an umbrella. This file maps its a12 leaves onto 1–3 hour boundaries. It implements nothing: no GitHub write, no comment sent, no language package, no template binding.
 
-Worktree `/mnt/hdd/work/we-n247`, branch `marvin/github-acorn-card-plan`. `git rev-parse HEAD` before this file was `b58da1314db811cb63dc190353e11f4eda53cc99`, which is `origin/acorn/we-5-live-suite`. The three repositories stay unstacked. n244 and n245 are cited from their own branches.
+Worktree `/mnt/hdd/work/we-n247`, branch `marvin/github-acorn-card-plan`. Round 1 is `972f3c2b5d045d8b705e1475ae5516b4930cf879` (110 lines) on base `b58da1314db811cb63dc190353e11f4eda53cc99` (`origin/acorn/we-5-live-suite`). Lal's review of that commit is REVISE (2026-11-28). The three repositories stay unstacked.
+
+## Readiness
+
+- **Start now.** Implement and test offline on synthetic API-shaped fixtures with an injected transport and injected bindings. That is a fixture exercise. It is not a live GitHub language, a production mount, or a deploy.
+- **Spike integration.** May target ad4m `origin/acorn/pr6-run-as-caller` `e2c69d9b27475dffa23423286d0dae5e7411723b`, labelled legacy/provisional. n188 says prototype now. n253 permits the spike branch. The pin is that SHA. `origin/acorn/pr5-instance-writes` is `363259fc2362ed8a1f08bf5198d27886cb018748`. Branch names are not interchangeable.
+- **Production mount integration.** Waits for Nico's #1914 redesign: mount intent as neighbourhood-visible SDNA, with local projection and reconciliation. A merge of the current PRs is not enough. Keep an injected adapter. Leave the current lifecycle API, the 15-second sleep, the ownership model, and the signal-routing semantics out of GitHub product code. Lal records the 11-27 redesign write-up as a rejected proposal with unresolved requirements. This file does not adopt it as an API.
+
+#1941/n57 is executor and SDK call-class plumbing. It does not block pure request/response mapping or a mocked interaction handler. n333/#1981 stays WAIT for #1941 and its stack. n187/n242 is one descriptor decision. Caller-injected fixture bindings keep it droppable. n246 owns mount-associated Template record and import behavior. Its fixture contract can start now. No pure slice waits on n212 or #1941.
+
+## Two axes
+
+Reviewed implementation and merge/closed-item progress stay separate, as in the 11-26 audit. A fixture-ready slice can start while its shared parent is open. A note that says Lal approved is a review fact, and the node can still be unmerged. A pure function landing leaves the a12 node open. The audit precedent cited in the n247 review, and not re-audited in this file, dropped an Acorn-merge blocker from a11 mount transport (n139/n170 and n324–327) and still refused to call that full engine integration.
 
 ## Inputs checked
 
-Sidework JSON sha256 `f8d82ac0c24fc7906e831e585bee54f204d407781b84d8d4d43cf98c48ed6605` (same bytes as the agent-mail copy). Brief sha256 `78b11a47e0debe0c097ce978d552e0a6d001a82125a1ba28eac0c10103c682f8`. Base registries: `templateRegistry.ts` sha256 `aa35e73932e626c9eeb6a33c9046caad109f60d581f30fa06a0881d36ea655bc` (52 lines), `templateSurface.ts` sha256 `ed990f16c1a78075801a4f1e44458508eda6ff7deba1b86879222010c2540f9c` (2195 lines). Neither base file contains `resolveClassOnSurface`.
+Sidework JSON sha256 `f8d82ac0c24fc7906e831e585bee54f204d407781b84d8d4d43cf98c48ed6605`. Brief sha256 `78b11a47e0debe0c097ce978d552e0a6d001a82125a1ba28eac0c10103c682f8`. n246 brief sha256 `0eaef8d3931c5fb7cf6bf98b32a0f769476297e83cb1953a5d0276a5d36a234f`. Review sha256 `b3fa9ba8073f92ea3da15a33d038ce186372bee23c7fb275d5c67d3146dae875`.
 
-Fetched and matched: `marvin/we-class-surface` `6ba58799ba902244d5e59ad59c305760220ab501` (parent is the base) and `marvin/we-class-card` `dd5ff1d9517518095aa5156075f68cd80e3872c0` (parents `18add3ef8`, then `6ba58799b`, then the base). Mount ref ad4m `origin/acorn/pr6-run-as-caller` `e2c69d9b27475dffa23423286d0dae5e7411723b`, fetched. It is not an ancestor of ad4m `origin/dev` `6b83a802eed04c91b6e02a4b5687b3e6c63c8095`.
+Base registries: `templateRegistry.ts` sha256 `aa35e73932e626c9eeb6a33c9046caad109f60d581f30fa06a0881d36ea655bc` (52 lines), `templateSurface.ts` sha256 `ed990f16c1a78075801a4f1e44458508eda6ff7deba1b86879222010c2540f9c` (2195 lines). The base has no `resolveClassOnSurface`. `templateRegistry.ts:41` is the bundled map. `isValidTemplateId` is `:50`. `buildTemplateBag` is `templateSurface.ts:1902`. `inspectTemplateSurface` is `:2146`.
 
-Acorn language `f3200b4c312cc36ca8f60aeba5c0226edd2680fa` is not an object in `~/nico/ad4m`, and `/home/data/code/acorn-ad4m` is absent. unverified: needs b11. Spike note SHA `7efef9828350ae4a731bcd6519d36cdc3b3ad1a9` exists (subject is a notes doc) and is not an ancestor of the mount ref.
+`marvin/we-class-surface` `6ba58799ba902244d5e59ad59c305760220ab501` (parent is the base). `marvin/we-class-card` `dd5ff1d9517518095aa5156075f68cd80e3872c0` (parent `18add3ef895309d88d5b9fa293c222478eee8c65`, then `6ba58799b`, then the base). On `6ba58799b`, `ClassSurfaceBinding` is `templateSurface.ts:2210` and `resolveClassOnSurface` is `:2237`. The fixture is `templateRegistry.ts:62`, `templateId: 'acorn'` at `:67`, unsettled published-template note at `:60`. On `dd5ff1d95` those two symbols sit at `:2212` and `:2239`. `createClassTemplateCard` is `:2391`. `instantiateClassCard` writes `content: []` at `:2358` and stores class/template metadata in WeakMaps at `:2320-2321`. `writeCanvasCard` is `packages/app-shell/src/shared/canvasCardWrite.ts:68`. That card has an empty body and lives in process memory.
+
+Mount ref `e2c69d9b27475dffa23423286d0dae5e7411723b` is not an ancestor of ad4m `origin/dev` `c1a4cbacdeb1ef406ce403484fae05222653d1ab` (fetched 2026-11-28) or of the previously cited `6b83a802eed04c91b6e02a4b5687b3e6c63c8095`. `66122b33d83042a519d0a8e8ba86cf9310eaeeff` is an ancestor of the mount ref. LDK lines 85–94 match on both. Spike note `7efef9828350ae4a731bcd6519d36cdc3b3ad1a9` exists and is not an ancestor of the mount ref. Acorn `f3200b4c312cc36ca8f60aeba5c0226edd2680fa` is absent from `~/nico/ad4m`. unverified: needs b11.
 
 ## a12 leaves
 
-These seven nodes have ancestor `a12`. Every one is open.
+All seven are open. n185 review-order template. n186 PR conversations as tree children, both ways. n187 descriptor, blocked on James, the same decision as n242 (blocked on Nico and James). n188 design: a PR or issue URL mounts the language. n253 read. n254 ETag `mountDelta`. n255 comment, reply, resolve.
 
-- n185. Review-order template. No ref. Changed files follow a `Review order` list in the PR body, otherwise GitHub's file order.
-- n186. PR reviews and comments as children in the tree, synced both ways. No ref.
-- n187. Descriptor decision. Ref `.scratch/templates-classes-1120/DESIGN.md`, absent from this worktree. Blocked `James to confirm`. Note: Nico 15:46 (219831) is convinced of a template-to-class link. The same decision is n242.
-- n188. Design: a PR or issue URL mounts `PullRequest`, `ChangedFile`, `ReviewThread`, `Comment`. Note: reuse n205 (mount exports, engine, mountDelta) and n57 (call-action writes). The note names branch `acorn/s2-0-instance-writes`. Code citations below are the mount ref.
-- n253. Read: `mountShapes` + `mountSnapshot` over the GitHub API. Note: needs n205 mount exports.
-- n254. `mountDelta` by ETag poll. The title leaves webhooks for later. Note: n205 mount engine.
-- n255. Writes through call actions: comment, reply to a review thread, resolve. Note: n57 SDK call-class writes.
-
-The other four nodes in the input are shared, and they are not a12. n205 and n57 have ancestors a7/n202. n240 has ancestors a7/n220. n184 has ancestors a11/n165/n168 and status done.
+Shared, and not a12: n205 and n57 under a7/n202. n240 under a7/n220. n184 under a11/n165/n168, status done.
 
 ## Shared work, once
 
-Mount is n205, status open. JSON notes mark these children done: n208 (#1887, #1888), n209 (#1913 at `bccddcf07`), n210 (#1914 at `5b72bd20e`, #1915 at `66122b33d`), n211 (items 5.1, 5.2, 2.3, 2.7 built into those PRs), n298 (stack cut). Still open: n207 blocked on Nico, n212 merge blocked on Nico, n333 shape-registration path blocked until #1941. n205's note assigns a10 to ATProto. Read on the mount ref:
+Mount is n205, open. Notes mark n208 (#1887, #1888), n209 (#1913 at `bccddcf072b1239920a077efa8f3ede038a6be5e`), n210 (#1914 at `5b72bd20e4ba1d5e4717eaf13e45aeb16e1a6084`, #1915 at `66122b33d`), n211, and n298 done. Still open: n207 blocked on Nico, n212 merge blocked on Nico, n333 shape registration WAIT until #1941 and its stack (`devin/mount-register-shapes`, no dispatch). n205 assigns a10 to ATProto.
 
-- `PerspectiveInstance::mount` at `mounts.rs:162`, `sync_mount` at `:393`, `apply_mount_delta` at `:579`. Resync interval is 15s at `mounts.rs:65`.
-- `mount_shapes` at `languages/mod.rs:3192`, `mount_snapshot` at `:3209`. The guard at `:3179` requires both exports.
-- `MountShapes` at `mount_types.rs:11`, `MountShape` at `:19`, `MountEntry` at `:27`. The address comment at `:25` says no `<lang>://` prefix. `MountSnapshot` at `:35`, `MountDelta` at `:54`.
-- A language pushes `{mountDelta}` through `emitSignal` (`host.d.ts:64`), consumed at `languages_extension.rs:154`. A delta with no call token is dropped at `:157`.
-- LDK slots are `defineLanguage.ts:205-206`. SDK entry is `PerspectiveProxy.mount` at `PerspectiveProxy.ts:664` and `syncMount` at `:677`.
+On the mount ref: `mount` `mounts.rs:162`, `sync_mount` `:393` reads shapes and a full snapshot at `:405-408` and drops addresses the snapshot omits (`:389`). `apply_mount_delta` `:579`. `MOUNT_RESYNC_INTERVAL_MS` `:65` is the sleep between passes (`:62-70`), not an ETag client. Both-export guard `languages/mod.rs:3179`. `mount_shapes` `:3192`, `mount_snapshot` `:3209`. Rust `MountShape.shape` is arbitrary JSON (`mount_types.rs:21`). The address comment at `:25` omits the `<lang>://` prefix. `MountDelta` `:54`. `emitSignal` is `host.d.ts:64` (`unknown`). `{mountDelta}` routing and the no-call-token drop are `languages_extension.rs:145-160`. LDK slots `defineLanguage.ts:205-206`. `MountCapability` `:89-92`, and `LanguageSpec.mount` `:126-127` (export both or neither). SDK `PerspectiveProxy.mount` `:664`, `syncMount` `:677`.
 
-Call actions are n57. The parent status is still open. Children n213, n214, and n249 are done. n214 says the SDK write table passed 8/8 on `7efef9828`, including `updateSubject`. n184 is done and points at n214. Those notes leave MINCA problems 2–9 open; they are outside this map. On the mount ref the call form is `call_actions.rs:2`, `run_call_actions` is `:269`, and `execute_call` is `:311`, which calls `expression_interact` at `languages/mod.rs:3037`.
+Call actions are n57, still open. n213, n214, and n249 are done. n214's note says the SDK write table passed 8/8 on `7efef9828`, including `updateSubject`. n184 points at n214. MINCA problems 2–9 stay outside this map. `parse_call_result` `call_actions.rs:102` expects the `MountDelta` object itself. `run_call_actions` `:269`. `execute_call` `:311` calls `expression_interact` `languages/mod.rs:3037`. The call form is `call_actions.rs:2`.
 
-Templates are n240, status open. n241 marks DESIGN.md done; that file is not in this worktree, so its six-PR body is unread. n243 (ad4m#1906) is done. n244 at `6ba58799b` adds `ClassSurfaceBinding` (`templateSurface.ts:2210`) and `resolveClassOnSurface` (`:2237`). The fixture is `templateRegistry.ts:62`, with `templateId: 'acorn'` at `:67`. The comment at `:60` says published-template selection has no settled field. n245 at `dd5ff1d95` adds `createClassTemplateCard` (`templateSurface.ts:2391`) and `writeCanvasCard` (`canvasCardWrite.ts:68`). n245's brief stops at fixture-backed creation and names n246 for published-template discovery. n246 is open. `devin-brief-n246-acorn-mount-template.md` is not in `agent-mail/devin-briefs/`. How an Acorn mount installs a Template record is unverified: needs b11.
+Templates are n240, open. n241 marks DESIGN.md done. That file is absent here, so its body is unread. n243 (ad4m#1906) is done. n244 and n245 are the SHAs above. Their JSON nodes are still open.
 
-On this base, `templateRegistry.ts:41` is the bundled map and `isValidTemplateId` is `:50`. `buildTemplateBag` (`templateSurface.ts:1902`) and `inspectTemplateSurface` (`:2146`) classify capabilities. The class-IRI lookup exists only on n244.
+The n246 brief is READY FOR CONTRACT/TEST SLICE. It allows an explicit fixture descriptor, the existing Template import and identity, an idempotent install test, and failed-mount cleanup, written up in `MOUNT-TEMPLATE-CONTRACT.md`. Automatic installation may be dropped. It adds no template field on `mountShapes` and no new public vocabulary. GitHub slices install no Template record.
 
-## GitHub-only slices
+Binding-only mounting is a shared #1914 redesign requirement under n205, not a seventh GitHub engine. The both-export guard rejects a projection-less language. `bootstrap-languages/file-storage/index.ts:127-136` exports `expressionGet`, `expressionCreate`, and `isImmutableExpression`, and it exports no mount functions. FileStorage acceptance stays with n205. This map adds no dummy mount exports.
 
-Each slice is a fixture test of one to three hours. None of them sends a GitHub request. No captured GitHub payload is in coasys/we or on the mount ref. n253, n254, and n255 start by adding a sanitized fixture. That fixture is a source input, next to the types named here.
+## Contract in one place (n188)
 
-### n188 class contract (about 2h)
+Shape class name, fixture class IRI, and address are defined here. Later slices consume this table. `MountEntry.class` and `MountShape.name` are the class name. The IRI is what n244 binds. Acorn's package IRI style is unverified: needs b11. These IRIs are fixture IRIs.
 
-One JSON fixture that parses as `MountShapes` plus one `MountSnapshot`, with classes `PullRequest`, `ChangedFile`, `ReviewThread`, and `Comment` (titles of n188 and n253). Addresses are bare ids (`mount_types.rs:25`). The version field is `MountShapes.version` (`:11`). The test deserializes the fixture against those types, or a TypeScript mirror of them. Source inputs: n188, n253, `mount_types.rs`, `defineLanguage.ts:205-206`. Acorn's class-naming style is unverified: needs b11. n253 fills entries from a payload. n255 adds the call-action predicates.
+| Class        | Fixture IRI                     | Address                                                                                                        |
+| ------------ | ------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| PullRequest  | `fixture://github/PullRequest`  | `gh/{owner}/{repo}/pull/{n}`                                                                                   |
+| Issue        | `fixture://github/Issue`        | `gh/{owner}/{repo}/issue/{n}`                                                                                  |
+| ChangedFile  | `fixture://github/ChangedFile`  | `gh/{owner}/{repo}/pull/{n}/file/{encodedPath}`                                                                |
+| Review       | `fixture://github/Review`       | `gh/{owner}/{repo}/pull/{n}/review/{id}`                                                                       |
+| ReviewThread | `fixture://github/ReviewThread` | `gh/{owner}/{repo}/pull/{n}/thread/{graphqlNodeId}`                                                            |
+| Comment      | `fixture://github/Comment`      | `gh/{owner}/{repo}/pull/{n}/comment/{id}`, `.../issue/{n}/comment/{id}`, or `.../thread/{nodeId}/comment/{id}` |
 
-### n253 read (about 2–3h)
+Issue is its own class. An issue URL yields Issue. Review is its own class: the summary body is a Review record. The node titles name four classes. Issue and Review are this contract's additions so an issue URL and a review summary each have a record kind.
 
-A pure function from a GitHub REST fixture (pull, files, review comments, issue comments) to `{shapes, snapshot}`. Both exports exist, because `languages/mod.rs:3179` refuses a mount with only one. The test expects one entry per fixture record and the address rule. Source inputs: the fixture, n253, the n188 class list, `MountEntry` at `mount_types.rs:27`. `mounts.rs:162` and `PerspectiveProxy.ts:664` stay as they are. This depends on n205's exports on the mount ref. It is blocked on ad4m dev: see blockers.
+Parents use the same addresses. ChangedFile, Review, ReviewThread, and a PR's root issue-comment parent the PullRequest. An issue's root comment parents the Issue. An inline comment parents its ReviewThread. A Review parents no thread. Reply-before-parent, duplicates, and removals are rows in this graph.
 
-### n254 ETag delta (about 2h)
+REST review comments are source rows, not ReviewThread records. Threads, `isResolved`, and review summaries come from GraphQL-shaped fields (`reviewThreads`, `reviews`). Root comments come from the issue-comments payload. Files and the issue-or-pull discriminator come from REST-shaped fields. A payload with no `pull_request` object is an Issue.
 
-A pure function from a previous ETag plus a 304 or a 200 body to a `MountDelta` or an empty result. A 304 yields no `changed` and no `removed`. A 200 with one new comment yields one `Comment` in `changed` (`mount_types.rs:54`). The language would then call `emitSignal({mountDelta})` (`host.d.ts:64`, consumed at `languages_extension.rs:154`). The 15s `sync_mount` loop (`mounts.rs:65`, `:393`) stays as it is. Webhooks stay out of this boundary. Source inputs: two payload fixtures, n254, n253's entry shape. Applying the delta is `apply_mount_delta` at `mounts.rs:579`, which this slice leaves alone.
+`MountDelta` is the Rust struct (`address?`, `changed`, `removed`) at `mount_types.rs:54`. `defineLanguage.ts` exports no `MountDelta`. Changed entries use LDK `MountEntry`. A call interaction returns that delta object. A signal sends `{mountDelta: delta}`. Tests keep the two envelopes apart. A shape that deserializes is still arbitrary JSON (`mount_types.rs:21`). SHACL and IRI checks are fixture assertions, separate from deserialization.
 
-### n255 comment, reply, resolve (about 2–3h)
+## Slices
 
-Three pure functions. Each takes the call's params object and returns the request body it would send, plus a `MountDelta` that `run_call_actions` can parse (`call_actions.rs:269`). Shape actions use the form at `call_actions.rs:2`: `action`, `source`, `predicate`, `target`. The test constructs no HTTP client. The returned delta names the comment or thread address. Source inputs: n255, n214's closed SDK table, `execute_call` at `:311`, `expression_interact` at `languages/mod.rs:3037`. `removeSubject` stays with n184 and n214. This slice adds the three predicates to the n188 shapes.
+Language-fixture package: `packages/testing/github-mount-fixture`, name `@we/github-mount-fixture`, beside `@we/acorn-fixture`. Command: `pnpm --filter @we/github-mount-fixture test` (`vitest run`). It imports `MountShapeEntry`, `MountShapes`, `MountEntry`, `MountSnapshot`, and `MountCapability` from pinned `ad4m-ldk/js/src/defineLanguage.ts:85-94`. It does not redeclare them. Card tests that call n245 stay in `@we/app-shell` (`pnpm --filter @we/app-shell test`) on base `dd5ff1d95`. Acorn's directory layout is unverified: needs b11. This package is the isolated fixture, not an Acorn language tree.
 
-### n185 review order (about 2h)
+Every pure slice below can start now. Spike rows may target `e2c69d9b` through the injected adapter, labelled legacy/provisional. Production mount wiring stays held for the #1914 redesign. None of these slices waits on n212 or #1941. None of them closes its a12 node. The dependency pin for envelopes is the mount ref above.
 
-A pure function from PR body text plus `ChangedFile` paths in GitHub order to paths in review order. A body section titled `Review order` (n185) wins. A missing section returns the input order. A partial list appends the remaining paths in input order. Three fixtures cover those cases. Source inputs: the n185 title, and paths shaped as n253 `ChangedFile` entries. When a canvas card is wanted, the card base is n244 plus n245: `resolveClassOnSurface` at `templateSurface.ts:2237` on `6ba58799b`, and `createClassTemplateCard` at `:2391` on `dd5ff1d95`. This branch does not contain them. This slice does not register a template in `templateRegistry.ts:41`. The binding is a parameter, which is the droppable choice below.
+1. **Shared corpus (n188, 1–2h).** Start now. Files: `fixtures/corpus.json`, `src/contract.ts`, `tests/corpus.test.ts`. One synthetic corpus: ordinary issue, PR with changed files, root comments, review summaries, review threads with replies, and a second snapshot (edit, add, remove, unchanged, incomplete page, 304). Schema notes name the public fields. No live GitHub request. The oracle is this class/IRI/address table plus the expected records and parent links. Assert unique addresses across kinds and repos, and every parent address present. Spike and production wiring are outside this slice.
 
-### n186 conversation children (about 2h)
+2. **Read mapper (n253, 2–3h).** Start now. Files: `src/normalize.ts`, `tests/normalize.test.ts`. Consumes slice 1. Pure function to LDK `MountShapes` and `MountSnapshot`. Assert exact records and parent addresses, a derived thread that is more than one input row, and an issue URL that yields Issue only. Missing and failed pages stay as gaps. Spike export wiring is slice 3.
 
-A pure function from `ReviewThread` and `Comment` entries to child lists: each thread under the pull request, each comment under its thread. One fixture pull request with two threads is the test. Source inputs: n186 and n253's entry shape. Live arrival is n254. Posting is n255. This slice is the child index a card can render. It has no poller and no GitHub client. The title's two-way sync is n253 plus n254 plus n255, and all three are still open.
+3. **Language wrapper (n253 remainder, 2–3h).** Start now. Spike against `e2c69d9b`, legacy/provisional, through an injected HTTP transport. Files: `src/language.ts`, `tests/language.test.ts`. Real `mountShapes` and `mountSnapshot` (`defineLanguage.ts:205-206`) call slice 2. Assert PR versus issue URL parsing, paged reads per endpoint, and a failed page. Production lifecycle stays behind the injected adapter.
+
+4. **Review-order parser (n185, 1–2h).** Start now, beside slice 3 once slice 1 exists. Files: `src/reviewOrder.ts`, `tests/reviewOrder.test.ts`. Signature is body text plus `ChangedFile` paths. It takes no binding. A `Review order` section wins. A missing section returns GitHub's file order, which is the node title. Appending paths omitted from a partial list is a proposed rule, not recorded node acceptance. Invalid and duplicate paths keep a stable fallback. The descriptor stays in the UI adapter.
+
+5. **Review-order card (n185, 2–3h).** Start now on base `dd5ff1d95`. Files: `packages/app-shell/tests/githubReviewOrderCard.test.ts`. Render the ordered fixture as visible card content tied to the PR instance, with a caller-supplied binding. Reuse `resolveClassOnSurface` and `createClassTemplateCard`. Assert the ordered paths are visible content. `content: []` at `templateSurface.ts:2358` and the WeakMaps at `:2320-2321` are the creation sidecar, which this test has to go past. Register nothing in `templateRegistry.ts:41`. Reload persistence stays open.
+
+6. **ETag reducer (n254, about 2h).** Start now, after slice 2. Files: `src/reduce.ts`, `tests/reduce.test.ts`. Input is the previous normalized records plus a 200 body or a 304. The ETag is a validator. The previous records are the old dataset. A 200 distinguishes add, edit, remove, and unchanged by address. A 304 yields an empty `changed` and an empty `removed`, and the snapshot function returns the cached full entries. Each endpoint and page has its own cursor and validator. An incomplete or failed page removes nothing. This slice has no poller.
+
+7. **Conditional-fetch adapter (n254, 2–3h).** Start now as a mock. Files: `src/fetchAdapter.ts`, `tests/fetchAdapter.test.ts`. One scheduling owner: the executor `sync_mount` loop (`mounts.rs:393`, sleep at `:65`). The adapter builds conditional headers and serves the cached snapshot. A mount delta is emitted only when the injected caller context still holds the call token (`languages_extension.rs:145-160`). An autonomous language timer is unauthorized, and this slice adds none. Production delivery waits for the redesigned engine interface. No live poller is claimed here.
+
+8. **Comment and reply (n255, 2–3h).** Start now. Files: `src/writes.ts`, `tests/commentReply.test.ts`. Build `POST /repos/{owner}/{repo}/issues/{n}/comments` `{body}` and `POST /repos/{owner}/{repo}/pulls/{n}/comments` `{body, in_reply_to}` from params. Map the successful response's server id into a `MountDelta` changed `Comment` at the n188 address. A mock failure returns no success delta. The interaction return is the delta object (`call_actions.rs:102`). The signal envelope `{mountDelta}` stays on the emit path. A fake transport proves the handler. #1941 SDK execution is a separate held run.
+
+9. **Resolve (n255, 2–3h).** Start now. Files: `tests/resolve.test.ts` beside slice 8. Own contract: GraphQL mutation `resolveReviewThread` with `threadId` set to the ReviewThread GraphQL node id. Map the returned thread into a `MountDelta` for that address. This slice has no REST resolve body. Malformed responses and mock failures emit no success delta. The same direct-delta versus signal-envelope split as slice 8.
+
+10. **Conversation tree (n186, 2–3h).** Start now, after slices 2 and 6. Files: `src/conversationTree.ts`, `tests/conversationTree.test.ts`. Render root comments, review summaries, and threads from the parent links slice 2 stored. Assert visible rows (summary text included), then apply fixture deltas with no duplicate children. Cover reply-before-parent, duplicates, and removals. A child-index map is not this slice. Live shared sync stays outstanding.
+
+11. **Tree commands (n186, 2–3h).** Start now, after slices 8 and 9. Files: `tests/conversationCommands.test.ts`. Route a reply and a resolve through those handlers and into the tree rows. Outbound commands reuse slice 2's parents. This slice does not call the SDK. Two-way live behavior waits on production mount integration.
+
+12. **Held acceptance.** No hour claim, and not a GitHub engine. After redesigned n205 interfaces and n57/#1941 are ready, one bounded run wires the adapter and proves mount, read, write, delta, and unmount on the real runtime. After n246 and the descriptor decision, a separate run proves Template import and durable card association if product scope requires it. Cross-reference FileStorage binding-only and two-executor/revision tests under n205. Record selected test counts when a slice is implemented. `git diff --check` does not show that a GitHub slice works.
 
 ## Droppable descriptor
 
-n187 and n242 are one open decision: the class names its template, or a template-to-class link. n187 is blocked on James. n242 is blocked on Nico and James. Nico's note leaves the node open. n244's fixture is an explicit `{classIri, surface, templateId}` list, and `templateRegistry.ts:60` on that branch says published-template selection is unsettled. n245 stops before n246. A GitHub card receives that binding from its caller. Dropping the choice leaves the n185 ordering tests, the n188 class fixture, and the mount slices unchanged. No slice writes the winning link into a package or into `we-seed.json`.
+n187 and n242 are one open decision. Nico's note leans toward a template-to-class link and leaves the node open until James confirms. Until then every GitHub card receives its binding from the caller. Slices 1–11 do not wait on that confirmation, and none of them writes the winning link into a package or into `we-seed.json`.
 
 ## Double-count check
 
-Shared items are listed once above. These allocations are rejected:
+Shared items appear once above. These allocations stay rejected:
 
-- Mount install, shape registration, the 15s resync, and `apply_mount_delta` are n205's engine in `mounts.rs`. n253 only exports `mountShapes` and `mountSnapshot`. n254 only maps an ETag result to `MountDelta`. n333 keeps the single registration path.
-- `run_call_actions` and the SDK create/save/`removeSubject` table are n57, n214, and n184. n255 is the three GitHub interactions. n186 does not post.
-- n254 is the only ETag poll. n186 does not poll.
-- `resolveClassOnSurface` and `createClassTemplateCard` are n244 and n245. n185 orders paths and takes a binding parameter.
-- n242 is the same decision as n187, so it is not a second decision.
-- n246 is the mount-time Template record. No GitHub slice installs one.
-- n243's annotation tests stay on n240. They are not a GitHub read.
-- n188 owns the class list. n253 fills entries for that list. n255 adds call predicates to that list.
-- a10 is ATProto, by n205's note. It is not a GitHub slice.
-
-## Blockers
-
-1. n212 is open, blocked on Nico. The JSON does not record the mount PRs as merged. `e2c69d9b` is not an ancestor of ad4m `origin/dev` `6b83a802eed04c91b6e02a4b5687b3e6c63c8095`. A language built on dev does not have `mount` at `mounts.rs:162`.
-2. n187 and n242 are open. The descriptor stays a caller-supplied binding until James confirms. DESIGN.md is absent here, so its body was not checked.
-3. n333 is open until #1941 merges. This map adds no shape-registration path.
-4. n246 is open and its brief file is absent. A mounted language's Template record is not implemented on the refs read here. unverified: needs b11.
-5. Acorn language `f3200b4c312cc36ca8f60aeba5c0226edd2680fa` is absent on this box. Copying Acorn's package layout is unverified: needs b11. The mount contract above is ad4m `e2c69d9b`.
-6. `7efef9828` is not an ancestor of `e2c69d9b`. n214's 8/8 pass is that node's claim about the spike SHA. The runner cited here is `call_actions.rs` on the mount ref. n57's own status is still open.
-7. No GitHub payload fixture is in either tree. n253, n254, and n255 have no green test until that fixture exists. This run does not call GitHub.
-8. The n185 canvas card depends on `6ba58799b` and `dd5ff1d95`. Those branches are not stacked here. The ordering function can land without them.
-9. n207 is still open, while n211 and n298 notes say some packet defaults were already built. The contract in this file is the mount-ref source.
-10. n186's two-way sync is incomplete while n253, n254, and n255 are open. An estimate that treats the umbrella as already present would hide that.
+- Mount install, shape registration, the resync sleep, and `apply_mount_delta` are n205. n333 keeps the single registration path. Slice 3 exports the two functions. Slice 6 maps records to a delta. Slice 7 starts no second poller.
+- `run_call_actions` and the SDK create/save/`removeSubject` table are n57, n214, and n184. Slices 8 and 9 are the GitHub handlers. Slice 11 does not post.
+- `resolveClassOnSurface` and `createClassTemplateCard` are n244 and n245. Slice 5 renders content and does not copy those functions. Slice 4 takes no binding.
+- n242 is n187. n246 is the Template record. No GitHub slice installs one. n243 stays on n240.
+- The class/IRI/address table is slice 1. Slice 2 fills entries. Slices 8 and 9 place server ids into those addresses. Slice 10 reads the parents slice 2 stored.
+- FileStorage binding-only is n205. a10 is ATProto. Neither is a GitHub slice.
 
 ## Red result
 
-Before this file, the worktree had no `GITHUB-LANGUAGE-CARD-SLICES.md` and no GitHub language. The report gate is `git diff --check`. No compiler ran, and no test selector ran. A run with zero selected tests is not a pass. Each dependency above names a JSON node or a `file:line` on a SHA in Inputs checked.
+The review verdict on `972f3c2b5` is REVISE. This revision's gate is `git diff --check`. No compiler ran. A run with zero selected tests is not a pass. Each dependency names a JSON node or a `file:line` on a SHA in Inputs checked.
 
-## Acceptance still open
+## Still open
 
-The descriptor (n187), the mount merge (n212), the shape-registration wait (n333), template install (n246), b11 unread, the GitHub fixture uncaptured, and the card branches unstacked.
+James's descriptor confirmation. Production mount wiring under the #1914 redesign. n333's wait on #1941. n246's runtime install, which the brief allows to be dropped. b11 unread. Card reload persistence. Live engine mount, read, write, delta, and unmount. The two-way live tree.
