@@ -6,6 +6,7 @@
  * the assertions live beside the cases, so one scenario can be measured several ways.
  */
 import { resolveParts } from '@shared/registries/moduleParts';
+import type { BotActivityView, BotView } from '@we/backend-shared';
 import { feedView } from '@we/module-feed';
 import { transcriptLines } from '@we/module-transcribe';
 import {
@@ -47,7 +48,17 @@ import { lineContent } from '../../../module-system/messages/src/index.ts';
 import { viewBar } from '../../../templates/cartridges/src/coasys/space/bar.ts';
 import { treeSection } from '../../../templates/cartridges/src/coasys/space/tree.ts';
 import { callBarAside, spaceRoutes } from '../../../templates/cartridges/src/coasys/space/views.ts';
+import { botsSection } from '../../../templates/shell/src/BotSettingsPages.ts';
 import { channelList } from '../../../templates/views/src/views/FluxView/ChannelList.ts';
+import {
+  activityRow,
+  BOT_ACTION_LABELS,
+  botRow,
+  draftEnds,
+  draftOf,
+  draftProblem,
+  grantSpaces,
+} from '../../src/shared/botRows';
 import { sharingPickerOptions } from '../../src/shared/sharingOptions';
 
 export interface Scenario {
@@ -2653,6 +2664,88 @@ const feedViewPage = (hasMore = false): Scenario => {
   };
 };
 
+/**
+ * Settings → Bots with one bot open: its grant editor, pause and revoke, and its activity log.
+ *
+ * Every word on the page is the store's, so the rows are worded by the store's own functions from a
+ * bot as the port returns it, rather than restated. Test data only: no credential, no match code —
+ * the page that shows those once is not this one.
+ */
+const botDetail = (): Scenario => {
+  const now = 1_794_096_000;
+  const bot: BotView = {
+    did: 'did:key:z6MkTestBot',
+    name: 'Test bot',
+    owner: 'did:test:owner',
+    createdAt: now - 86_400 * 3,
+    grant: {
+      spaces: ['QmTestShared'],
+      can: ['read', 'write'],
+      expires: null,
+      state: 'active',
+      version: 2,
+      updatedAt: now - 3600,
+    },
+    key: { keyId: 'd3', verdict: 'valid', can: ['read', 'write', 'join'], expires: now + 86_400 * 30 },
+  };
+  const spaces = grantSpaces([
+    { url: 'QmTestShared', name: 'Test garden' },
+    { url: 'QmTestOther', name: 'Test swap' },
+  ]);
+  const draft = draftOf(bot);
+  const entries: BotActivityView[] = [
+    {
+      id: 2,
+      at: now - 600,
+      method: 'records.write',
+      action: 'write',
+      space: 'QmTestShared',
+      reason: 'Test reason',
+      allowed: true,
+      refusal: null,
+    },
+    {
+      id: 1,
+      at: now - 1200,
+      method: 'spaces.join',
+      action: 'join',
+      space: 'QmTestOther',
+      reason: null,
+      allowed: false,
+      refusal: 'not-in-can',
+    },
+  ];
+  return {
+    node: { type: 'Column', props: { gap: '600', width: '100%', p: '600' }, children: [botsSection] },
+    tables: {},
+    stores: {
+      botStore: {
+        selected: botRow(bot),
+        editor: {
+          spaces: spaces.map((s) => ({ id: s.id, name: s.name, checked: draft.spaces.includes(s.id), known: true })),
+          actions: BOT_ACTION_LABELS.map(({ action, label }) => ({
+            action,
+            label,
+            checked: draft.can.includes(action),
+            allowed: bot.key!.can.includes(action),
+          })),
+          days: draft.days,
+          ends: draftEnds(draft, bot.key, now),
+          problem: draftProblem(draft, bot.key),
+          changed: false,
+        },
+        conflict: '',
+        error: '',
+        saving: false,
+        activity: entries.map((e) => activityRow(e, spaces)),
+        activityLoaded: true,
+        hasOlder: false,
+        loadingOlder: false,
+      },
+    },
+  };
+};
+
 /** The first node under `value` whose children include one `match` accepts: the node that holds it. */
 const holderOf = (value: unknown, match: (node: SchemaNode) => boolean): SchemaNode | undefined => {
   if (!value || typeof value !== 'object') return undefined;
@@ -3007,6 +3100,7 @@ const coasysTreeSection = (): Scenario => ({
 });
 
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
+  'bots:detail': botDetail,
   'coasys:about': coasysAbout,
   'feed:view': () => feedViewPage(),
   'feed:view-more': () => feedViewPage(true),

@@ -846,6 +846,7 @@ export const storeEntries: StoreEntry[] = [
           'thisDevice',
           'unlinked',
           'revoked',
+          'valid',
           'status',
           'canUnlink',
           'canRevoke',
@@ -887,6 +888,80 @@ export const storeEntries: StoreEntry[] = [
       'replaceMaster',
       'restore',
       'removeMaster',
+    ],
+  },
+  {
+    name: 'botStore',
+    state: {
+      available: { type: 'boolean' },
+      canAdd: { type: 'boolean' },
+      bots: {
+        type: 'array',
+        properties: [
+          'did',
+          'name',
+          'state',
+          'status',
+          'statusTone',
+          'keyLine',
+          'keyTone',
+          'grantLine',
+          'created',
+          'paused',
+          'revoked',
+          'keyValid',
+          'keyStillValid',
+        ],
+      },
+      loaded: { type: 'boolean' },
+      error: { type: 'string' },
+      created: { type: 'object', properties: ['name', 'matchCode', 'confirmBy'] },
+      createError: { type: 'string' },
+      creating: { type: 'boolean' },
+      selected: {
+        type: 'object',
+        properties: [
+          'did',
+          'name',
+          'state',
+          'status',
+          'statusTone',
+          'keyLine',
+          'keyTone',
+          'grantLine',
+          'created',
+          'paused',
+          'revoked',
+          'keyValid',
+          'keyStillValid',
+        ],
+      },
+      editor: { type: 'object', properties: ['spaces', 'actions', 'days', 'ends', 'problem', 'changed'] },
+      conflict: { type: 'string' },
+      saving: { type: 'boolean' },
+      activity: { type: 'array', properties: ['id', 'when', 'allowed', 'outcome', 'what', 'reason'] },
+      activityLoaded: { type: 'boolean' },
+      hasOlder: { type: 'boolean' },
+      loadingOlder: { type: 'boolean' },
+      keyRevokeError: { type: 'string' },
+      revoking: { type: 'boolean' },
+    },
+    actions: [
+      'refresh',
+      'addBot',
+      'create',
+      'dismissCreated',
+      'select',
+      'close',
+      'toggleSpace',
+      'toggleAction',
+      'setDays',
+      'resetDraft',
+      'saveGrant',
+      'pause',
+      'resume',
+      'revoke',
+      'loadOlder',
     ],
   },
   {
@@ -2266,9 +2341,10 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
   deviceStore: {
     state: {
       devices:
-        "{ keyId, addedSeq, unlinkedSeq, revokedSeq, label, subtitle, icon, thisDevice, unlinked, revoked, status, canUnlink, canRevoke, name, holdsMaster, master, replaceMaster }[] — the device keys of the person's key log, active first and this computer on top, named from the identity's private record (which only its devices read). `label` is the record's name, else 'This computer' or 'Device d2'; `name` the record's name or empty; `status` 'Active', 'Unlinked' (retired: it signs nothing new, and what it signed before stays valid) or 'Revoked' (lost or stolen); `canUnlink` is an active key, this computer's included (it leaves signed by itself, with no master key, after a confirm in the app, and is signed out); `canRevoke` is a key not yet revoked, unlinked or not, that is not this computer's; `holdsMaster` 'yes', 'no' or 'offered' (sent, not yet taken), worded in `master` ('Has master key', 'Master key sent', or empty). A revoked or unlinked key's `holdsMaster` is 'no', but its `master` warns when it took the master key or the key log let it (revoked: 'Still has your master key. Replace it to lock this device out.', 'May still have your master key. Replace it to lock this device out.'; unlinked: 'Still has your master key. Replace it if you don\'t have this device any more.', 'May still have your master key. Replace it if you don\'t have this device any more.'): neither a revoke nor an unlink replaces the master key, so a copy stays valid until the master key is replaced: a rotation at or after the key ended clears the warning. `replaceMaster` is true on a row that warns: offer replaceMaster there, where canReplaceMaster. Draw `master` in a warning tone unless `holdsMaster` is 'yes'",
+        "{ keyId, addedSeq, unlinkedSeq, revokedSeq, label, subtitle, icon, thisDevice, unlinked, revoked, valid, status, canUnlink, canRevoke, name, holdsMaster, master, replaceMaster }[] — the device keys of the person's key log, valid first and this computer on top (a bot's key, which the key log marks, is not listed: botStore manages it), named from the identity's private record (which only its devices read). `label` is the record's name, else 'This computer' or 'Device d2'; `name` the record's name or empty; `valid` is neither unlinked, revoked nor past its end; `status` 'Active', 'Unlinked' (retired: it signs nothing new, and what it signed before stays valid), 'Revoked' (lost or stolen) or 'Expired on 3 Dec 2026'; `canUnlink` is an active key, this computer's included (it leaves signed by itself, with no master key, after a confirm in the app, and is signed out); `canRevoke` is a key not yet revoked, unlinked or not, that is not this computer's; `holdsMaster` 'yes', 'no' or 'offered' (sent, not yet taken), worded in `master` ('Has master key', 'Master key sent', or empty). A revoked or unlinked key's `holdsMaster` is 'no', but its `master` warns when it took the master key or the key log let it (revoked: 'Still has your master key. Replace it to lock this device out.', 'May still have your master key. Replace it to lock this device out.'; unlinked: 'Still has your master key. Replace it if you don\'t have this device any more.', 'May still have your master key. Replace it if you don\'t have this device any more.'): neither a revoke nor an unlink replaces the master key, so a copy stays valid until the master key is replaced: a rotation at or after the key ended clears the warning. `replaceMaster` is true on a row that warns: offer replaceMaster there, where canReplaceMaster. Draw `master` in a warning tone unless `holdsMaster` is 'yes'",
       devicesLoaded: 'boolean — the list has been read once',
-      validCount: 'number — how many keys are active: neither unlinked nor revoked',
+      validCount:
+        'number — how many device keys are valid (neither unlinked, revoked nor ended); bot keys are not counted',
       canManage:
         'boolean — Link a device (scanDevice, addDevice), Rename, Unlink, Revoke and answering requests can be offered: this computer keeps the master key of the identity',
       canShowCode: 'boolean — "Show code" can be offered: this computer can join an identity and speaks for none yet',
@@ -2322,6 +2398,55 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(): "Restore with recovery phrase" — on a computer of no identity, asks for the words, lists the identity\'s devices to lock out (with since when they were missing), and makes this computer a device of it that keeps the new master key. Resolves with the outcome',
       removeMaster:
         "(): stops keeping the master key on this computer, once the person confirms it; refused, with the reason, when this computer keeps the only copy. Resolves 'done' only when it was removed",
+    },
+  },
+  botStore: {
+    state: {
+      available: 'boolean — the backend runs bots. Gate the Bots page on it',
+      canAdd:
+        'boolean — "Add a bot" can be offered: this computer keeps the master key, which signs the bot’s key into the key log',
+      bots: "{ did, name, state, status, statusTone, keyLine, keyTone, grantLine, created, paused, revoked, keyValid, keyStillValid }[] — the person's bots, oldest first, worded. `state` is 'active', 'paused' or 'revoked'; `status` and `statusTone` go in a badge; `keyLine` (with `keyTone` as its colour) says what the key log says of the bot's key and until when; `grantLine` what the grant lets it do now; `keyStillValid` is true for a removed bot whose key the key log still holds valid (offer to revoke it again)",
+      loaded: 'boolean — the list has been read once',
+      error: 'string — why the last read or change failed, or empty',
+      created:
+        '{ name, matchCode, confirmBy } | null — the bot just made: the match code the identity window also shows, and until when to confirm it there. Forgotten on this side after dismissCreated, or once the person leaves the page it was shown on (this does not revoke the credential on the backend)',
+      createError: 'string — why making the bot failed, or empty',
+      creating: 'boolean — making the bot is under way',
+      selected: 'the row of the bot open in the editor (as in `bots`), or null for the list',
+      editor:
+        "{ spaces: { id, name, checked, known }[], actions: { action, label, checked, allowed }[], days, ends, problem, changed } | null — the grant editor for the selected bot. `known` is false for a space the grant names that is not one of the person's here; `allowed` is false for an action the bot's key may not take; `problem` says why it cannot be saved, or is empty",
+      conflict:
+        'string — a grant change was refused because another came first (or the bot is revoked): the grant was read again and is shown as it is now. Empty otherwise',
+      saving: 'boolean — a grant change is under way',
+      activity:
+        "{ id, when, allowed, outcome, what, reason }[] — the selected bot's activity, newest first: each call it made, allowed or refused (`outcome` says why), and the reason it gave",
+      activityLoaded: 'boolean — the activity has been read once',
+      hasOlder: 'boolean — the last read filled a page: offer "Load older"',
+      loadingOlder: 'boolean — loadOlder is under way',
+      keyRevokeError:
+        "string — the selected bot's grant is ended but its key could not be revoked, so the key is still valid on the person's other computers: why, and that revoke tries again. Empty otherwise",
+      revoking: 'boolean — revoke is under way',
+    },
+    actions: {
+      refresh: '(): reads the bots again',
+      addBot:
+        '(): "Add a bot" — asks where the master key is kept for the bot’s scope (what it may ever do, and for how many days), and shows an offer to paste into create. Resolves with the outcome',
+      create:
+        '(offer: string, name: string): makes the bot from the offer, named so; sets created. Resolves true when it was made and shown; false if the person navigated away while it was pending (the bot is still listed, but its credential is not shown or kept)',
+      dismissCreated: '(): forgets the bot just made on this side (does not revoke its credential)',
+      select: '(did: string): opens that bot in the grant editor and reads its activity',
+      close: '(): back to the list',
+      toggleSpace: '(id: string): adds that space to the draft grant, or takes it out',
+      toggleAction: "(action: 'read' | 'write' | 'join'): adds that action to the draft grant, or takes it out",
+      setDays: '(days: string): the draft grant ends that many days from now; empty for no end but the key’s',
+      resetDraft: '(): puts the editor back to the grant as read',
+      saveGrant:
+        '(): saves the draft grant with the version it replaces. Resolves false on a conflict, with the grant read again',
+      pause: '(): pauses the selected bot: it may do nothing until resumed',
+      resume: '(): resumes the selected bot',
+      revoke:
+        '(): removes the selected bot for good — confirm first: ends its grant (a revoked grant never changes again) and revokes its key in the key log, signed where the master key is kept. Resolves false with keyRevokeError set when the key is still valid; calling it again retries only the key',
+      loadOlder: '(): reads the next page of older activity',
     },
   },
   workflowStore: {

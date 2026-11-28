@@ -65,18 +65,134 @@ describe('deviceRows', () => {
     expect(rows.map((r) => r.icon)).toEqual(['laptop', 'key', 'key']);
   });
 
-  it('reads a device Active, Unlinked or Revoked, and lets an unlinked one be revoked but not unlinked again', () => {
-    const rows = deviceRows([
-      { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, unlinkedSeq: null, revokedSeq: null },
-      { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, unlinkedSeq: 3, revokedSeq: null },
-      { keyId: 'd3', sign: 'z', thisDevice: false, addedSeq: 2, unlinkedSeq: 4, revokedSeq: 5 },
-      { keyId: 'd4', sign: 'z', thisDevice: false, addedSeq: 6, unlinkedSeq: null, revokedSeq: null },
+  it('lists no bot key as a device, whatever the private record says, and counts only devices', () => {
+    const NOW = 1_750_000_000;
+    const bot = (keyId: string, expires: number, revokedSeq: number | null = null) => ({
+      keyId,
+      sign: 'z',
+      thisDevice: false,
+      addedSeq: Number(keyId.slice(1)),
+      unlinkedSeq: null,
+      revokedSeq,
+      bot: { can: ['read'], expires },
+      expires,
+    });
+    const rows = deviceRows(
+      [
+        {
+          keyId: 'd1',
+          sign: 'z',
+          thisDevice: true,
+          addedSeq: 0,
+          unlinkedSeq: null,
+          revokedSeq: null,
+          bot: null,
+          expires: null,
+        },
+        // A bot whose key is valid, one whose key has ended, and one revoked: Bots manages each.
+        bot('d2', NOW + 1000),
+        bot('d3', NOW - 1000),
+        bot('d4', NOW + 1000, 5),
+        // The record calls this one a bot; the key log does not, so it is a device.
+        {
+          keyId: 'd6',
+          sign: 'z',
+          thisDevice: false,
+          addedSeq: 6,
+          unlinkedSeq: null,
+          revokedSeq: null,
+          bot: null,
+          expires: null,
+        },
+      ],
+      [
+        { keyId: 'd2', name: 'Helper', kind: 'desktop-app', holdsMaster: 'no' },
+        { keyId: 'd6', name: 'Box', kind: 'bot', holdsMaster: 'no' },
+      ],
+      [],
+      null,
+      NOW,
+    );
+    expect(rows.map((r) => [r.keyId, r.label, r.status, r.valid])).toEqual([
+      ['d1', 'This computer', 'Active', true],
+      ['d6', 'Box', 'Active', true],
     ]);
-    expect(rows.map((r) => [r.keyId, r.status, r.unlinked, r.revoked, r.canUnlink, r.canRevoke])).toEqual([
-      ['d1', 'Active', false, false, true, false],
-      ['d4', 'Active', false, false, true, true],
-      ['d2', 'Unlinked', true, false, false, true],
-      ['d3', 'Revoked', true, true, false, false],
+  });
+
+  it('says a key whose end has passed is expired, not valid', () => {
+    const NOW = 1_750_000_000;
+    const rows = deviceRows(
+      [
+        {
+          keyId: 'd1',
+          sign: 'z',
+          thisDevice: true,
+          addedSeq: 0,
+          unlinkedSeq: null,
+          revokedSeq: null,
+          bot: null,
+          expires: null,
+        },
+        {
+          keyId: 'd2',
+          sign: 'z',
+          thisDevice: false,
+          addedSeq: 1,
+          unlinkedSeq: null,
+          revokedSeq: null,
+          bot: null,
+          expires: NOW - 60,
+        },
+        {
+          keyId: 'd3',
+          sign: 'z',
+          thisDevice: false,
+          addedSeq: 2,
+          unlinkedSeq: null,
+          revokedSeq: null,
+          bot: null,
+          expires: NOW + 60,
+        },
+      ],
+      [],
+      [],
+      null,
+      NOW,
+    );
+    expect(rows.map((r) => [r.keyId, r.valid, r.revoked])).toEqual([
+      ['d1', true, false],
+      ['d3', true, false],
+      ['d2', false, false],
+    ]);
+    expect(rows[2].status).toMatch(/^Expired on /);
+    expect(rows[1].status).toBe('Active');
+    // Ending it for good in the key log is still offered: an end can be the log's to move.
+    expect(rows[2].canRevoke).toBe(true);
+  });
+
+  it('reads a device Active, Unlinked or Revoked, and lets an unlinked one be revoked but not unlinked again', () => {
+    const key = (keyId: string, addedSeq: number, unlinkedSeq: number | null, revokedSeq: number | null) => ({
+      keyId,
+      sign: 'z',
+      thisDevice: keyId === 'd1',
+      addedSeq,
+      unlinkedSeq,
+      revokedSeq,
+      bot: null,
+      expires: null,
+    });
+    const rows = deviceRows([
+      key('d1', 0, null, null),
+      key('d2', 1, 3, null),
+      key('d3', 2, 4, 5),
+      key('d4', 6, null, null),
+    ]);
+    expect(rows.map((r) => [r.keyId, r.status, r.valid, r.unlinked, r.revoked, r.canUnlink, r.canRevoke])).toEqual([
+      // This computer can unlink itself (#430); it can never revoke itself.
+      ['d1', 'Active', true, false, false, true, false],
+      ['d4', 'Active', true, false, false, true, true],
+      ['d2', 'Unlinked', false, true, false, false, true],
+      ['d3', 'Revoked', false, true, true, false, false],
     ]);
   });
 

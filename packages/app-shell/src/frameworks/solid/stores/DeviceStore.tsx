@@ -36,7 +36,7 @@ export interface DeviceStore {
   /** The device keys, valid first, this computer at the top. */
   devices: Accessor<DeviceRow[]>;
   devicesLoaded: Accessor<boolean>;
-  /** How many keys are active: neither unlinked nor revoked. */
+  /** How many device keys are valid: neither unlinked, revoked nor ended. A bot's key is not a device's. */
   validCount: Accessor<number>;
   /**
    * Linking, naming, unlinking, revoking and answering requests can be offered: this computer keeps the master
@@ -260,7 +260,7 @@ export function DeviceStoreProvider(props: ParentProps) {
   const store: DeviceStore = {
     devices: rows,
     devicesLoaded,
-    validCount: () => rows().filter((d) => !d.revoked && !d.unlinked).length,
+    validCount: () => rows().filter((d) => d.valid).length,
     canManage,
     canShowCode: () => linking() && identity.statusLoaded() && !identity.did() && !identity.custody()?.holdsMaster,
     canAskMaster: () =>

@@ -30,6 +30,8 @@
  * not when it cannot.
  */
 
+import type { BotPort } from './bots';
+
 /** What the identity backend can do, one switch per part of Settings. */
 export interface IdentityCapabilities {
   /** Change the password the account is unlocked with. */
@@ -108,6 +110,11 @@ export interface IdentityPort {
    */
   change?(change: IdentityChange): Promise<IdentityChangeOutcome>;
   /**
+   * The person's bots and their grants. Absent on a backend that runs no bots; a bot's key is added
+   * with `change({ kind: 'add-bot' })`, where the master key is kept.
+   */
+  bots?: BotPort;
+  /**
    * This computer's device key leaves the identity, signed by the key itself: no master key is
    * needed, so no custody window opens. The key is dead here from then on and the agent is signed
    * out. Resolves when it is done; rejects with an `Error` whose message is a plain sentence a
@@ -136,6 +143,8 @@ export interface IdentityPort {
  * - `restore`: on a computer of no identity yet, bring the identity back from the 12 words, locking
  *   out the devices the person picks.
  * - `remove-master`: stop keeping the master key on this computer; refused for the only copy.
+ * - `add-bot`: open a bot offer of the scope the person picks there, and add the bot's key once it
+ *   claims; the bot is made with `bots.create` from the offer.
  */
 export type IdentityChange =
   | { kind: 'create' }
@@ -150,7 +159,8 @@ export type IdentityChange =
   | { kind: 'revoke'; keyId: string }
   | { kind: 'replace-master' }
   | { kind: 'restore' }
-  | { kind: 'remove-master' };
+  | { kind: 'remove-master' }
+  | { kind: 'add-bot' };
 
 /** `IdentityPort.unlinkSelf` could not tell whether the unlink happened: ask the status again. */
 export class UnlinkUncertainError extends Error {
@@ -298,7 +308,7 @@ export interface KeyLogView {
   fork: KeyLogFork | null;
 }
 
-/** One device key of the person. */
+/** One key of the person's key log: a device's, or a bot's (`bot` set). */
 export interface DeviceKeyView {
   keyId: string;
   /** The key, a multikey. */
@@ -311,4 +321,12 @@ export interface DeviceKeyView {
   unlinkedSeq: number | null;
   /** The seq of the event that revoked it, or `null` while it is valid. */
   revokedSeq: number | null;
+  /**
+   * The key log's bot mark and the scope it gives the key: the key is a bot's, not a device's. This
+   * is the one trusted source for that; the private record's `kind` is the person's own label and
+   * never decides it. `null` or absent for a device key.
+   */
+  bot?: { can: string[]; expires: number | null } | null;
+  /** When the key ends, unix seconds, as the key log says; `null` or absent for no end. */
+  expires?: number | null;
 }

@@ -44,4 +44,13 @@ describe('Devices page while this computer is being unlinked', () => {
     expect(buttons.length).toBeGreaterThan(0);
     for (const b of buttons) expect(b.props?.disabled).toEqual({ $: 'identityStore.busy || deviceStore.unlinking' });
   });
+
+  it('disables the bot buttons that change the key log, like the device ones', () => {
+    const add = find(settingsTemplate, (n) => n.type === 'we-button' && invokes(n, 'botStore.addBot'));
+    expect(add.length).toBeGreaterThan(0);
+    for (const b of add) expect(b.props?.disabled).toEqual({ $: 'identityStore.busy || deviceStore.unlinking' });
+    const create = find(settingsTemplate, (n) => n.type === 'we-button' && invokes(n, 'botStore.create'));
+    expect(create.length).toBeGreaterThan(0);
+    for (const b of create) expect(String((b.props?.disabled as { $: string }).$)).toContain('deviceStore.unlinking');
+  });
 });
