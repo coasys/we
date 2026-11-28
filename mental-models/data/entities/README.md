@@ -10,7 +10,7 @@ An **entity** is a type of stored thing (`Space`, `TextBlock`, `Signal`); a **re
 - [Manifest](manifest.md): `CORE_DEFS`, `CORE_MANIFEST`, `EntitySchema`, and the two generators.
 - [Entity proxies](proxies.md): `defineEntity`, the entity registry, and the entities registered for one dataset.
 - [Write path](writes.md): the write check, the transaction runner and the file store that a backend registers.
-- [Relations](relations.md): the three ways to connect two records, containment, and model provenance.
+- [Relations](relations.md): the three ways to connect two records, containment, and AI model provenance.
 
 <details><summary>How it works</summary>
 
@@ -26,7 +26,7 @@ An **entity** is a type of stored thing (`Space`, `TextBlock`, `Signal`); a **re
 3. `generate:classes` in `@we/backend-ad4m` writes one AD4M class for each entity.
 4. At runtime the adapter registers its classes by name. Code calls `Space.create(dataset, …)` on the proxy, and the proxy forwards the call.
 
-Module entities are declared by the modules themselves; see [Modules](../../modules/README.md).
+Module entities are declared by the modules themselves ([Contributions](../../modules/contract/contributions.md)).
 
 </details>
 

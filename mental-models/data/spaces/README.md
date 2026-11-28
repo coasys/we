@@ -18,9 +18,9 @@ A **space** is a community or a context, backed by one dataset, with a `Space` r
 2. `spaceSelfWhere(ds)` finds the record by `url` (the shared id) when the dataset is shared, else by `uuid` (the local dataset id).
 3. A listed space also has a copy of its `Space` record in the global dataset (`syncSpaceToParent`, keyed by `uuid`). That copy is only for discovery.
 4. Members: after the first screen is open, an effect calls `lifecycle.members(dataset)`, adds this agent's DID, and fetches each profile. `members` is the list of cached `AgentProfileSummary` rows for those DIDs.
-5. Empty `enabledModules` or `enabledViews` means "not decided", not "none": the value falls back to the seed's set.
+5. An unset or malformed `enabledModules` or `enabledViews` means "not decided", not "none": the value falls back to the seed's set.
 
-How a space's sections resolve from `enabledViews` belongs to [Interface](../../interface/README.md). Which modules a space turns on, and starters, belong to [Modules](../../modules/README.md).
+How a space's sections resolve from `enabledViews` belongs to [Views](../../interface/templates/views.md). Which modules a space turns on belongs to [Enablement](../../modules/registry/enablement.md). A module declares the entities it stores in its `entities` contribution ([Contributions](../../modules/contract/contributions.md)).
 
 </details>
 

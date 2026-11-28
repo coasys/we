@@ -9,8 +9,8 @@ A **feature module** is a capability that a space turns on: calls, transcription
 ## Parts
 - [Module contract](contract/README.md): `ModuleDefinition`, its manifest, contributions, kernels, store surface, settings and tests.
 - [Module registry](registry/README.md): how the shell lints, registers, enables and serves modules, and how the seed's `modules` list becomes the registry.
-- [Bundled modules](bundled/README.md): the modules in `packages/module-system/`: calls, transcription, feed, notes and Pocket, polls, globe, Flux.
-- [Blocks](blocks/README.md): the block content model, its persistence and the block composer.
+- [Bundled modules](bundled/README.md): the modules in `packages/module-system/`: calls and live, transcription, feed, notes and Pocket, polls, globe, Flux.
+- [Blocks](blocks/README.md): the block content format, its persistence and the block composer.
 - [Graph system](graph-system/README.md): the graph engine, its plugins, its Solid view and the graph module.
 
 <details><summary>How it works</summary>
@@ -34,7 +34,7 @@ moduleRegistry.register(def, host, storeDeps)
 
 A module never imports another module. Two modules cooperate through a medium that both reach: a presence activity, the `media` kernel, an anchor that one module opens and another fills, or records in the space. The transcription module hears a call this way ([Transcription](bundled/transcription/README.md)).
 
-The data side of a module (entities, records, spaces) is in the [Data](../data/README.md) branch. The templates that place module parts are in the [Interface](../interface/README.md) branch. App boot, which calls the registry, is in the [Hosts](../hosts/README.md) branch.
+The data side of a module is in the Data branch ([Entities](../data/entities/README.md)). A template places a module part with `$part` ([Node operators](../interface/schema/operators.md)). App boot calls the registry ([Providers](../hosts/boot/providers.md)).
 
 </details>
 

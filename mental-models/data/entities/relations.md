@@ -1,6 +1,6 @@
 # Relations
 
-A connection between two records lives in one of three tiers: a free-text `label` on a `Relationship` record, a `Relationship` that names a community-defined `RelationshipType`, or a relation declared on the entity (`RelationSchema`). Every `WeNode` also carries the fixed relations in `WE_NODE_RELATIONS`: containment (`partOf`), responses (`responses`/`respondsTo`), threads (`thread`/`inThread`) and model provenance (`runs`, `generatedBy`).
+A connection between two records lives in one of three tiers: a free-text `label` on a `Relationship` record, a `Relationship` that names a community-defined `RelationshipType`, or a relation declared on the entity (`RelationSchema`). Every `WeNode` also carries the fixed relations in `WE_NODE_RELATIONS`: containment (`partOf`), responses (`responses`/`respondsTo`), threads (`thread`/`inThread`), extraction (`extractedFrom`), AI model provenance (`runs`, `generatedBy`), `signals`, `participants` and `mentions`.
 
 **Why:** A declared relation is a fact about the type. It gets the full query surface, but it carries nothing about itself: no author, no date, nothing to comment on or rate. A reified connection (`Relationship`, `Placement`, `Signal`) is a record about a pair. It carries all of that, but it has no query pushdown. So the type's facts are declared, and the claims about a pair are reified.
 

@@ -2,7 +2,7 @@
 
 `moduleHostServices.ts` is where the app shell implements the kernels. `createModuleStoreDeps` builds one deps object whose kernels forward to host services. The host stores publish those services later, with `provideModuleHostServices`. `HOST_KERNELS` lists the kernels this host implements, and registration compares each manifest against it.
 
-**Why:** Modules register in `PlatformProvider`, above `StoreProvider`, because the registry must be full before the stores render. The ports a module wants (transport, presence, the current dataset) live in stores that do not exist yet. So the deps are stable objects whose methods look up the service at call time, and each one gives a safe answer before the service arrives (`moduleHostServices.ts` header).
+**Why:** Modules register in `PlatformProvider`, above `StoreProvider` ([Providers](../../hosts/boot/providers.md)), because the registry must be full before the stores render. The ports a module wants (transport, presence, the current dataset) live in stores that do not exist yet. So the deps are stable objects whose methods look up the service at call time, and each one gives a safe answer before the service arrives (`moduleHostServices.ts` header).
 
 **Parent:** [Module registry](README.md)
 
@@ -10,12 +10,12 @@
 
 | Service slice | Published by |
 |---|---|
-| `dataset`, `datasetUri`, `datasetRefKey`, `selfId`, `ephemeral`, `call`, `transcription` | `DatasetStore` |
-| `datasetByUri`, `createEntity` | `TemplateProvider` |
+| `dataset`, `datasetUri`, `datasetRefKey`, `selfId`, `ephemeral`, `call`, `transcription`, `languageModel`, `interpretation` | `DatasetStore` |
+| `datasetByUri`, `createEntity`, `linkEntity`, `unlinkEntity`, `updateEntity`, `removeEntity`, `findEntities`, `subscribeEntities`, `documents`, `agentData` | `TemplateProvider` |
 | `presence` | `PresenceStore` |
 | `notify`, `identities` | `ProfileStore` |
-| `callOnScreen`, `showCallOnScreen`, `ensureBoardFor`, `spaceRoot` | `SpaceStore` |
-| `interpretationTargets`, `setInterpretationTarget`, `setAutoInterpret`, `interpretCollection`, `watchCollection`, `unwatchCollection`, `reconcileCollection`, `proposalsForCollection` | `SpaceStore`, through `interpretationRuntime` |
+| `callOnScreen`, `showCallOnScreen`, `showPart`, `datasets`, `ensureBoardFor`, `spaceRoot` | `SpaceStore` |
+| `interpretationTargets`, `interpretationTargetsLoaded`, `setInterpretationTarget`, `setAutoInterpret`, `interpretCollection`, `watchCollection`, `unwatchCollection`, `reconcileCollection`, `proposalsForCollection` | `SpaceStore`, through `interpretationRuntime` |
 | `interpretationAvailable`, `interpretationActivity`, `interpretationProposalsRevision`, `autoInterpretEnabled` | `InterpretationStore` |
 | `view` | `LiveView` |
 

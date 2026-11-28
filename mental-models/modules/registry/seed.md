@@ -1,6 +1,6 @@
 # Seed
 
-A **seed** is the JSON file that describes one deployment: which modules, templates, views, bundles, elements and embedded apps it builds in, its deployment-level settings, and its host settings. `we-seed.json` is WE's own seed. A different seed is chosen at build time with `WE_SEED`.
+A **seed** is the JSON file that describes one deployment: which modules, templates, views, bundles, elements and [embedded apps](../../hosts/platform/embedded-apps.md) it builds in, its deployment-level settings, and its host settings. `we-seed.json` is WE's own seed. A different seed is chosen at build time with `WE_SEED`.
 
 **Why:** The seed is the list of modules, and the module registry is generated from it, so adding a module is one seed entry and not edits to several files in step. A module that the seed does not name is never imported, so it leaves the bundle, not only the rail (`generateModuleRegistry.mjs` header).
 
@@ -25,7 +25,7 @@ The generator refuses an entry without a valid id, an id named twice, and a pack
 
 The default seed's generated files are checked in. `scripts/seed.cjs` writes the generated files for any other seed into `.seed-build/<name>/` beside the package, and `scripts/seed-vite.mjs` points the apps at them.
 
-At run time, `initializeIntegrations` gives the parsed seed to `provideSeed`, and `seedModuleIds(seed)` gives the ids to `activateSeedModules`. An id that the build does not contain is reported as missing. The seed's top-level `settings` is the `deployment` level of [module settings](../contract/settings.md).
+At run time, `PlatformProvider` calls `initializeIntegrations` ([Providers](../../hosts/boot/providers.md)), which gives the parsed seed to `provideSeed`, and `seedModuleIds(seed)` gives the ids to `activateSeedModules`. An id that the build does not contain is reported as missing. The seed's top-level `settings` is the `deployment` level of [module settings](../contract/settings.md).
 
 `seed-examples/` has two starting seeds (`we-native`, `we-with-apps`), and `seeds/` has other deployments' seeds. `packages/app-shell/src/seed/` is the `we-seed` command line tool: `validateSeed`, `loadSeed`, and `SeedProcessor`, which generates integration code for a seed's embedded apps.
 

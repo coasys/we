@@ -14,7 +14,7 @@ A **shape** is an entity that a space defines for itself. It is stored once, in 
 | no schema language of its own | a `Shape` record that holds the manifest as a document | `createJsonShapeStore` |
 
 1. `SchemaPort.shapes` has `list(dataset)`, `save(dataset, shape, id?)` and `remove(dataset, id)`.
-2. The adoption rail: on a switch into a WE space, `ShapeStore` lists the shapes and checks each with `validateManifest` (against core vocabulary, sibling shapes and foreign entities). `adoptShape` compiles it with `declareInDataset` (module id `shape/<id>`) and installs its schema with `installModules`. After that, `$query { entity: "<ShapeName>" }`, the record forms and extraction work on it.
+2. The adoption rail: on a switch into a WE space, `ShapeStore` lists the shapes and checks each with `validateManifest` (against core vocabulary, sibling shapes and foreign entities). `adoptShape` compiles it with `declareInDataset` (module id `shape/<id>`) and, for an editable shape, installs its schema with `installModules`. After that, `$query { entity: "<ShapeName>" }`, the record forms and extraction work on it.
 3. The shape wizard: `openShapeWizard`, the draft (`shapeDraft`) and `saveShapeDraft`. The structured editor and the AI flow (`generateShapeDraft`) fill the same draft.
 4. The hint editor: per-space interpretation hints through `SchemaPort.interpretationHints`.
 5. On AD4M, `remove` takes away the annotations only. The SHACL stays, so records of that entity stay readable. A shape that holds more than a manifest can say reads back as not editable.

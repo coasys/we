@@ -1,6 +1,6 @@
 # Capture
 
-Capture takes the call's microphone stream, finds the spans of speech on the audio thread, and sends each span to the backend's transcription stream. The text that comes back is collected into blocks of about 1000 characters.
+Capture takes the call's microphone stream, finds the spans of speech on the audio thread, and sends each span to the backend's transcription stream ([Backend contract](../../../data/backend/README.md)). The text that comes back is collected into blocks of about 1000 characters.
 
 **Why:** The backend transcribes an utterance, not a microphone, so something must decide where an utterance ends, for each 128-sample frame. The main thread can drop audio during a slow render, so an `AudioWorkletProcessor` decides this on the audio thread, and also resamples to the 16 kHz that the speech model uses (`workletSource.ts` header). Blocks of 1000 characters are a compromise: one block per utterance writes a record every few seconds for each participant, and one block per call is a wall of text (`MAX_CHARS` comment).
 

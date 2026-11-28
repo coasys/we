@@ -1,20 +1,20 @@
 # Expressions
 
-An **expression** is a prop or child value `{ $: '<source>' }`. It computes a value from stores, local state and bound names with one closed grammar: literals, references, comparison, boolean and arithmetic operators, string interpolation, a ternary, and five comprehension macros (`filter`, `map`, `find`, `exists`, `all`). New capability goes into the function library, not the grammar.
+An **expression** is a prop or child value `{ $: '<source>' }`. It computes a value from stores, local state and bound names with one closed grammar: literals, references, comparison, boolean and arithmetic operators, string interpolation, a ternary, and five comprehension macros (`filter`, `map`, `find`, `exists`, `all`). A capability that the grammar lacks goes into the function library.
 
-**Why:** With a closed grammar, an author, the validator and the AI context learn one language that does not grow. Each new computation is a catalogued function in the library (`ast.ts`). An expression cannot define functions, recurse or call a value's own methods (`a.f(b)` means the library call `f(a, b)`), so evaluation is total. Every node carries a `span`, so the checker can name a column.
+**Why:** With a closed grammar, an author, the validator and the AI context learn one language that does not grow. Each computation beyond the grammar is a catalogued function in the library (`ast.ts`). An expression cannot define functions, recurse or call a value's own methods (`a.f(b)` means the library call `f(a, b)`), so evaluation is total. Every node carries a `span`, so the checker can name a column.
 
 **Parent:** [Schema language](README.md)
 
 <details><summary>How it works</summary>
 
 1. `parseCached` parses the source once. A parse error resolves to `undefined` and warns once.
-2. `buildEnvironment` binds the roots in this order: `local` (the node's `$localState` and `$queries`), a context name (a `$each` variable, `event`, `result`, `surface`), `arg`, a host global (`me`, `currentDataset`), then a store of the **template bag**.
+2. `buildEnvironment` binds the roots in this order: `local` (the node's `$localState` and `$queries`), a call-time root (`event`, `arg`, `result`), another context name (a `$each` variable, `surface`), a host global (`me`, `currentDataset`), then a store of the **template bag**.
 3. `evaluateExpression` runs inside one framework memo, so each tagged store read is a tracked dependency ([Renderer](../renderer/README.md)).
 4. An expression that names `event`, `arg` or `result` (`CALL_TIME_ROOTS`) outside a handler becomes a deferred function. The `$invoke` dispatcher calls it with the callback's argument.
 5. A call goes to the library (`getFunction`) first, then to a **host source** in the bag's `$sources` (for example `arrangedBoard`, `calendarMonth`), else it warns.
 
-Property reads go through `readField` (`reach.ts`). Data reads as usual. A host object (an `Event`, a DOM `Node`, `Storage`, …) gives only the fields listed for its kind. The parser refuses `__proto__`, `constructor` and `prototype`. The where-object grammar of `$query` and of `filter`/`find` is one implementation (`where.ts`).
+Property reads go through `readField` (`reach.ts`). Data reads as usual. A host object (an `Event`, a DOM `Node`, `Storage`, …) gives only the fields listed for its kind. The parser refuses `__proto__`, `constructor` and `prototype`. The `filter` and `find` functions match a where-object through `matchesWhere` (`where.ts`).
 
 </details>
 

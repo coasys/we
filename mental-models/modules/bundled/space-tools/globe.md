@@ -2,7 +2,7 @@
 
 The globe module (`@we/module-globe`) lends templates the `CesiumGlobe` component: a globe with layers of data on the earth and layers of the space around it. Cesium or MapLibre draws it. A template names the layers and never names the engine.
 
-**Why:** The module was a conversion of a globe that already worked, to prove that the contribution points are sufficient. Only the wiring moved into the module. `createGlobeModule` takes the component as an argument and does not import it, so the package never pulls Solid or `@we/widgets` into its own bundle (`module/src/index.ts` header).
+**Why:** The module is the proof that the contribution points are sufficient: it carries a globe that was built without the module system. The module holds only the wiring, and the component and the layers stay in their own packages. `createGlobeModule` takes the component as an argument and does not import it, so the package never pulls Solid or `@we/widgets` into its own bundle (`module/src/index.ts` header).
 
 **Parent:** [Space tools](README.md)
 

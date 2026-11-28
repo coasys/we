@@ -2,7 +2,7 @@
 
 When the backend runs no call session, the call module connects the peers itself. `createCallMesh` keeps one `RTCPeerConnection` for each other participant, and sends the WebRTC handshake on the space's ephemeral channel `rtc`. `createMediaController` holds this agent's microphone, camera and screen.
 
-**Why:** A mesh needs no server. An SFU is a server, and a local-first app that needs one is no longer local-first (`mesh.ts` header). The cost is that each peer sends its video to every other peer, which the header gives as a limit of about four to six participants. Media is separate from the mesh because media fails locally and signalling fails between peers. When the two were together, one peer's refused camera prompt could stop everyone's audio (`media.ts` header).
+**Why:** A mesh needs no server. An SFU is a server, and a local-first app that requires one is not local-first (`mesh.ts` header). The cost is that each peer sends its video to every other peer, which the header gives as a limit of about four to six participants. Media is separate from the mesh because media fails locally and signalling fails between peers. When the two were together, one peer's refused camera prompt could stop everyone's audio (`media.ts` header).
 
 **Parent:** [Calls](README.md)
 

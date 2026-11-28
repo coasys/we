@@ -22,7 +22,7 @@ A plugin is code that a template names from data: an expander, a seed source, a 
 **Notes on the sets:**
 - `entity` follows an instance's relations. `readRelations` reads them, and `reified` lets a record that stands for a relation (with a source and a target) be drawn as one edge.
 - `property-values` is `property` with values as shared nodes, for a map where nodes with the same value must meet.
-- `schema-instances` opens a model's records node into its instances. It has its own id, so a graph that opens a model into its properties does not also open it into all of its records.
+- `schema-instances` opens an entity's records node into its records. It has its own id, so a graph that opens an entity into its properties does not also open it into all of its records.
 - `force` is iterative and uses d3-force. The other five layouts are deterministic. `forest` and `manual` read `CONTAINMENT_EDGE_TYPES` as parent links.
 
 **The catalogue.** `GRAPH_PLUGIN_CATALOG` in `@we/module-graph` lists each id with its options and an example, and says in which prop each kind is written. The validator uses the placements to refuse a name that does not exist, and the generated context gives authors the list (see [View](view.md)).

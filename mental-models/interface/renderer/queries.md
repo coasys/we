@@ -1,6 +1,6 @@
-# Queries
+# Template queries
 
-A **query** is a `$query` token: a backend-neutral question for records of an `entity`, with `where`, `order`, `limit`, `offset`, `include`, `select`, `scope`, `dataset` and `when`. The renderer turns it into a live subscription. A query can be a prop value, the `items` of `$each` or `$single`, or an entry of `$queries` on a node.
+A **template query** is a `$query` token: a backend-neutral question for records of an `entity`, with `where`, `order`, `limit`, `offset`, `include`, `select`, `scope`, `subscribe`, `dataset` and `when`. The renderer turns it into a live subscription. A query can be a prop value, the `items` of `$each` or `$single`, or an entry of `$queries` on a node.
 
 **Why:** A backend pays for each live question separately, so the renderer keeps one subscription per distinct question, however many nodes ask it. The pool keys a question by the entity name, the dataset id and the question as JSON, not by the object that asks (`subscriptionPool.ts`). `$queries` hoists a query to a node, so one answer serves the whole subtree as `local.<name>`.
 
@@ -15,7 +15,7 @@ A **query** is a `$query` token: a backend-neutral question for records of an `e
 5. Rows reconcile by `id` into a Solid store, so a changed row updates in place.
 6. Each `$queries` entry gives `local.<name>` and `local.<name>Loaded`. `Loaded` is false until the first result or error. A query can read the result of another query on the same node, in any order. Fields from `$queries` are read-only.
 
-An `entity` list asks the same question of each entity and gives one list, with each row tagged by `__subjectClass`. What the backend does with the question: [Data](../../data/README.md).
+An `entity` list asks the same question of each entity and gives one list, with each row tagged by `__subjectClass`. What the backend does with the question: [Queries](../../data/backend/queries.md).
 
 </details>
 
@@ -25,6 +25,5 @@ An `entity` list asks the same question of each entity and gives one list, with 
 - [subscriptionPool.ts](../../../packages/schema-system/frameworks/solid/src/subscriptionPool.ts): `acquireSubscription`, `subscriptionPoolConfig`, `resetSubscriptionPool`.
 - [propResolvers/query.ts](../../../packages/schema-system/shared/src/propResolvers/query.ts): `resolveQueryProp`.
 - [types.ts](../../../packages/schema-system/shared/src/types.ts): `QueryToken`, `QueryStateField`.
-- [expressions/where.ts](../../../packages/schema-system/shared/src/expressions/where.ts): the `where` grammar.
 
 </details>

@@ -28,7 +28,7 @@ This file defines each term that WE uses in its own way, once, in alphabetical o
 
 **Backend contract** (`@we/backend-shared`, `BackendPorts`, `backendPorts.ts`): The set of ports that every backend implements, returned as one `BackendPorts` object for a session. Its required ports are `agentSession`, `lifecycle`, `schemas`, `profiles`, `ephemeral` and `dataBindings`; the other ports are feature-detected. Example: "The renderer and the stores depend on the backend contract, never on `@coasys/*`." [Backend contract](data/backend/README.md)
 
-**Block** (`ContentBlock`, `registerBlock`, `BlockContribution`): One unit of content in a composition, a text block or a typed record, stored as one model and linked from a `CollectionBlock` root through `children`. A module can add a block type for one of its entities. Example: "A poll is a block, so a post can hold one." [Blocks](modules/blocks/README.md)
+**Block** (`ContentBlock`, `registerBlock`, `BlockContribution`): One unit of content in a composition, a text block or a typed record, stored as one record and linked from a `CollectionBlock` root through `children`. A module can add a block type for one of its entities. Example: "A poll is a block, so a post can hold one." [Blocks](modules/blocks/README.md)
 
 **Board** (`CollectionBlock` of kind `board`, `arrangedBoard`, `createBoardActions`): A record whose children are columns, where each column is a saved query with an arrangement. A column shows each task whose `status` matches the column's `slug`. Example: "A drop on a bound column of the board writes the task's `status`." [Boards](interface/chrome/boards.md)
 
@@ -36,7 +36,9 @@ This file defines each term that WE uses in its own way, once, in alphabetical o
 
 **Boot state** (`BootState`, `SessionStore.bootState`): The state of the session while the app shell starts: `initialising`, `login`, `createAgent`, `finishing`, `ready` or `error`. Example: "The boot state goes to `ready` when the session unlocks." [Session](hosts/boot/session.md) — not: boot phase, boot stage
 
-**Bundle** (format `we-bundle`, seed `bundles`, `judgeBundle`): A whole app as one JSON file. It can hold an app template, space templates, views, app pages, themes, record types, workflows, a brand and a sign-in screen. Example: "Install the bundle from a file in Settings." [Bundles](interface/templates/bundles.md) — not: mini-app, applet
+**Bundle** (format `we-bundle`, seed `bundles`, `judgeBundle`): A whole app as one JSON file. It can hold an app template, space templates, views, app pages, themes, record types, workflows, a brand and a sign-in screen. Example: "Install the bundle from a file in Settings." [Bundles](interface/templates/bundles.md) — not: applet
+
+**Call record** (`recordCallId`, `CollectionBlock` with `kind: 'call'`): The `feed` collection that a call writes when it starts. The call id is derived from its id, and the transcript is written into it. Example: "Everyone who continues a call record joins the same call." [Calls](modules/bundled/calls/README.md)
 
 **Call topology** (`CallTopology`): How a backend call session connects the participants: `mesh` (each to each) or `sfu` (through a relay server). Example: "The call activity carries the topology, so a participant can follow a switch." [Backend sessions](modules/bundled/calls/sessions.md)
 
@@ -54,7 +56,7 @@ This file defines each term that WE uses in its own way, once, in alphabetical o
 
 **Component** (`@we/components`, `X.types.ts` + `X.solid.tsx`): A Solid component made from primitives that holds behaviour which needs the host's reactive framework, such as overlap calculation, measurement or focus. A template names it by its PascalCase `type`. Example: "`AvatarStack` is a component because it calculates overlap." [Components](interface/design-system/components.md)
 
-**Component registry** (`componentRegistry`, `chromeComponentRegistry`): The map from a PascalCase `type` name to a Solid component, which the renderer reads. The chrome registry adds the components that only host chrome can use. Example: "Register the new component in `componentRegistry.tsx`." [Component registry](interface/renderer/component-registry.md)
+**Component registry** (`componentRegistry`, `chromeComponentRegistry`): The map from a PascalCase `type` name to a Solid component, which the renderer reads. The chrome registry adds the components that only host chrome can use. Example: "Register the component in `componentRegistry.tsx`." [Component registry](interface/renderer/component-registry.md)
 
 **Conformance suite** (`@we/backend-conformance`, `describeBackendConformance`, `ConformanceHarness`): One suite of the backend contract's behaviour that every backend runs through its own harness. Example: "The AD4M adapter runs the conformance suite through `test:live`." [Conformance suite](data/adapters/conformance.md)
 
@@ -68,13 +70,15 @@ This file defines each term that WE uses in its own way, once, in alphabetical o
 
 **Dataset** (`DatasetRef`, `DatasetHandle`, `DatasetLifecyclePort`): The neutral name for one queryable data container; on AD4M it is a perspective. A `DatasetRef` pairs its id, name and shared address with an opaque handle that only the backend reads. Example: "Each space is backed by one dataset." [Dataset lifecycle](data/backend/lifecycle.md)
 
-**Definition** (`$defs`, `$ref`, `definitions.ts`): A shape that a template holds once in its root `$defs` and uses at each `$ref` node. A patch inside a definition changes every use; a `split` patch gives one use its own copy. Example: "The card is one definition with six uses." [Schema nodes](interface/schema/nodes.md)
+**Definition** (`$defs`, `$ref`, `definitions.ts`): A node tree that a template holds once in its root `$defs` and uses at each `$ref` node. A patch inside a definition changes every use; a `split` patch gives one use its own copy. Example: "The card is one definition with six uses." [Schema nodes](interface/schema/nodes.md)
 
 **Design token** (`@we/tokens`, `--we-<category>-<key>`): A named design value on a fixed scale, such as `space` `'300'`, that becomes one CSS variable. Example: "Set the gap to the design token `'300'`." [Design tokens](interface/design-system/tokens.md)
 
-**Disposition** (`Disposition`, `CapabilityGap`, `planQuery`): What a backend does with one query feature: `native`, `compute-up`, `degraded` or `unsupported`. Any gap that is not `degraded` refuses the query. Example: "On this backend, a projection sort without a `limit` has the disposition `degraded`." [Queries](data/backend/queries.md)
+**Disposition** (`Disposition`, `CapabilityGap`, `planQuery`): What a backend does with one query feature: `native`, `compute-up`, `degraded` or `unsupported`. Any gap that is not `degraded` refuses the query. Example: "On this backend, a projection sort without a `limit` has the disposition `degraded`." [Query planning](data/backend/queries.md)
 
 **Drag payload** (`@we/drag`, `{ dataset?, entity, id }`, `dragSession`): The references that a drag carries, never DOM elements. The drop target decides what a drop means. Example: "The column reads the task id from the drag payload." [Drag](interface/design-system/drag.md)
+
+**Editor** (`@we/editor`, `EditorHost`, `EditorStore`): The surface for editing templates and themes. It reaches its host only through the `EditorHost` contract. Example: "The editor's inspector panel opens beside the template." [Editor](interface/templates/editor.md)
 
 **Embedded app** (`seed.apps`, `AppConfig`, `contributes.embed`, `we-iframe`): A separate AD4M app that the seed lists under `apps` and that WE registers as a module whose only contribution is an `embed`, shown in a frame. Example: "The seed `we-with-apps.seed.json` lists Flux as an embedded app." [Embedded apps](hosts/platform/embedded-apps.md) — not: mini app
 
@@ -86,7 +90,7 @@ This file defines each term that WE uses in its own way, once, in alphabetical o
 
 **Expander** (`Expander`): A graph plugin that answers "what is next to this node" for the node kinds it claims. All expanders that claim a node run, and their results merge by address. Example: "The `collection` expander opens a collection into its children." [Protocol](modules/graph-system/protocol.md)
 
-**Expression** (`{ $: '<source>' }`, `evaluateExpression`, `ast.ts`): A prop or child value that computes a value from stores, local state and bound names with one closed grammar. New capability goes into the function library, not the grammar. Example: "`{ $: 'spaceStore.viewNav' }` is an expression." [Expressions](interface/schema/expressions.md)
+**Expression** (`{ $: '<source>' }`, `evaluateExpression`, `ast.ts`): A prop or child value that computes a value from stores, local state and bound names with one closed grammar. A capability that the grammar lacks goes into the function library. An AD4M expression (content at a URL) keeps its AD4M meaning and is always written "AD4M expression". Example: "`{ $: 'spaceStore.viewNav' }` is an expression." [Expressions](interface/schema/expressions.md)
 
 **Feature module** (`ModuleDefinition`, `createModule(host)`): A capability that a space or an agent turns on. It is a manifest and contributions as data, plus at most one store factory as code, and it is built in through the seed. Example: "The polls feature module adds two entities, a block and a view." [Modules](modules/README.md) — not: add-on
 
@@ -116,11 +120,11 @@ This file defines each term that WE uses in its own way, once, in alphabetical o
 
 **Identity window** (`@we/identity-window`, `runIdentityWindow`, `IdentityTransport`, `identityWindow.js`): The separate desktop window that is the only page that runs a change to the identity. It draws the custody service's screens and sends back what the person types. Example: "The identity window shows the recovery words." [Identity window](hosts/identity/identity-window.md) — not: key window, vault window
 
-**Interpretation** (`InterpretationKernel`, `interpretationRuntime`): Extraction passes that a language model runs over a collection, and the proposals that they make, which a person accepts or rejects. The host owns the runs, and a module reaches them through the `interpretation` kernel. Example: "After a call, an interpretation pass over the transcript can propose a task." [Interpretation](modules/bundled/transcription/interpretation.md)
+**Interpretation** (`InterpretationKernel`, `interpretationRuntime`): Extraction passes that a language model runs over a collection, and the proposals that they make, which a person accepts or rejects. The host owns the runs, and a module reaches them through the `interpretation` kernel. On AD4M, a pass runs AD4M's own interpretation engine (`runInterpretation`). Example: "After a call, an interpretation pass over the transcript can propose a task." [Interpretation](modules/bundled/transcription/interpretation.md)
 
 **Journey** (`*.e2e.mjs`, `apps/we-web/e2e/`): An end-to-end test that follows a person's path through the built web app, in Chrome, against a real executor with several accounts. Example: "The calls journey starts a call between two devices." [End-to-end tests](hosts/targets/development/e2e.md)
 
-**Kernel** (`requires.kernels`, `deps.kernels`, `KERNEL_NAMES`): A host capability that a module asks for by name, bound to the space that the module runs in. The store gets only the kernels that its manifest names. Example: "The feed module asks for the `records` and `interpretation` kernels." [Kernels](modules/contract/kernels.md)
+**Kernel** (`requires.kernels`, `deps.kernels`, `KERNEL_NAMES`): A host capability that a module asks for by name, as a neutral type that any host can implement. The store gets only the kernels that its manifest names. Example: "The feed module asks for the `records` and `interpretation` kernels." [Kernels](modules/contract/kernels.md)
 
 **Launcher** (`ModuleLauncher`, `contributes.launchers`): A rail button that calls a store action and is not a panel's button. Example: "The live module's launcher is \"Follow the driver\"." [Contributions](modules/contract/contributions.md)
 
@@ -140,13 +144,13 @@ This file defines each term that WE uses in its own way, once, in alphabetical o
 
 **Node address** (`entityAddress`, `parseAddress`, `NodeKind`): The one stable string that identifies a graph node, made and parsed only in `address.ts`. The engine treats it as opaque. Example: "Two expanders that return the same node address make one node." [Protocol](modules/graph-system/protocol.md)
 
-**Node operator** (`$each`, `$if`, `$single`, `$routes`, `$animate`, `$part`, `$panels`, `$slot`, `$ref`): A node whose `type` starts with `$`. It controls structure, not appearance. Example: "`$each` is the node operator for a list." [Node operators](interface/schema/operators.md)
+**Node operator** (`$each`, `$single`, `$if`, `$agent`, `$routes`, `$animate`, `$surface`, `$part`, `$panels`, `$slot`, `$ref`): A node whose `type` starts with `$`. It controls structure, not appearance. Example: "`$each` is the node operator for a list." [Node operators](interface/schema/operators.md)
 
 **Optimism** (`@we/optimism`, `createOptimism`, `Rules`): The package that holds values drawn before their writes come back and decides, by five rules, when to stop believing them. It is a promise about presentation, not a cache and not part of the backend contract. Example: "`RecordStore` uses optimism for card styles." [Optimism](data/stores/optimism.md)
 
 **Panel** (`dockRegistry`, `PanelHost`, `meta.panels`, `shellStore.openPanel`): A surface that a module, the editor or a template opens beside the content. The host chooses where it goes, and it is floating, snapped, displacing or maximised. The code also calls it a dock. Example: "Notes open as a floating panel." [Panels](interface/chrome/panels.md) — not: flyout
 
-**Panel lane** (`PanelLane`, `EdgeLanes`, `$panels`, `band`): A row of panels along one axis: a band at a window edge, or a `$panels` outlet in a template. Panels that share a place in a lane are a group, drawn as tabs. Example: "The template's `$panels` outlet is a panel lane." [Panels](interface/chrome/panels.md)
+**Panel lane** (`PanelLane`, `EdgeLanes`, `$panels`, `band`): A row of panels along one axis: a band at a window edge, or a `$panels` outlet in a template. Panels that share a place in a panel lane are a group, drawn as tabs. Example: "The template's `$panels` outlet is a panel lane." [Panels](interface/chrome/panels.md)
 
 **Personal space** (`access: 'personal'`, `createSpace`): A space whose dataset is local and not published. Example: "A personal space can still be listed in the global dataset." [Spaces](data/spaces/README.md)
 
@@ -162,11 +166,13 @@ This file defines each term that WE uses in its own way, once, in alphabetical o
 
 **Protected piece** (`CredentialField`, `PROTECTED_SLOTS`, `safeMode`): A part of the interface that no template, theme, seed or bundle can replace: the password field, the safety prompts and safe mode. Example: "The install prompt is a protected piece." [Protected pieces](interface/chrome/protected-pieces.md)
 
-**Query IR** (`QueryIR`, `compileQuery`, `routeQuery`, `executeQueryIR`): The backend-neutral, versioned description of the data a template asks for, which each backend plans and lowers or refuses. Example: "`routeQuery` compiles the `$query` to the query IR before the adapter plans it." [Queries](data/backend/queries.md)
+**Query IR** (`QueryIR`, `compileQuery`, `routeQuery`, `executeQueryIR`): The backend-neutral, versioned description of the data a template asks for, which each backend plans and lowers or refuses. Example: "`routeQuery` compiles the `$query` to the query IR before the adapter plans it." [Query planning](data/backend/queries.md)
 
 **Reactivity port** (`memo` in `resolveProp`, `markReactive`): The framework signal primitive that the schema semantics receive, so the semantics stay framework-neutral. The Solid renderer passes `createMemo`. Example: "A renderer for another framework supplies only its reactivity port." [Renderer](interface/renderer/README.md)
 
 **Record** (`RecordInstance`, `RecordStore`): One stored instance of an entity. Example: "A `Placement` record holds where one card sits on one canvas." [Entities](data/entities/README.md)
+
+**Renderer** (`RenderSchema`, `@we/schema-solid`): The adapter that walks a schema tree, resolves each prop, maps the node operators onto Solid's control flow, and mounts each node. Example: "The renderer mounts `we-button` as a custom element." [Renderer](interface/renderer/README.md)
 
 **Role** (colour roles such as `surface`, `text-muted`, `accent-border`): A design token that says what a colour is for. A theme changes roles, and a scale position cannot express a relation that inverts between light and dark. Example: "Use the `text-muted` role, not a grey from the scale." [Design tokens](interface/design-system/tokens.md)
 
@@ -198,13 +204,15 @@ This file defines each term that WE uses in its own way, once, in alphabetical o
 
 **Store surface** (`markState`, `markAction`, `storeSurface`): The members of a module store that a template can reach as `modules.<id>.<name>`. A member is private until the store marks it, with a required `doc`. Example: "`vote` is on the polls store surface." [Store surface](modules/contract/store-surface.md)
 
-**System dataset** (`SYSTEM_DATASETS`, `SYSTEM_DATASET_NAMES`, `isSystemDataset`): A dataset that the host makes for itself and that is never a space: `we-root`, `we-personal` or `we-test`. Example: "The write check does not judge a write to a system dataset." [Datasets](data/stores/datasets.md)
+**System dataset** (`SYSTEM_DATASETS`, `SYSTEM_DATASET_NAMES`, `isSystemDataset`): A dataset that the host makes for itself and that is never a space: `we-root`, `we-personal` or `we-test`. Example: "The write check does not judge a write to a system dataset." [Datasets](data/stores/datasets.md) — not: system perspective
 
 **Target** (`apps/we-web`, `apps/we-electron`, `apps/we-tauri`, `@we/app-*`): An app package that runs the app shell with a platform adapter and a backend connector. A desktop target also starts the executor and the custody service. Example: "Each target's `build` script is `we-build`." [Targets](hosts/targets/README.md) — not: wrapper app
 
 **Template** (`TemplateSchema`, root node with `meta`): A root schema node with `meta` that the renderer draws against a template bag. `meta.role` says if it is a shell, a view, an app or a page. Example: "The space renders its default template." [Templates](interface/templates/README.md)
 
 **Template bag** (`buildTemplateBag`, `templateBag`, `chromeBag`): The object of stores that a template renders against. It holds only the store members that the template's tier grants. Example: "`trustAgent` is not in the template bag of a space template." [Template tiers](interface/templates/tiers.md)
+
+**Template query** (`$query`, `$queries`, `subscriptionPool.ts`): A `$query` token in a template: a backend-neutral question for records of one entity, which the renderer turns into a live subscription. Example: "The list's `items` is a template query for `TaskBlock` records." [Template queries](interface/renderer/queries.md)
 
 **Template tier** (`SPACE_TIER`, `CHROME_TIER`): A list of capability groups that a template gets. A space template gets `SPACE_TIER`, and host chrome gets `CHROME_TIER`. Example: "The boot screen renders at the chrome template tier." [Template tiers](interface/templates/tiers.md)
 
@@ -214,10 +222,12 @@ This file defines each term that WE uses in its own way, once, in alphabetical o
 
 **Toolset** (`RecordToolset`, `toolsets`, `templateToolset`, `themeToolset`): A set of agent tools for one kind of record that holds nothing between calls. A host passes each call the record as it is stored now and writes the properties the call returns. Example: "The template toolset gives `template_read`, `template_update` and `template_create`." [Agent tools](hosts/ai/agent-tools.md)
 
+**Validation context** (`ValidationContext`, `buildValidationContext`): The names that the semantic validation pass checks a template against: the components and their props, the store members, the entities, the expression functions and the host sources. Example: "The editor adds the space's shapes to the validation context." [Validation](interface/schema/validation.md)
+
 **View** (`meta.role: 'view'`, `meta.segment`, `Space.enabledViews`): A template that renders one section of a space at one URL segment. The host expands a shell's `$views` route into one route per view. Example: "Hide the calendar view for yourself." [Views](interface/templates/views.md)
 
 **we-personal** (`SYSTEM_DATASET_NAMES.personal`, `personalDataset`): The system dataset that holds what the agent made or kept, such as notes and the Pocket, with the ordinary space schema. Nothing that repairs configuration reaches it. Example: "Agent-scoped module records live in we-personal." [Datasets](data/stores/datasets.md)
 
-**we-root** (`SYSTEM_DATASET_NAMES.root`, `rootDataset`, `installRoot`): The system dataset that holds the app's configuration: `AgentSettings`, installed templates and themes, per-space preferences. Its schema is installed again on every boot, and a repair or a reset may touch it. Example: "The default theme is read from `AgentSettings` in we-root." [Datasets](data/stores/datasets.md)
+**we-root** (`SYSTEM_DATASET_NAMES.root`, `rootDataset`, `installRoot`): The system dataset that holds the app's configuration: `AgentSettings`, installed templates and themes, per-space preferences. Its schema is installed again on every boot, and a repair or a reset may touch it. Example: "The default theme is read from `AgentSettings` in we-root." [Datasets](data/stores/datasets.md) — not: root perspective
 
 **Write check** (`EntityWriteCheck`, `checkEntityWrite`, `registerEntityWriteCheck`): The one function that every record write passes before the backend makes it. The host registers it, and every backend calls it from its own write path. Example: "`SpaceStore` registers the policy check as the write check." [Write path](data/entities/writes.md)

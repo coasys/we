@@ -2,7 +2,7 @@
 
 A **module setting** (`ModuleSetting`) is one value a module lets somebody decide, such as whether a call is recorded. The module declares the question and its `levels`. The host draws the controls, stores the answers and gives the module the resolved values through `deps.settings()`.
 
-**Why:** Before module settings, a capability that needed a value put a column on the core `Space` entity, with a setter and a hand-written settings row (the `moduleSettings.ts` header names `autoInterpret` and `extractionTargets`). A setting is a value and resolves by specificity. It is not availability: whether a module runs here is a set of yes-or-no answers that only subtract ([Enablement](../registry/enablement.md)).
+**Why:** A module can carry a value without a field on the core `Space` entity, a setter and a hand-written settings row (`moduleSettings.ts` header). A setting is a value and resolves by specificity. It is not availability: whether a module runs here is a set of yes-or-no answers that only subtract ([Enablement](../registry/enablement.md)).
 
 **Parent:** [Module contract](README.md)
 

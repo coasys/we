@@ -9,13 +9,13 @@ The **editor** (`@we/editor`) is the surface for editing templates and themes. I
 <details><summary>How it works</summary>
 
 1. `EditorHost` has the ports `template` (`TemplatePort`: the working copy, the catalogue, saving), `theme` (`ThemePort`), `session` (`SessionPort`) and `identity` (`EditorIdentityPort`). The optional fields are `targets` (what a session edits beyond the template on screen), `owners` (regions that another provider owns: parts, panels, views), `images`, `registry` (component metadata for the code and inspector panels) and `fragments` (fragments that the inspector can place).
-2. WE supplies the host in `EditorHostAdapter.tsx` with `EditorHostProvider`. The member names of `TemplatePort` are the same as those of `templateStore`, so the adapter passes them through.
+2. WE supplies the host in `EditorHostAdapter.tsx` with `EditorHostProvider`. Its `TemplatePort` is `templateStore` behind a `Proxy`. The proxy answers `currentTemplate`, `updateTemplate` and `persistCurrentTemplate` from the edit target, so the editor edits what the session edits.
 3. `@we/editor/runtime` holds the host contract and the panel geometry, which the shell needs on the first render. The shell imports the editing UI with `lazy`, so it loads only when one of its components renders.
 4. `mountTemplateEditor(element, options)` mounts the editor into any element and returns a function that unmounts it.
 5. The editor panels are entries of the component registry (`EditorCodePanel`, `EditorInspectorPanel`, `EditorThemePanel`, `AiPanel`). The shell places them as docks, like other panels ([Panels](../chrome/panels.md)).
 6. The editor validates the working copy against a context that `EditorStore` builds with `buildValidationContext` and `withEntities` ([Validation](../schema/validation.md)).
 
-How a language model edits a template: [Hosts](../../hosts/README.md).
+How an AI model edits a template: [In-app AI](../../hosts/ai/in-app.md).
 
 </details>
 

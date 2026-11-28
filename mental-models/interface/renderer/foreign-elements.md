@@ -18,9 +18,7 @@ A **foreign element** is a custom element from a third-party library that a depl
 1. `buildContentSecurityPolicy({ host, dev, seed, meta })` builds the policy for `electron`, `tauri` or `web`.
 2. `img-src`, `media-src` and `frame-src` list sources, not all of `https:`. `DEFAULT_SOURCES` holds what WE itself loads from. `seedSources(seed)` adds the seed's `contentSecurity.images`, `media` and `frames` origins, and the origin of each embedded app's `paths.webUrl`. A malformed origin stops the build.
 3. A production `script-src` has no `'unsafe-inline'`. `object-src` is `'none'`.
-4. Electron sets the policy as a header. The Vite plugin `contentSecurityPolicy({ host, seedFile })` writes it as a `<meta>` tag for the web and Tauri builds. A `<meta>` tag cannot carry `frame-ancestors`, so the web build also writes a Netlify `_headers` file with the policy.
-
-How each host sets the policy: [Hosts](../../hosts/README.md).
+4. Electron sets the policy as a header ([Main process](../../hosts/targets/electron/main-process.md)). Tauri sends it from `app.security` in its generated configuration. The Vite plugin `contentSecurityPolicy({ host, seedFile })` writes it as a `<meta>` tag for the web and Tauri builds. A `<meta>` tag cannot carry `frame-ancestors`, so the web build also writes a Netlify `_headers` file with the policy.
 
 </details>
 

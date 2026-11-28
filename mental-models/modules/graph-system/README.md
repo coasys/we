@@ -2,7 +2,7 @@
 
 The graph system draws a graph that is explored lazily: each kind of node knows what is next to it. An **expander** gives the neighbours for the kinds that it claims. The engine does the rest: it removes duplicates, and it controls expansion, collapse, layout and drawing.
 
-**Why:** "Show the whole space", "map these query results", "open this collection's children" and "open a model into its properties" are one feature, not four. A module that adds a new source of nodes writes an expander, and nothing in the core changes (`graph-system/README.md`).
+**Why:** "Show the whole space", "map these query results", "open this collection's children" and "open an entity into its properties" are one feature, not four. A module that adds a new source of nodes writes an expander, and nothing in the core changes (`graph-system/README.md`).
 
 **Parent:** [Modules](../README.md)
 

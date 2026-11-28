@@ -2,7 +2,7 @@
 
 A **template** is a root schema node with `meta`. Its `meta.role` says which of four kinds it is. A **shell template** (the default) owns a space's chrome, arrangement and route table. A **view** renders one section inside a shell. An **app template** is the chrome around every space. An **app page** is a page of an app, opened above everything.
 
-**Why:** The role sets what a change costs. A community that wants one more section installs or writes one view, and keeps the shell that it shares with other communities (`types.ts`). An absent role means shell, so templates without a role keep working.
+**Why:** The role sets what a change costs. A community that wants one more section installs or writes one view, and keeps the shell that it shares with other communities (`types.ts`). An absent role means shell.
 
 **Parent:** [Interface](../README.md)
 
@@ -26,7 +26,7 @@ A **template** is a root schema node with `meta`. Its `meta.role` says which of 
 | `@we/template-fixtures` | sample data for previews and screenshots; not shipped |
 
 1. The seed's `templates` and `views` lists select the built-in templates. `generate-templates` and `generate-views` write the imports, so the bundler does not include a template that the seed does not select.
-2. A space has a default template. The agent's library (in we-root) and the space itself can hold more templates as records ([Data](../../data/README.md)).
+2. A [space](../../data/spaces/README.md) has a default template. The agent's library (in [we-root](../../data/stores/datasets.md)) and the space itself can hold more templates as `Template` records.
 3. The app template is the agent's choice (`AgentSettings.appTemplateId`), else the deployment's, else `we-app`. In safe mode it is always `we-app` ([Protected pieces](../chrome/protected-pieces.md)).
 4. Each template passes `acceptTemplate` before it is used ([Template tiers](tiers.md)).
 

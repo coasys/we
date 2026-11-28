@@ -1,6 +1,6 @@
 # Transcription
 
-The transcribe module (`@we/module-transcribe`) turns what each participant says in a call into `TextBlock`s in the [call record](../calls/README.md). Each agent transcribes only its own microphone, so the author of a block is the speaker. Being in a call starts it.
+The transcribe module (`@we/module-transcribe`) turns what each participant says in a call into `TextBlock` records ([Entities](../../../data/entities/README.md)) in the [call record](../calls/README.md). Each agent transcribes only its own microphone, so the author of a block is the speaker. Being in a call starts it.
 
 **Why:** Because each agent records only itself, the transcript needs no speaker detection: the speaker field is the block's `author` (`docs/architecture/transcripts.md`). Recording starts by itself, because when one person had to press a button, a meeting was recorded only sometimes, and the transcript then cannot show "we chose not to" apart from "nobody pressed it" (`index.ts` header).
 

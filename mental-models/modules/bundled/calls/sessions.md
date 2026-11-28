@@ -2,7 +2,7 @@
 
 Where the connected backend can run a call, the call module uses the `call` kernel: `calls.session(callId, request)` returns a `CallSession`, and the backend runs the topology, signalling, roster and peer connections. The module then only starts the session, ends it and reads its participants. Where `calls.available()` is false, the module runs its own [mesh](mesh.md).
 
-**Why:** `CallSession` is a structural type in `@we/module-shared`. The backend's session satisfies it, so the call module has no import of any backend (`store.ts`, "Session backend"). The host, not the module, chooses the session's space. A session that names its space and finds it not joined is refused, so a participant who follows a topology switch from another space cannot reconnect into a call that nobody is in (`callKernel.ts` header).
+**Why:** `CallSession` is a structural type in `@we/module-shared`. The backend's session satisfies it, so the call module has no import of any backend (`store.ts`, "Session backend"). The module names a space by its `datasetUri`, and the host finds the dataset. A session that names its space and finds it not joined is refused, so a participant who follows a topology switch from another space cannot reconnect into a call that nobody is in (`callKernel.ts` header).
 
 **Parent:** [Calls](README.md)
 
@@ -33,6 +33,6 @@ Where the connected backend can run a call, the call module uses the `call` kern
 - [packages/module-system/shared/src/call.ts](../../../../packages/module-system/shared/src/call.ts): `CallKernel`, `CallSession`, `CallSessionRequest`, `CallParticipant`, `CallQuality`.
 - [packages/app-shell/src/shared/callKernel.ts](../../../../packages/app-shell/src/shared/callKernel.ts): `createCallKernel` over the backend's `CallPort`.
 - [packages/module-system/call/src/store.ts](../../../../packages/module-system/call/src/store.ts): `CallTopology`, `CallTopologyChoice`, `newestCallTopology`, `switchTopology`, `reconnectSession`, `connectSession`, `CallConfigState`, `MESH_POLICY`, `callPolicy`.
-- The backend's call port is in the [Data](../../../data/README.md) branch.
+- The backend's call port: [Backend contract](../../../data/backend/README.md).
 
 </details>

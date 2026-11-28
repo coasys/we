@@ -2,7 +2,7 @@
 
 `SchemaPort` installs entity schemas into a dataset and reads them back. It installs the root schemas (`installRoot`), the space schemas with module schemas (`installSpace`), and module schemas alone (`installModules`). It compiles a manifest into the backend's form (`declare`, `declareInDataset`), and it reports what a dataset holds (`hasCoreSchema`, `hasAnySchema`, `foreignSchemas`, `foreignEntries`).
 
-**Why:** Only the backend knows how a manifest becomes something it can store and query (SHACL on AD4M). So the shell hands the port manifests and gets back neutral `EntityManifestEntry` lists. Every install method is idempotent, and the methods that run on every space switch (`installModules`, `refreshSpace`) diff before they write, so a switch writes only the schemas that are out of date.
+**Why:** Only the backend knows how a manifest becomes something it can store and query (SHACL on AD4M). So the shell hands the port manifests and gets back neutral `EntityManifestEntry` lists. `installRoot`, `installSpace` and `ensure` are idempotent, and the methods that run on every space switch (`installModules`, `refreshSpace`) diff before they write, so a switch writes only the schemas that are out of date.
 
 **Parent:** [Backend contract](README.md)
 

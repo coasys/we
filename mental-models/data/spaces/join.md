@@ -8,7 +8,7 @@
 
 <details><summary>How it works</summary>
 
-1. `joinSpace` needs `lifecycle.join`. If a known dataset answers to the id (`datasetAnswersTo`), it switches to it and stops.
+1. `joinSpace` needs `lifecycle.join`. If a known dataset answers to the id (`datasetAnswersTo`), it switches to it if `focus`, and stops.
 2. Joins of the same shared id (`sharedIdOf`) share one run (`joinsInFlight`).
 3. `runJoin` calls `lifecycle.list({ fresh: true })`. A dataset that answers to the id goes straight to `finishJoin`.
 4. Otherwise it calls `lifecycle.join(joinTargetOf(id))`. When the transport gave up (`transportGaveUp`), `waitForJoinedDataset` polls the backend for up to `JOIN_RECOVERY_WINDOW_MS` (5 minutes) with backoff.

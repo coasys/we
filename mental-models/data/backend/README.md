@@ -10,7 +10,7 @@ The **backend contract** is the set of ports in `@we/backend-shared` that every 
 - [Data source](data-source.md): `DataSource`, `EntityClass`, `LiveQuery` and the renderer's data bindings.
 - [Dataset lifecycle](lifecycle.md): `DatasetHandle`, `DatasetRef`, `DatasetLifecyclePort` and `AgentSessionPort`.
 - [Schemas](schemas.md): `SchemaPort`, which installs entities into a dataset and reads them back.
-- [Queries](queries.md): the query IR, the compiler, capability planning, `routeQuery` and the reference engine.
+- [Query planning](queries.md): the query IR, the compiler, capability planning, `routeQuery` and the reference engine.
 - [Ephemeral and presence](ephemeral.md): signals that are not stored, and the presence protocol over them.
 
 <details><summary>How it works</summary>
@@ -23,10 +23,10 @@ The **backend contract** is the set of ports in `@we/backend-shared` that every 
 | `profiles` | yes | `ProfileDirectoryPort`: `get`, `publish`, `uploadFile` for agent profiles |
 | `ephemeral` | yes | unstored signals per dataset ([Ephemeral and presence](ephemeral.md)) |
 | `dataBindings` | yes | the bindings the schema renderer reads ([Data source](data-source.md)) |
-| `transcription` | no | `TranscriptionPort`: a speech-to-text session; the caller feeds it utterances and receives `TranscriptionRecord`s |
-| `runtime`, `models`, `languageModel`, `agents`, `interpretation`, `workflows`, `references`, `call`, `identity`, `persons` | no | runtime administration, AI models, workflows, calls, identity and persons |
+| `transcription` | no | `TranscriptionPort`: lists the transcription models (`TranscriptionRecord`) and opens a stream that takes utterances and returns text |
+| `runtime`, `models`, `languageModel`, `agents`, `interpretation`, `workflows`, `references`, `call`, `identity`, `persons` | no | runtime administration, AI models, text generation, agents, interpretation, workflows, referrers of a value, calls, identity and persons |
 
-`BackendPortsContext` gives the adapter `selfId` and `afterFirstScreen`. The connector that builds the ports belongs to [Hosts](../../hosts/README.md). The space policy format (`policy.ts`) also lives in this package; its owner page is [Policy](../spaces/policy.md).
+`BackendPortsContext` gives the adapter `selfId` and `afterFirstScreen`. The connector that builds the ports belongs to [Backend connector](../../hosts/platform/backend-connector.md). The space policy format (`policy.ts`) also lives in this package; its owner page is [Policy](../spaces/policy.md).
 
 </details>
 

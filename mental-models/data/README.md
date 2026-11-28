@@ -1,6 +1,6 @@
 # Data
 
-The Data branch covers what WE stores and how the app reads and writes it. **Entities** are declared once in a neutral manifest. The **backend contract** defines the ports that every backend implements. **Adapters** implement the contract for AD4M and in memory. **Stores** hold the reactive state that templates read, and **spaces** are the datasets that communities share.
+The Data branch covers what WE stores and how the app reads and writes it. **Entities** are declared once in a neutral manifest. The **backend contract** defines the ports that every backend implements. **Adapters** implement the contract for AD4M and in memory. **Stores** hold the reactive state that templates read, and **spaces** are datasets that a `Space` record describes.
 
 **Why:** The renderer, the design system and the module contract do not import `@coasys/*`. They speak only to the contract in `@we/backend-shared` and to the entity proxies in `@we/entities`. Thus a template, a component or a feature module does not know which backend holds the data. A second backend (`@we/backend-inmemory`) runs the same conformance suite as the AD4M adapter. That suite keeps the contract honest.
 
@@ -33,7 +33,7 @@ BackendPorts (lifecycle, schemas, dataBindings, ephemeral, …)  ── Backend 
 3. The stores call the ports and the proxies. A template reaches the stores only through the members it is granted.
 4. Every record write goes through one write check, which judges the space's policy.
 
-For the schema renderer and templates, see [Interface](../interface/README.md). For feature modules and their entities, see [Modules](../modules/README.md). For boot and the backend connectors, see [Hosts](../hosts/README.md).
+For the schema renderer and templates, see [Interface](../interface/README.md). For feature modules and their entities, see [Modules](../modules/README.md). For boot, see [Boot](../hosts/boot/README.md); for the backend connectors, see [Backend connector](../hosts/platform/backend-connector.md).
 
 </details>
 

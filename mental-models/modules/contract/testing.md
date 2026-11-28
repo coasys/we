@@ -2,7 +2,7 @@
 
 `@we/module-testing` tests a module store without a host. It gives fake deps, an in-memory fake for each common kernel, a `buildStore` that builds a store as the registry does, and the contract's own `lintModule`.
 
-**Why:** A store is built only from injected deps, so a test can give it closures for signals and arrays for records, and run it under vitest with no renderer, backend or shell (the `index.ts` header). Before this package, each bundled module wrote its own fakes.
+**Why:** A store is built only from injected deps, so a test can give it closures for signals and arrays for records, and run it under vitest with no renderer, backend or shell (the `index.ts` header).
 
 **Parent:** [Module contract](README.md)
 
@@ -12,7 +12,7 @@
 |---|---|
 | `fakeDeps(overrides)` | The degraded host that every store must survive: `plainSignal` for signals, an effect that runs once and swallows an error, no kernels, no dataset, no agent, empty settings. A test overrides only what it is about. |
 | `plainSignal(initial)` | A signal as a getter and a setter over a closure. |
-| `fakeRecords({ author, datasetKey })` | A `RecordsKernel` over an array per entity: `where` by equality (a list means "in", `{ not }` means "not equal"), `order` by one key, `limit`, `offset`, `select`, `within`, and a live `subscribe` that fires after each write. `rows` and `writes` let a test assert what the module wrote and where. |
+| `fakeRecords({ author, datasetKey })` | A `RecordsKernel` over one array of rows: `where` by equality (a list means "in", `{ not }` means "not equal"), `order` by one key, `limit`, `offset`, `select`, `within`, and a live `subscribe` that fires after each write. `rows` and `writes` let a test assert what the module wrote and where. |
 | `fakeDocuments` | `DocumentAccess` as a map. `read` returns exactly what was written. |
 | `fakeAgentData` | The same fake in the `AgentDataKernel` shape, with a personal dataset key. |
 | `fakePresence` | A roster that the test sets. `publish(peer, activity)` puts an activity on a peer; `setActivity` records what the module published. |

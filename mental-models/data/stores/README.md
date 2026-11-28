@@ -7,7 +7,7 @@ A **store** is a Solid context in `@we/app-shell` that holds reactive state and 
 **Parent:** [Data](../README.md)
 
 ## Parts
-- [Session](session.md): `SessionStore`, the connection to the backend and the port bundle.
+- [Session store](session.md): `SessionStore`, the connection to the backend and the port bundle.
 - [Datasets](datasets.md): `DatasetStore`, the dataset list, the current dataset and the system datasets.
 - [Records](records.md): `RecordStore`, creating and arranging records, and canvas undo through `@we/history`.
 - [Optimism](optimism.md): `@we/optimism`, a value shown before its write comes back.
@@ -25,9 +25,10 @@ Other stores that touch data, each in one line:
 | `ShapeStore` | the shapes a space carries, and their editing surfaces ([Shapes](../spaces/shapes.md)) |
 | `SpaceStore` | spaces, members and the write check ([Spaces](../spaces/README.md)) |
 | `PresenceStore` | presence for the space on screen and for any space with a live call ([Ephemeral and presence](../backend/ephemeral.md)) |
-| `InterpretationStore`, `WorkflowStore` | extraction and workflows in this space ([Modules](../../modules/README.md)) |
+| `InterpretationStore` | what extraction does in this space ([Interpretation](../../modules/bundled/transcription/interpretation.md)) |
+| `WorkflowStore` | the space's workflows |
 
-How a template reaches the data: `TemplateProvider` calls `backendPorts().dataBindings({...})` with the current dataset handle, the entity entries (the dataset's own, then core, then module entries), the profiles and the ephemeral port ([Data source](../backend/data-source.md)). Which store members a template may name is decided in `templateSurface.ts`, which belongs to [Interface](../../interface/README.md).
+How a template reaches the data: `TemplateProvider` calls `backendPorts().dataBindings({...})` with the current dataset handle, the entity entries (the dataset's own, then core, then module entries), the profiles and the ephemeral port ([Data source](../backend/data-source.md)). Which store members a template may name is decided in `templateSurface.ts` ([Template tiers](../../interface/templates/tiers.md)).
 
 </details>
 

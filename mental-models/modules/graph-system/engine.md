@@ -22,7 +22,7 @@
 
 **Folding is not collapsing** (`fold.ts`, `setFolded`). A collapse removes nodes from the store. A fold keeps all nodes loaded and hides some of them. The engine does not query or lay out the nodes again, and an unfold puts each card back where it was. A hidden node has no position, so it has no hit area, no lines and is not drawn.
 
-**Hit-testing is in the core.** Behaviours get world coordinates and ask the engine (`SpatialIndex`) which node is there. They do not use DOM events, so a renderer that is not DOM can be added later.
+**Hit-testing is in the core.** Behaviours get world coordinates and ask the engine (`SpatialIndex`) which node is there. They do not use DOM events, so a renderer that is not DOM can use the same behaviours.
 
 </details>
 

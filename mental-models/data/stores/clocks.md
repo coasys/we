@@ -14,7 +14,7 @@ A **clock** (`@we/clock`) is a moment that something shows, plus the playback th
 4. While it plays, a clock moves every animation frame and tells listeners with cause `'tick'`. Every other change has cause `'change'`. `throttle(clock, ms, cb)` listens at a lower rate but hears every `'change'` at once.
 5. `ClockStore` subscribes through `throttle` at 200 ms. Its `ClockView` adds `atIso`, `fromIso`, `toIso`, `atLabel`, `ticks`, `progress` and `canPlay`, because a schema has no dates. Its actions are `play`, `pause`, `toggle`, `seek`, `seekProgress`, `setSpeed`, `setLoop` and `configure`.
 
-The registry in `shared/clocks.ts` is the one that templates (through `clockStore`), modules (through the `clocks` kernel) and the globe (through its `clocks` prop) use ([Modules](../../modules/README.md)).
+The registry in `shared/clocks.ts` is the one that templates (through `clockStore`), modules (through the `clocks` kernel, [Kernels](../../modules/contract/kernels.md)) and the globe (through its `clocks` prop, [Globe](../../modules/bundled/space-tools/globe.md)) use.
 
 </details>
 

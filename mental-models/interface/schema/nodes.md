@@ -2,7 +2,7 @@
 
 A **schema node** is one object in a template tree: `type`, `props`, `children` (nodes, strings or expressions), and optional `slots`, `slot`, `routes`, `theme`, `styles`, `$localState`, `$queries` and `$defs`. A **template** is a root node with `meta` (`TemplateSchema`). Each node has a permanent `id`.
 
-**Why:** A permanent `id` makes an edit name a node, not a position. An edit can then outlive a change to the tree, and a fork can be compared with its original (`nodeIdentity.ts`). **Definitions** (`$defs` and `$ref`) keep a template self-contained: a shape that occurs twice is written once inside the template, not cited from a shared library, so everything that renders is still in the document (`definitions.ts`).
+**Why:** A permanent `id` makes an edit name a node, not a position. An edit can then outlive a change to the tree, and a fork can be compared with its original (`nodeIdentity.ts`). **Definitions** (`$defs` and `$ref`) keep a template self-contained: a subtree that occurs twice is written once inside the template, not cited from a shared library, so everything that renders is still in the document (`definitions.ts`).
 
 **Parent:** [Schema language](README.md)
 
@@ -18,14 +18,14 @@ A **schema node** is one object in a template tree: `type`, `props`, `children` 
 | `theme` | theme overrides for this subtree, written as CSS variables on a `display: contents` wrapper |
 | `styles` | inline CSS on a wrapper element around the node |
 | `$localState`, `$queries` | local signals and hoisted queries, read as `local.<name>` |
-| `meta` (root) | `name`, `description`, `icon`, `role` (`shell`, `view`, `app`, `page`), `segment`, `keepAlive`, `panels`, `chromeReserve`, `frame`, `edges`, `themeId`, `themeIds`, `recordViews`, `requires`, `stores`, `components` |
+| `meta` (root) | `name`, `description`, `icon`, `role` (`shell`, `view`, `app`, `page`), `segment`, `keepAlive`, `panels`, `chromeReserve`, `frame`, `edges`, `themeId`, `themeIds`, `draws`, `recordViews`, `requires`, `stores`, `components` |
 
 **Node identity.** An id is ten characters. A node made in the editor gets a random (minted) id. A node of a built-in template gets an id derived from the template id and the node's path, so the same build gives the same ids.
 
 **Definitions.**
-1. `compactDefinitions` finds shapes that occur more than once, byte-identical. It moves each into the root's `$defs` and leaves `{ type: '$ref', props: { def } }` at each use.
+1. `compactDefinitions` finds subtrees that occur more than once, byte-identical. It moves each into the root's `$defs` and leaves `{ type: '$ref', props: { def } }` at each use.
 2. `expandDefinitions` is the exact inverse. `RenderSchema` and `validateSchema` expand first, so no other rule needs to know about `$ref`.
-3. `splitUse` gives one use its own copy of the shape, so an edit to it does not reach the other uses. `useCountOf` tells how many uses an edit reaches.
+3. `splitUse` gives one use its own copy of the subtree, so an edit to it does not reach the other uses. `useCountOf` tells how many uses an edit reaches.
 
 </details>
 

@@ -17,12 +17,12 @@ An **adapter** implements the [backend contract](../backend/README.md) for one b
 |---|---|---|
 | ports | `createAd4mBackendPorts` | `createInMemoryBackendPorts` |
 | entity classes | generated classes in `src/entities/`, plus classes compiled from a manifest at runtime | `compileEntities` over in-memory tables |
-| query adapter | `createAd4mQueryAdapter`, `ad4mCapabilities` | `inMemoryQueryAdapter` (`compileQuery` → `executeQueryIR`) |
+| query adapter | `createAd4mQueryAdapter`, `ad4mCapabilities` | `inMemoryQueryAdapter`; reads run `executeQueryIR` |
 | sharing | `publish`/`join` on neighbourhoods | simulated: `publish` mints an `inmemory://` URI |
 | ephemeral | `createAd4mEphemeralPort` | `createInMemoryEphemeralPort` |
 | shapes | `createAd4mShapeStore` (SHACL) | `createJsonShapeStore` (`Shape` records) |
 
-The host picks the adapter through its backend connector ([Hosts](../../hosts/README.md)).
+The host picks the adapter through its [backend connector](../../hosts/platform/backend-connector.md).
 
 </details>
 

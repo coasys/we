@@ -11,7 +11,7 @@
 | Dataset | Holds | Schema |
 |---|---|---|
 | `we-root` (`rootDataset`) | `AgentSettings`, installed templates and themes, per-space preferences, read markers, the mute list | `installRoot` on every boot |
-| `we-personal` (`personalDataset`) | notes, the Pocket, agent-scoped module records | `installSpace` with module and agent schemas |
+| `we-personal` (`personalDataset`) | notes, the Pocket, agent-scoped module records | `installSpace` with module and agent schemas when it is new or has no core schema; else `installModules` and `refreshSpace` |
 | `we-test` (`testDataset`) | the development sandbox | |
 | global (`globalDataset`), marketplace (`marketplaceDataset`) | shared datasets named by the seed | recognised: the joined dataset whose `sharedUri` equals the seed's URL |
 

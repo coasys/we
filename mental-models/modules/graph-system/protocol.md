@@ -14,7 +14,7 @@
 - `literal`: a scalar value. All property nodes with the same value share it, so they come together on one node.
 - `dataset`: a space or a neighbourhood.
 - `cluster`: a group that the engine made, for example a collapsed subtree.
-- `resource`: a URI with no model.
+- `resource`: a URI with no entity.
 
 **The expander** (`expander.ts`). `Expander{ id, kinds, types?, priority?, description?, expand(request, context) }`. The `kinds` and `types` decide which nodes it expands. When several expanders claim a node, all of them run and their results merge by address. `priority` decides which one is primary.
 - `ExpandRequest{ id, direction (out, in, both), limit?, cursor?, edgeTypes?, signal? }`.

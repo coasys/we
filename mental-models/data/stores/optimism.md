@@ -23,7 +23,7 @@ The five rules:
 | `done(key)` / `release(key)` | the write returned / failed |
 | `toDraw(key, observed)` | the held value, or `undefined` when the data has overtaken it |
 | `settle(observedBy)` | report what a draw was made from |
-| `inFlight()`, `forget(key)`, `holds()` | inspect or drop holds |
+| `inFlight()`, `forget(key)`, `holds()`, `reset()` | inspect or drop holds |
 
 `createOptimism(signal, rules)` takes the host's signal factory and `Rules` (`same`, `ttlMs`). Users: `RecordStore` (card styles, connections), `boardOptimism.ts`, `signalOptimism.ts`, `involvementOptimism.ts` and the polls module store.
 

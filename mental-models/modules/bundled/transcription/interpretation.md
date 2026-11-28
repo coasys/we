@@ -1,8 +1,8 @@
 # Interpretation
 
-Interpretation is a pass of the backend's language model over one conversation (a `CollectionBlock` and its children), which proposes typed records, for example tasks, from what was said. The `interpretation` kernel gives a module this capability for the space it runs in. The transcribe and feed modules use it.
+Interpretation is a pass of the backend's language model over one conversation (a `CollectionBlock` and its children), which proposes typed records, for example tasks, from what was said. The `interpretation` kernel gives a module this capability for the space it runs in. The transcribe and feed modules use it. On AD4M, a pass is AD4M's own interpretation engine: the adapter's `InterpretationPort` calls `runInterpretation`, and a proposal is an AD4M interpretation overlay that `acceptInterpretation` or `rejectInterpretation` settles (`interpretationAdapter.ts`).
 
-**Why:** A standing watch over a conversation is a registration in the dataset that outlives the module that asked for it, and peers share it. So the kernel has no `watch`. A module names a collection with `watchCollection` and holds nothing, and the host keeps the watch (`interpretation.ts` header). For the same reason, the readout of running passes is a host store (`InterpretationStore`), and not module state: a pass continues after the panel that started it closes (`InterpretationStore.tsx` header).
+**Why:** A standing watch over a conversation is a registration in the dataset that outlives the module that asked for it, and peers share it. So the kernel has no `watch`. A module names a collection with `watchCollection` and holds nothing, and the host keeps the watch (`interpretation.ts` header). For the same reason, the readout of running passes is a host store (`InterpretationStore`, [Stores](../../../data/stores/README.md)), and not module state: a pass continues after the panel that started it closes (`InterpretationStore.tsx` header).
 
 **Parent:** [Transcription](README.md)
 
@@ -13,7 +13,7 @@ Interpretation is a pass of the backend's language model over one conversation (
 | Group | Members |
 |---|---|
 | Can it run | `available` (the node has a model), `autoEnabled(collectionId?)` (the space or the call decided to interpret as the conversation grows) |
-| Group decisions for one call | `setAuto`, `targets` (one row per model, ticked when on), `targetsLoaded`, `setTarget` |
+| Group decisions for one call | `setAuto`, `targets` (one row per entity, ticked when on), `targetsLoaded`, `setTarget` |
 | Passes | `runOnCollection`, `watchCollection`, `unwatchCollection`, `reconcileCollection`, `passSettled` |
 | Readout | `activity` (this agent's and the peers' passes, as strings for a schema), `proposalsRevision` |
 | Review | `proposals`, `accept`, `reject` (a whole record or one property), `connections` |
@@ -36,6 +36,7 @@ A record that a model wrote has `generatedBy` set to its run, in the same write.
 - [packages/app-shell/src/frameworks/solid/stores/InterpretationStore.tsx](../../../../packages/app-shell/src/frameworks/solid/stores/InterpretationStore.tsx): the `activity` readout.
 - [packages/app-shell/src/shared/interpretation/](../../../../packages/app-shell/src/shared/interpretation): `transcriptTurns.ts`, `activityView.ts`, `callExport.ts`.
 - [packages/app-shell/src/shared/registries/moduleHostServices.ts](../../../../packages/app-shell/src/shared/registries/moduleHostServices.ts): the kernel built from the host's services, and `passSettled`.
-- The backend's interpretation port and boards are in the [Data](../../../data/README.md) branch.
+- [packages/backend-system/ad4m/src/interpretationAdapter.ts](../../../../packages/backend-system/ad4m/src/interpretationAdapter.ts): `createAd4mInterpretationPort`.
+- The backend's interpretation port: [Backend contract](../../../data/backend/README.md). The watch lives in the space's dataset: [Spaces](../../../data/spaces/README.md).
 
 </details>

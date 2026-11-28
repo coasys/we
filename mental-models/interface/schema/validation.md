@@ -1,8 +1,8 @@
 # Validation
 
-**Validation** checks a template in two passes. The structural pass checks the shape of the tree with zod. The semantic pass checks each name against a **validation context**: the components and their props, the store members, the entities, the expression functions and the host sources that exist.
+**Validation** checks a template in two passes. The structural pass checks the structure of the tree with zod. The semantic pass checks each name against a **validation context**: the components and their props, the store members, the entities, the expression functions and the host sources that exist.
 
-**Why:** A template is data, so it can be checked before it renders. A structural failure can stop the renderer, so the host refuses a template that fails the structural pass ([Template tiers](../templates/tiers.md)). The semantic pass costs more, and its failure is mild: an unknown component renders nothing. So the host does not run it when a template arrives; the editor runs it on the template that is being written (`templateAcceptance.ts`). `validateSchema` expands `$ref` first, so every rule sees the tree that will render and reports each error at a position on screen (`semanticValidation.ts`).
+**Why:** A template is data, so it can be checked before it renders. A structural failure can stop the renderer, so the host refuses a template that fails the structural pass ([Template tiers](../templates/tiers.md)). The semantic pass costs more, and its failure is mild: an unknown component renders one marked box in place of its node. So the host does not run it when a template arrives; the editor runs it on the template that is being written (`templateAcceptance.ts`). `validateSchema` expands `$ref` first, so every rule sees the tree that will render and reports each error at a position on screen (`semanticValidation.ts`).
 
 **Parent:** [Schema language](README.md)
 
@@ -16,7 +16,7 @@
 
 Each error has a `path`, a `message` and a `severity` (`error` or `warning`). A result is valid when it has no `error`.
 
-The editor (`EditorStore`) and the template tools of `@we/agent-tools` build a validation context that includes the space's entities. `pnpm validate:schemas` runs `we-validate-schemas` over every template in the repository. Five more audits report patterns that validation does not refuse: `query-audit` (a `$query` with no `limit`), `role-audit` (a scale position where a colour role belongs), `size-audit` (template size and repeated subtrees), `surface-audit` (a `surface-sunken` box with no contrast against its ground) and `tooltip-audit` (a `title` attribute where `we-tooltip` belongs).
+The editor (`EditorStore`) and the template tools of `@we/agent-tools` build a validation context that includes the space's entities. `pnpm validate:schemas` runs `we-validate-schemas` over the templates of the app shell, the template packages and the modules. Five more audits report patterns that validation does not refuse: `query-audit` (a `$query` with no `limit`), `role-audit` (a scale position where a colour role belongs), `size-audit` (template size and repeated subtrees), `surface-audit` (a `surface-sunken` box with no contrast against its ground) and `tooltip-audit` (a `title` attribute where `we-tooltip` belongs).
 
 </details>
 

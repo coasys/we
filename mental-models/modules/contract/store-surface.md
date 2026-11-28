@@ -11,7 +11,7 @@ The **store surface** is the set of store members that a template can reach as `
 | Mark | Kind | What a template can do |
 |---|---|---|
 | `markState(value, doc)` | `state` | Read it in an expression. The host tags it reactive. A value that is not a function is wrapped in an accessor. |
-| `markAction(fn, doc)` | `action` | Call it with `$invoke`. An expression that reads it gets a function and does not call it. |
+| `markAction(fn, doc)` | `action` | Call it with `$invoke`. An expression that reads it gets nothing. |
 | `markAction(fn, doc, { ambient: true })` | `action`, ambient | Call it with nobody asking. |
 | (no mark) | — | Nothing. Only chrome sees it. |
 

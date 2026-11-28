@@ -10,7 +10,7 @@ The Flux module (`@we/module-flux`) reads one thing from a space that is synced 
 
 - `subgroupMessages(dataset, subgroupId)` runs a SPARQL query on the AD4M perspective. It asks the same question that Flux asks, for messages only, and does not depend on Flux's package. It returns `{ id, author, timestamp, body }` rows, oldest first.
 - The store reads the space on screen (`deps.dataset`). Outside a space, or when the read fails, it returns an empty list.
-- The member is an `ambient` action, so a template can call it on render and not only from a gesture. The Cards view's `FluxConversationsNestedList` calls it when a subgroup is expanded for the first time.
+- The member is an `ambient` action, so a template can call it on render and not only from a gesture. The Cards [view](../../../interface/templates/views.md)'s `FluxConversationsNestedList` calls it when a subgroup is expanded for the first time.
 - On a host whose backend is not `ad4m`, `checkModuleCompatibility` refuses the module, and the registry does not register it.
 
 </details>

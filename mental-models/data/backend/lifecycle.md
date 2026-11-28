@@ -25,7 +25,7 @@ A **dataset** is the neutral name for one queryable data container; on AD4M it i
 | `whenSynced?(id)` | resolves when a joined dataset holds the shared data |
 | `members?(id)` | the other agents that hold a shared dataset |
 | `sharingOptions?()` | the ways `publish` can sync: `peer-to-peer` or `server` |
-| `subscribe({ onAdded, onUpdated, onRemoved })` | change events from any client |
+| `subscribe({ onAdded, onUpdated, onRemoved })` | change events; returns an unsubscribe function |
 
 A backend with no sharing concept omits `publish` and `join`. `parseServerUrl` refuses a server that is not an http(s) address. What WE does with these calls is on [Spaces](../spaces/README.md).
 

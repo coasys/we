@@ -13,7 +13,7 @@ A space's **policy** is an allow-list of permissions, kept in the space as versi
 3. A permission that names an action exactly is the only kind that governs that action. A wildcard covers only the actions that the policy does not name.
 4. Every write to a `Policy` record is `Policy.edit`, and handing out a role is `RoleGrant.create`. No wildcard matches an action on `Policy`, `Role` or `RoleGrant`. `validatePolicy` refuses a policy that names nobody who may edit it, unless it is `frozen`.
 5. `evaluate(policy, request, who)` returns `null` or a `Refusal`: `not-permitted`, `condition`, `frozen`, `newer-format` or `unreadable`. `PolicyRefusal` is the error.
-6. `policyInForce` walks the versions oldest first from `OPEN_POLICY`. A version counts only if the version before it let its author do `Policy.edit`, with the roles held when it was written.
+6. `policyInForce` walks the versions oldest first from `OPEN_POLICY`. A version counts only if the policy in force before it let its author do `Policy.edit`, with the roles held when it was written.
 7. `createPolicyCheck` builds the check. A dataset that is not a space is not judged. Rules that cannot be read refuse with `unreadable`. The record is read only when the rule needs it (`needsRecord`).
 8. `SpaceStore` registers it with `registerEntityWriteCheck`, shows a toast for each `PolicyRefusal`, and removes it on cleanup. `governedSpace` returns `null` for system datasets and keeps other spaces for 5 s.
 9. Roles: `Role` and `RoleGrant` records. The creator writes the `admin` grant (`writeAdminGrant`) and the starting policy (`writeStartingPolicy`, the starter's `policy` preset) before the space is shared. A revoked grant is kept, so a version's author can still be judged by the roles held then.

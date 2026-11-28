@@ -1,4 +1,4 @@
-# Queries
+# Query planning
 
 The **query IR** (`QueryIR`) is the backend-neutral, versioned description of the data a template asks for: `entity`, `filter`, `sort`, `page`, `select`, `include`, `aggregate`, `scope` and `live`. `routeQuery(query, adapter)` compiles a template's flat query to the IR, asks the backend's `QueryAdapter` to plan it, and either lowers it to the backend's `QueryOptions` or refuses it.
 
@@ -8,7 +8,7 @@ The **query IR** (`QueryIR`) is the backend-neutral, versioned description of th
 
 <details><summary>How it works</summary>
 
-1. The renderer resolves every `{ $ }` in a `$query` to a value, which gives a `FlatQuery`.
+1. The renderer gives `routeQuery` the resolved `$query` as a `FlatQuery` ([Queries](../../interface/renderer/queries.md)).
 2. `compileQuery` produces the IR and a list of features the IR cannot express. A non-empty list refuses the query.
 3. `adapter.plan(ir)` returns a `QueryPlan` with `gaps`. Any gap that is not `degraded` refuses the query.
 4. `adapter.lower(ir)` returns the `QueryOptions` that the entity handle's `query` reads.
@@ -24,8 +24,6 @@ The **query IR** (`QueryIR`) is the backend-neutral, versioned description of th
 - `executeQueryIR(query, dataset)` is the reference engine: filter, sort, paginate, hydrate relations and aggregate over in-memory rows. The in-memory adapter runs on it.
 - A query whose `entity` is a list is a union. `combineEntityRows` merges the per-entity answers; `unionByFanOut` makes one handle over several.
 - `validateQueryIR` checks the IR shape (Zod). `validateQueryAgainstManifest` checks the names against a manifest.
-
-The `$query` syntax itself belongs to [Interface](../../interface/README.md).
 
 </details>
 

@@ -26,7 +26,7 @@ A **protected piece** is a part of the interface that no template, theme, seed o
 4. In safe mode, `commitTemplate` commits the bundled template, `allThemes` lists only the built-in themes, and the app is `we-app`.
 5. `templateStore.leaveSafeModeInto` leaves safe mode into the chosen app or into another app.
 
-The desktop menu entry for safe mode: [Hosts](../../hosts/README.md).
+The desktop menu entry for safe mode: [Main process](../../hosts/targets/electron/main-process.md).
 
 </details>
 

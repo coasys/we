@@ -8,13 +8,13 @@ The **renderer** is `RenderSchema` in `@we/schema-solid`. It walks a schema tree
 
 ## Parts
 - [Component registry](component-registry.md): the map from a `type` name to a Solid component, and how modules add to it.
-- [Queries](queries.md): `$query` and `$queries`, and the subscription pool that shares one live question between nodes.
+- [Template queries](queries.md): `$query` and `$queries`, and the subscription pool that shares one live question between nodes.
 - [Foreign elements](foreign-elements.md): custom elements from a library, named in the seed, and the content security policy.
 
 <details><summary>How it works</summary>
 
 1. `RenderSchema` expands `$defs` once (`expandDefinitions`). A mounted node keeps its `type`.
-2. `RenderNode` creates the signals of `$localState` and the subscriptions of `$queries` ([Handler tokens](../schema/handlers.md)). A `$`-string in a field's `initial` is the one place where the old string reference still resolves.
+2. `RenderNode` creates the signals of `$localState` ([Handler tokens](../schema/handlers.md)) and the subscriptions of `$queries` ([Template queries](queries.md)).
 3. A node operator returns early ([Node operators](../schema/operators.md)).
 4. The renderer resolves the component in this order: `registry[type]`; a lowercase HTML element only if `isTemplateElement(type)`; a name with a hyphen as a custom element. An HTML element that is not on the list renders nothing and warns once. Any other unknown `type` draws a dashed box that names it, so one missing component costs one node.
 5. Each prop resolves with `createMemo` as the `memo`. A custom element gets each prop as a DOM property, except `data-*` and `aria-*` props, which become attributes. A prop whose name starts with `on` and an upper-case letter is an event handler. URL-bearing props refuse a script scheme (`refusedProp`).

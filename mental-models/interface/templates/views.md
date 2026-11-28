@@ -8,7 +8,7 @@ A **view** is a template with `meta.role: 'view'` that renders one section of a 
 
 <details><summary>How it works</summary>
 
-1. The seed's `views` list selects the views that the build includes (now `about`, `cards`, `graph`, `globe`, `boards`, `calendar`). `generate-views` writes `bundledViews.generated.ts` from it and from the `CATALOGUE` in `generateViewRegistry.mjs`.
+1. The seed's `views` list selects the views that the build includes: `about`, `cards`, `graph`, `globe`, `boards` and `calendar` in WE's own seed. `generate-views` writes `bundledViews.generated.ts` from it and from the `CATALOGUE` in `generateViewRegistry.mjs`.
 2. `routableSections` gives a `ResolvedView` (id, segment, schema) for each available view.
 3. `expandViewRoutes(routes, views, gate)` replaces each `$views` marker, also inside nested `routes`, with:
    - one route per view at `/<segment>`. Its body is a node operator `$if`: the view while its id is in `gate.activeIds`, else `gate.notInSpace`;
@@ -20,7 +20,7 @@ A **view** is a template with `meta.role: 'view'` that renders one section of a 
 6. A shell reads `spaceStore.viewNav` for its navigation, which is the same resolved list.
 7. Each view root gets `data-we-view` and `data-we-view-name`, so the editor can find the boundary of a view.
 
-The `Space` and `SpacePreference` records: [Data](../../data/README.md).
+The `Space` and `SpacePreference` records: [Spaces](../../data/spaces/README.md).
 
 </details>
 

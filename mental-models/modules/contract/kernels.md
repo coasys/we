@@ -2,7 +2,7 @@
 
 A **kernel** is a host capability that a module asks for by name in `manifest.requires.kernels`. The store receives exactly the named kernels in `deps.kernels`. The registry refuses a module that names a kernel the host does not implement.
 
-**Why:** Each kernel is bound to the space the module runs in, so a module cannot pass the wrong dataset handle. A kernel name is also a statement about what a module can reach, so the capability list in Settings → Modules shows it (`kernel:<name>`). The `kernels.ts` header records the option that lost: a `ModuleStoreDeps` bag that grew one field per module need until it described two modules instead of a contract.
+**Why:** A kernel name is a statement about what a module can reach, so the capability list in Settings → Modules shows it (`kernel:<name>`). Every kernel is a neutral type, not a host store or a backend class, so a module that uses one runs on any host that implements it. The `kernels.ts` header records the option that lost: a `ModuleStoreDeps` bag that grew one field per module need until it described two modules instead of a contract.
 
 **Parent:** [Module contract](README.md)
 
@@ -13,7 +13,7 @@ A **kernel** is a host capability that a module asks for by name in `manifest.re
 | Kernel | Type | What it gives |
 |---|---|---|
 | `records` | `RecordsKernel` | `create`, `link`, `unlink`, `update`, `remove`, `find`, `subscribe` on the space's records, with `RecordQuery` (`within`, `where`, `order`, `limit`, `offset`, `include`, `select`). `onCopiedIn` reports a record copied into the space. `documents` (`DocumentAccess`) creates, reads, updates and removes composed documents. |
-| `agentData` | `AgentDataKernel` | The same record operations and `documents`, on the agent's personal space only. |
+| `agentData` | `AgentDataKernel` | `ready`, `refKey`, `create`, `find`, `update`, `remove` and `documents`, on the agent's personal space only. |
 | `presence` | `PresenceKernel` | `peers()`, `setActivity`, `clearActivity`. |
 | `ephemeral` | `EphemeralPort` | The backend's ephemeral port: channels for signals that are not stored. |
 | `view` | `ViewKernel` | `onPointer`, `frame`, `apply`, `decorate`: where this agent is looking, and drawing at a `LiveAnchor` on someone's screen. |

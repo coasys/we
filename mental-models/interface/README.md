@@ -2,7 +2,7 @@
 
 In WE, the interface is data. A **template** is a JSON tree of **schema nodes**. The **renderer** walks this tree and mounts each node from the **component registry**, against a **template bag** of stores. **Themes** and the **design system** set how the result looks. The **chrome** around the template holds the sidebar, the module rail and the panels.
 
-**Why:** Data can be read before it runs, forked, synced with a space and edited by a language model. Code can do none of these things safely. So WE keeps arrangement in templates and keeps code for what data cannot express: behaviour, focus, accessibility, browser APIs, measurement. Templates, themes and bundles install at runtime. Primitives, components and the renderer ship in the repository.
+**Why:** Data can be read before it runs, forked, synced with a space and edited by an AI model. Code can do none of these things safely. So WE keeps arrangement in templates and keeps code for what data cannot express: behaviour, focus, accessibility, browser APIs, measurement. Templates, themes and bundles install at runtime. Primitives, components and the renderer ship in the repository.
 
 **Parent:** [WE](../README.md)
 
@@ -47,6 +47,6 @@ Data, stores and spaces: [Data](../data/README.md). Feature modules, blocks, the
 - [packages/design-system/](../../packages/design-system): tokens, themes, primitives, components, widgets, utilities, drag; see [CONVENTIONS.md](../../packages/design-system/CONVENTIONS.md).
 - [packages/editor/](../../packages/editor): the template and theme editor.
 - [packages/app-shell/src/frameworks/solid/](../../packages/app-shell/src/frameworks/solid): the components, layouts and registries that mount templates and draw the chrome.
-- [docs/architecture/capabilities-and-surfaces.md](../../docs/architecture/capabilities-and-surfaces.md): where a new piece of interface goes.
+- [docs/architecture/capabilities-and-surfaces.md](../../docs/architecture/capabilities-and-surfaces.md): where each piece of interface goes.
 
 </details>

@@ -13,7 +13,7 @@
 3. Sharing is simulated. `publish` mints an `inmemory://` URI. `join` resolves against a registry of published datasets, which a test can fill with `seedShared`. Change handlers fire synchronously on the call that changes the data.
 4. The file store keeps file content inline: the address it returns is a `data:` URI.
 5. The ephemeral port runs on one `InMemoryBus`. The `presence` option gives seeded peers (`SeededPeer`), which send heartbeats while a scope on that dataset is open.
-6. `inMemoryQueryAdapter` lowers through `compileQuery` → `executeQueryIR`. `inMemoryCapabilities` declares the operators `eq`, `ne`, `lt`, `lte`, `gt`, `gte`, `in`, `nin`, `contains`, `startsWith`, `endsWith` and `exists`, plus boolean combinators, relation filters and scope.
+6. `inMemoryQueryAdapter` lowers the IR with `irToFlatQuery`, and an entity's reads run through `compileQuery` → `executeQueryIR`. `inMemoryCapabilities` declares the operators `eq`, `ne`, `lt`, `lte`, `gt`, `gte`, `in`, `nin`, `contains`, `startsWith`, `endsWith` and `exists`, plus boolean combinators, relation filters and scope.
 7. `shapes` is `createJsonShapeStore`: a space keeps its own shapes as `Shape` records ([Shapes](../spaces/shapes.md)).
 8. `workflows` is `createInMemoryWorkflowPort` (`IN_MEMORY_WORKFLOW_CAPABILITIES`), and `references` is `createInMemoryReferencePort(CORE_MANIFEST)`.
 9. `createInMemoryBackend(config)` is a smaller fixture: fixed `tables` and `relations`, read-only entity handles with live queries, and `mutate(fn)` to change rows and notify subscribers.

@@ -2,7 +2,7 @@
 
 `BlockComposer` is the editor for a composition. It is built on ProseMirror, and its schema comes from the block registry. `BlockRenderer` draws a composition without an editor. With the `collaborate` prop, the composer joins a live Yjs session, so that several agents edit one document at the same time.
 
-**Why:** The renderer never makes an editor, so a feed of posts does not mount one editor for each card (`block-system/CONVENTIONS.md`). Live editing in one paragraph needs a text CRDT. Durable block order is already the `children` relation, so the session is only for live text, and a save writes the merged document to the models. Nothing opaque is stored, and a peer who was not in the session reads the models (`collab.ts` header).
+**Why:** The renderer never makes an editor, so a feed of posts does not mount one editor for each card (`block-system/CONVENTIONS.md`). Live editing in one paragraph needs a text CRDT. Durable block order is already the `children` relation, so the session is only for live text, and a save writes the merged document to the records. Nothing opaque is stored, and a peer who was not in the session reads the records (`collab.ts` header).
 
 **Parent:** [Blocks](README.md)
 

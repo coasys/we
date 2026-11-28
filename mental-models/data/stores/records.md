@@ -16,7 +16,7 @@
 6. `deleteRecords` deletes a set of records in one write group, after one host confirmation. It is outside the history: on AD4M a delete drops the links and a re-create gets a new id, so the relations to the old record break.
 7. Card styles and drawn connections show at once through two `createOptimism` instances ([Optimism](optimism.md)).
 
-Defining a shape is `ShapeStore`'s work, not this store's ([Shapes](../spaces/shapes.md)). Posts are composed through the block composer ([Modules](../../modules/README.md)).
+Defining a shape is `ShapeStore`'s work, not this store's ([Shapes](../spaces/shapes.md)). Posts are composed through the block composer ([Composer](../../modules/blocks/composer.md)).
 
 </details>
 

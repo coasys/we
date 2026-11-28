@@ -30,6 +30,6 @@ Organising notes into folders is the Pocket's job. A note goes into it by drag, 
 - [packages/module-system/notes/src/index.ts](../../../packages/module-system/notes/src/index.ts), [entities.ts](../../../packages/module-system/notes/src/entities.ts), [store.ts](../../../packages/module-system/notes/src/store.ts): `notesModule`, `NOTES_MANIFEST`, `NOTE_PREDICATES`, `share`.
 - [packages/module-system/pocket/src/index.ts](../../../packages/module-system/pocket/src/index.ts), [entities.ts](../../../packages/module-system/pocket/src/entities.ts), [store.ts](../../../packages/module-system/pocket/src/store.ts): `pocketModule`, `POCKET_MANIFEST`, `createPocketStore`.
 - How an agent-scoped module is active everywhere: [Enablement](../registry/enablement.md).
-- The personal space itself is in the [Data](../../data/README.md) branch.
+- The personal space itself (`we-personal`): [Datasets](../../data/stores/datasets.md).
 
 </details>

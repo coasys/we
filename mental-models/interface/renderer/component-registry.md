@@ -15,7 +15,7 @@ The **component registry** maps a PascalCase `type` name to a Solid component. A
 - The host lends Solid components to modules through `moduleHostComponents` (`CesiumGlobe`, `GraphView`), so a module has no framework import.
 - `@we/primitives` are not in the registry. The renderer mounts a `we-*` tag directly ([Primitives](../design-system/primitives.md)).
 
-A new component goes in `@we/components` and gets an entry in `componentRegistry.tsx`; then `generate-context` adds it to the AI context ([Components](../design-system/components.md)). Feature modules: [Modules](../../modules/README.md).
+A component goes in `@we/components` and gets an entry in `componentRegistry.tsx`; then `generate-context` adds it to the AI context ([Components](../design-system/components.md)). A module declares its components in `contributes.components` ([Contributions](../../modules/contract/contributions.md)), and the [module registry](../../modules/registry/README.md) holds them.
 
 </details>
 

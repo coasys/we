@@ -8,13 +8,13 @@ A **fragment** is a TypeScript function that takes one options object and return
 
 <details><summary>How it works</summary>
 
-1. A fragment is extracted at three real uses of the same shape, or when copies that differ are a bug. A fragment is not made before it has uses.
+1. A fragment is extracted at three real uses of the same arrangement, or when copies that differ are a bug. A fragment is not made before it has uses.
 2. A fragment takes one options object, never positional arguments, and its body reads as the tree it returns.
 3. `@we/schema-kit` is portable: `portable.test.ts` reads the package source and fails if a fragment names a store. Its folders are `input` (`field`, `lineComposer`), `layout` (`railShell`, `panelShell`, `pageShell`, `recordCard`, `timeline`, …), `lists` (`cardList`, `treeRow`, `loadMore`, …), `overlays` (`confirmModal`, `formModal`, `pickerPopover`, …) and `states` (`emptyState`, `gatePrompt`, `skeletonList`, …).
 4. `@we/template-kit` adds the WE-domain fragments in `src/we` (`taskBoard`, `marketplaceList`, `installedList`, `signalDisplay`, …) and `src/lists` (`channelRail`, `commentThread`, `collectionFeed`, `mediaGrid`).
-5. A feature module can ship fragments beside its components under the same rules ([Modules](../../modules/README.md)).
+5. A feature module publishes fragments as module parts, which a template places with `$part` ([Contributions](../../modules/contract/contributions.md)).
 
-A fragment expands when a template is written. A shape that repeats inside one stored template is a definition (`$defs` and `$ref`), which the template carries itself ([Schema nodes](../schema/nodes.md)).
+A fragment expands when a template is written. A subtree that repeats inside one stored template is a definition (`$defs` and `$ref`), which the template carries itself ([Schema nodes](../schema/nodes.md)).
 
 </details>
 

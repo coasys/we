@@ -26,9 +26,9 @@
 
 Entities are compiled later, on the first dataset install (`declaredEntities`), and the module's blocks are registered then (`registerModuleBlocks`), because a block registration carries the compiled class. `unregister` removes the slots, panels, entities and blocks, then runs the store's disposers in reverse order.
 
-Embedded apps from the seed's `apps` list also register here, as modules whose only contribution is an `embed` and which require the `ad4m` backend. After the seed's modules register, `danglingAnchors()` warns about slots on anchors that no module opens.
+Embedded apps from the seed's `apps` list also register here ([Embedded apps](../../hosts/platform/embedded-apps.md)). After the seed's modules register, `danglingAnchors()` warns about slots on anchors that no module opens.
 
-Marketplace: a module is not installed from a stranger at run time. A module from outside this repository arrives as a package that the seed names, and the deployment rebuilds. The surfaces that do install at run time are templates, themes, views and bundles ([Interface](../../interface/README.md)).
+Marketplace: a module is not installed from a stranger at run time. A module from outside this repository arrives as a package that the seed names, and the deployment rebuilds. The surfaces that do install at run time are templates, themes, views and bundles ([Bundles](../../interface/templates/bundles.md)).
 
 </details>
 

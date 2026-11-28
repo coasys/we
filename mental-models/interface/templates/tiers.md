@@ -15,11 +15,11 @@ A **template tier** is a list of **capability groups** that a template gets. The
 
 1. `TEMPLATE_SURFACE` classifies each member of each store. A `state` member (read in expressions) or an action (called with `$invoke`) is in one group. An action can be `destructive` or `ambient`. A wiring member is in no template bag at any tier.
 2. `buildTemplateBag(stores, { grants, gesture, onDestructive })` copies the granted members. It tags only `state` members with `markReactive`, so an expression that walks a path calls only state accessors.
-3. An action that is not `ambient` runs only during a person's gesture ([Handler tokens](../schema/handlers.md)). The host asks for a confirmation (`onDestructive`) before a `destructive` action runs.
+3. In `templateBag`, an action that is not `ambient` runs only during a person's gesture (`gesture: 'enforce'`, [Handler tokens](../schema/handlers.md)). `chromeBag` runs it and logs a warning (`gesture: 'report'`). In `templateBag`, the host asks for a confirmation (`onDestructive`) before a `destructive` action runs.
 4. `space-settings` actions apply to the space on screen. `appearance` chooses among the templates and themes that the agent already has.
-5. `TemplateProvider` provides two bags: `chromeBag` (`CHROME_TIER`) for the app template and shell overlays, and `templateBag` for the space template.
+5. `TemplateProvider` provides two bags: `chromeBag` (`CHROME_TIER`) for the app template and shell overlays, and `templateBag` (`SPACE_TIER`) for the space template.
 
-**Acceptance.** `acceptTemplate(decoded, { grants })` runs on each template that the host loads:
+**Acceptance.** `acceptTemplate(decoded, { origin, grants })` runs on each template that the host loads:
 - A template that fails `validateStructure` is refused, so it is not added to the list ([Validation](../schema/validation.md)).
 - A reference outside the tier, or an HTML element that a template may not mount, is admitted and reported. `inspectTemplateSurface` finds these references.
 - `describeCapabilities`, `describeAcceptance` and `describeRefusal` give the text for an install screen or a log.

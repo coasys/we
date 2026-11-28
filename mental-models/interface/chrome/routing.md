@@ -12,7 +12,7 @@
 |---|---|---|
 | Location | the path | a section, `/record/:entity?id=…` |
 | View state | query parameters, through `syncParam` on a `$localState` field | sort, filter, search text |
-| Preferences | `persist` (device) or `AgentSettings` (agent) | density, a lane width |
+| Preferences | `persist` (device) or `AgentSettings` (agent) | density, a panel width |
 | Ephemeral | plain `$localState` | an open modal, a drag |
 
 1. A `syncParam` field mirrors its value to a query parameter. The URL value comes first on mount, then the stored value, then `initial`. A value equal to `initial` removes its parameter ([Handler tokens](../schema/handlers.md)).
@@ -31,7 +31,7 @@
 - [navigationPaths.ts](../../../packages/schema-system/shared/src/navigationPaths.ts): `resolvePath`.
 - [RouteStore.tsx](../../../packages/app-shell/src/frameworks/solid/stores/RouteStore.tsx), [ShellRouteStore.tsx](../../../packages/app-shell/src/frameworks/solid/stores/ShellRouteStore.tsx): `navigate`, `setParam`, `params`, `templateSegments`.
 - [TemplateLayout.tsx](../../../packages/app-shell/src/frameworks/solid/layouts/TemplateLayout.tsx): the main router and the shell overlay's `MemoryRouter`.
-- [datasetIdentity.ts](../../../packages/app-shell/src/shared/datasetIdentity.ts): `canonicalSpaceId`.
+- [DatasetStore.tsx](../../../packages/app-shell/src/frameworks/solid/stores/DatasetStore.tsx): `canonicalSpaceId`; [datasetIdentity.ts](../../../packages/app-shell/src/shared/datasetIdentity.ts): `datasetAddressedBy`.
 - [viewRoutes.ts](../../../packages/schema-system/shared/src/viewRoutes.ts): `SPACE_ROUTE_PATH`.
 - [docs/architecture/routing-and-view-state.md](../../../docs/architecture/routing-and-view-state.md).
 

@@ -22,7 +22,7 @@ The **chrome** is the app furniture around a template that stays across spaces: 
 5. **Layouts.** `TemplateLayout` holds the main router, which renders the space template. The shell overlay (profile, settings, the landing page) renders in a `MemoryRouter` with its own route store ([Routing](routing.md)). `PersistentAppFrames` keeps embedded app frames mounted outside the keyed router.
 6. Settings, the boot screen and the sidebar are schemas from `@we/template-shell`. The editor inspector is code, because it must work while the schema that it edits is broken (`design-system/CONVENTIONS.md`).
 
-Module chrome (`docks`, `slots`, `launcher`, `chromeReserve`): [Modules](../../modules/README.md).
+Module chrome (`panels`, `slots`, `launchers`, `reserve`): [Contributions](../../modules/contract/contributions.md).
 
 </details>
 

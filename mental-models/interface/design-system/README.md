@@ -2,7 +2,7 @@
 
 The **design system** is the set of packages that a template draws with. They are design tokens, themes, primitives (Lit custom elements), components (Solid), the shared prop logic, and the drag session.
 
-**Why:** Each layer depends only on the layers below it, so a primitive works in any framework and a theme reaches every template through the same variables. The rule for a new piece is "code owns only what data cannot express": arrangement is a fragment, and only behaviour, focus, browser APIs and measurement are code (`design-system/CONVENTIONS.md`).
+**Why:** Each layer depends only on the layers below it, so a primitive works in any framework and a theme reaches every template through the same variables. The rule for each piece is "code owns only what data cannot express": arrangement is a fragment, and only behaviour, focus, browser APIs and measurement are code (`design-system/CONVENTIONS.md`).
 
 **Parent:** [Interface](../README.md)
 

@@ -34,6 +34,6 @@
 - [packages/app-shell/src/frameworks/solid/components/GraphHost.tsx](../../../packages/app-shell/src/frameworks/solid/components/GraphHost.tsx), [packages/app-shell/src/shared/graphWatch.ts](../../../packages/app-shell/src/shared/graphWatch.ts).
 - [packages/app-shell/src/frameworks/solid/registries/moduleComponents.tsx](../../../packages/app-shell/src/frameworks/solid/registries/moduleComponents.tsx): `GraphViewOnDemand`.
 - [packages/module-system/graph/src/index.ts](../../../packages/module-system/graph/src/index.ts), [fragments.ts](../../../packages/module-system/graph/src/fragments.ts), [catalog.ts](../../../packages/module-system/graph/src/catalog.ts).
-- How a part is placed in a template: the [Interface](../../interface/README.md) branch.
+- How a part is placed in a template: [Node operators](../../interface/schema/operators.md).
 
 </details>

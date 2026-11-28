@@ -2,7 +2,7 @@
 
 A **handler token** is a prop value that becomes a function the element calls on an event. `$invoke` calls a store method. `$setLocal`, `$toggleLocal`, `$toggleLocalIn`, `$callLocal`, `$touch` and `$resetLocal` write the node's **local state**. `$if` chooses between handlers when the event fires.
 
-**Why:** A method gets exactly the `args` the template writes, and no arguments when there are none. The element's event reaches the method only through an expression such as `{ $: 'event.detail' }`, so a store method does not depend on the event shape of each element that calls it (`invoke.ts`). The `$if` handler reads its condition when it fires, so it can test the event and the store state at that moment (`conditional.ts`).
+**Why:** A method gets exactly the `args` the template writes, and no arguments when there are none. The element's event reaches the method only through an expression such as `{ $: 'event.detail' }`, so a store method does not depend on the event detail of each element that calls it (`invoke.ts`). The `$if` handler reads its condition when it fires, so it can test the event and the store state at that moment (`conditional.ts`).
 
 **Parent:** [Schema language](README.md)
 
@@ -20,7 +20,7 @@ A **handler token** is a prop value that becomes a function the element calls on
 - `persist: '<key>'` stores the field on the device, for a preference.
 - `syncParam` mirrors the field into a URL query parameter, for view state. On mount the URL parameter wins, then the stored value, then `initial`.
 - `$setLocal` sets a field (`value`) or merges into an object field (`merge`). `$toggleLocal` flips a boolean. `$toggleLocalIn` adds a value to an `array` field or removes it. `$callLocal` calls a `function` field. `$touch` marks a field as touched for validation. `$resetLocal` resets the fields of the scope.
-- Fields from `$queries` are read-only ([Queries](../renderer/queries.md)).
+- Fields from `$queries` are read-only ([Template queries](../renderer/queries.md)).
 
 </details>
 

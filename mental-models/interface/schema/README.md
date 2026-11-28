@@ -2,15 +2,15 @@
 
 A template is a tree of **schema nodes**. Each node names a `type` and carries `props`, `children` and optional `slots`, `routes`, `theme` and local state. A prop value is literal data, an **expression** `{ $: '…' }`, or a **handler token** such as `$invoke`. A `type` that starts with `$` is a **node operator** that controls structure.
 
-**Why:** All schema semantics live in `@we/schema-shared`, which has no framework import. The validator, the editor, the AI context and every renderer read the same rules. A renderer for a framework only supplies its signal primitive ([Renderer](../renderer/README.md)). The value layer is one closed grammar, so a plain string is always text and a reference is always an expression; the older string references (`'$item.name'`) are refused by the validator.
+**Why:** All schema semantics live in `@we/schema-shared`, which has no framework import. The validator, the editor, the AI context and every renderer read the same rules. A renderer for a framework only supplies its signal primitive ([Renderer](../renderer/README.md)). The value layer is one closed grammar, so a plain string is always text and a reference is always an expression. The validator reports a string such as `'$item.name'` as an error, because it renders as text (`semanticValidation.ts`).
 
 **Parent:** [Interface](../README.md)
 
 ## Parts
-- [Schema nodes](nodes.md): the node shape, the root `meta`, node identity, and shared definitions (`$defs` and `$ref`).
+- [Schema nodes](nodes.md): the node fields, the root `meta`, node identity, and shared definitions (`$defs` and `$ref`).
 - [Expressions](expressions.md): the `{ $ }` grammar, its roots and its function library.
 - [Handler tokens](handlers.md): `$invoke`, the local-state tokens and the `$if` handler, plus `$localState`.
-- [Node operators](operators.md): `$each`, `$if`, `$single`, `$routes`, `$animate`, `$surface`, `$agent`, and the host's `$part` and `$panels`.
+- [Node operators](operators.md): `$each`, `$if`, `$single`, `$routes`, `$animate`, `$surface`, `$agent`, and the host's `$part`, `$panels` and `$slot`.
 - [Validation](validation.md): structural and semantic checks, and the CLI audits.
 
 <details><summary>How it works</summary>
@@ -23,7 +23,7 @@ A template is a tree of **schema nodes**. Each node names a `type` and carries `
 | `{ $setLocal }`, `{ $touch }`, `{ $resetLocal }`, `{ $toggleLocal }`, `{ $toggleLocalIn }`, `{ $callLocal }` | local.ts |
 | `{ $invoke }` | `resolveInvokeProp` (invoke.ts) |
 | `{ $if: { … } }` | `resolveIfHandler` (conditional.ts) |
-| `{ $query }` | the renderer ([Queries](../renderer/queries.md)) |
+| `{ $query }` | the renderer ([Template queries](../renderer/queries.md)) |
 | array, plain object | each element or key, recursively (depth limit 10) |
 | string, number, boolean, function | unchanged |
 
