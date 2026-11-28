@@ -158,6 +158,8 @@ that declares \`backends: ['ad4m']\` — nothing else. See \`docs/architecture/p
 
 ### Where to look
 
+- How the code fits together, one concept per page, and what each WE term means →
+  \`mental-models/README.md\` and \`mental-models/GLOSSARY.md\`.
 - How a theme becomes CSS, where it reaches, and how to extend it → \`docs/architecture/theming.md\`;
   writing one → \`packages/design-system/2-themes/THEME_AUTHORING.md\`.
 - Change how a token/operator resolves → \`packages/schema-system/shared/src/propResolvers/\`.

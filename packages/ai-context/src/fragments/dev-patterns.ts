@@ -154,6 +154,60 @@ belongs, so it is resolved rather than walked around again.
 
 ---
 
+### Review rules
+
+Reviewers apply these to every PR. Check a change against them before you push.
+
+**Keep \`mental-models/\` true in the same PR.** \`mental-models/\` describes how this code works, one
+concept per page, from WE down to links into the code. A change to how the system works (a
+component, a flow, who decides what, where a rule lives, what a term means) updates the page that
+owns that concept in the same PR. A change to internals that no page describes updates nothing.
+Follow \`mental-models/CONVENTIONS.md\` and keep the update small: change only the sentences the code
+makes untrue, at the level the change lives; a new concept gets its own page under the right parent
+and one line in the parent's Parts list, and a removed concept loses both. State the code as it is
+after the PR: no plans, defects, PR numbers or history. Use the terms in
+\`mental-models/GLOSSARY.md\`, and add a term there when a page needs a new WE term. Before you push,
+check that every relative link in the changed pages resolves.
+
+**A fix ships the test that fails without it.** Each fix adds a test that fails on the old code and
+passes on the new code. Run it against the old code to make sure, and say so in the test plan.
+
+**A fake behaves as the real dependency.** A fake refuses, orders and limits as the real dependency
+does, and throws the same error shapes. A test that passes only because of its fake proves nothing.
+The test goes through the path the product uses, not a payload assembled by hand.
+
+**A late result does not replace newer state.** Before an async result writes, check that its space,
+call, request or session is still the current one; if not, discard it. An earlier failure must not
+undo a later choice.
+
+**A failed read is not an empty answer.** Keep the error apart from "none". Do not mark the data
+loaded, and do not keep the failure as a permanent miss: the next attempt tries again.
+
+**Each exit path releases what the start acquired.** When a start fails, times out, is disposed or is
+left, close the clients, stop the streams and timers, remove the subscriptions and delete the
+temporary files. Use \`finally\` or the dispose hook, not only the success path.
+
+**A comment states what the code does now.** When behaviour changes, change the docblock or comment
+in the same commit. A comment never claims a guard, a platform or a guarantee the code does not have.
+
+**Decide on a stable key or shape.** Do not branch on display text, on the text of an error message,
+or on \`instanceof\` of an error class from another package: a label can change, and a bundled SDK has
+its own copy of each class. Read a key or the error's shape (as \`rpcStatus\` does).
+
+**Generate the generated files again after a merge.** Merge the hand-written sources, then run the
+generators; do not keep either side's generated file. A second generation gives no diff.
+
+**The PR description matches the last version of the change.** When the change moves on, update the
+description. State each change in behaviour, each limit and each reset of stored data, so that a
+reviewer does not have to find it in the diff.
+
+**A UI change shows before and after.** A PR that changes UI has a \`### Screenshots\` section with
+each changed surface before and after. Check each changed surface at a 390 px width too: the controls
+stay on the screen and no label clips. Give each icon-only button, switch and custom trigger an
+accessible name through its \`label\` prop, so a test finds it by role and name.
+
+---
+
 ### The executor must match the pin (CRITICAL)
 
 The pin installs the ad4m **client**, and the **executor** has to come from the same commit. A
