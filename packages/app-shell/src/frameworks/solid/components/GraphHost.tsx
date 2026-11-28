@@ -37,7 +37,7 @@ import { createStore, reconcile } from 'solid-js/store';
 
 import { toEntityShape } from '../../../shared/graphEntityShape';
 import { type GraphScope, inboundAsWhere } from '../../../shared/graphScope';
-import { followRead, idsOf, readKey, wholeAnswer } from '../../../shared/graphWatch';
+import { followRead, idsOf, readKey, readThroughWatch, wholeAnswer } from '../../../shared/graphWatch';
 import {
   actAs,
   actingAs,
@@ -673,6 +673,60 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
           console.warn(`[graph] cannot watch ${entities}:`, error);
         },
       });
+    },
+
+    /**
+     * Read through the watch that will follow the read: one live query, whose first result is the
+     * read's answer.
+     *
+     * The graph used to read with `findAll` and then open `watch` on the same question, and a live
+     * query's first act is to run its question. So every read of a graph being opened reached the
+     * backend twice, a few seconds apart on a large canvas: seconds of the backend's time spent on
+     * an answer the graph already had, with anything else asked meanwhile waiting behind it.
+     *
+     * Only where the live query's first page is exactly what `query` returns: a read straight from
+     * one model (`readPath`), and a page that is the whole answer (`wholeAnswer`). A page that is
+     * only part of one is completed with `findAll`. Other reads go through `query` and `watch` as
+     * before.
+     */
+    watchRead(request, onChange) {
+      const model = modelFor(request.entity, request.dataset);
+      const handle = datasetStore.currentDataset()?.handle;
+      const options = queryOptions(request);
+      if (!model || !handle || !options || readPath(request) !== 'model') {
+        // Watch first, then read: the watch's first answer is compared with this read, so a write
+        // landing between the two is reported rather than missed.
+        const stop = host!.watch!(request, onChange);
+        return { rows: host!.query({ ...request }), stop };
+      }
+
+      const key = readKey(request.entity, request.dataset, options);
+      // The first answer *is* this read, so there is nothing earlier to compare it with.
+      lastReads.delete(key);
+      trace('graph', 'watch', { entity: request.entity, parent: (options as { parent?: { id?: string } }).parent?.id });
+      const { rows, stop } = readThroughWatch(model.query(handle, options), {
+        limit: request.limit,
+        complete: () => model.findAll(handle, options),
+        onRead: (answer, through) => {
+          lastReads.set(key, idsOf(answer));
+          trace('graph', 'read', {
+            entity: request.entity,
+            rows: answer.length,
+            parent: (options as { parent?: { id?: string } }).parent?.id,
+            where: request.where,
+            limit: request.limit,
+            through,
+          });
+        },
+        seen: () => lastReads.get(key),
+        onChange: (page) =>
+          onChange(wholeAnswer(page, request.limit) as readonly Record<string, unknown>[] | undefined),
+        onError: (error) => {
+          const entities = Array.isArray(request.entity) ? request.entity.join(', ') : request.entity;
+          console.warn(`[graph] cannot watch ${entities}:`, error);
+        },
+      });
+      return { rows: rows as Promise<readonly Record<string, unknown>[]>, stop };
     },
 
     /*
