@@ -7,24 +7,37 @@
  * or `{id, error}` on its stdout, in the order they finish. It exits when its stdin closes, so it
  * never outlives this process.
  *
- * The admin credential reaches it in its environment, never on its command line, which every user
- * of the computer can read through `ps`.
+ * The custody credential (the one the executor's `--custody-channel` admits, distinct from the admin
+ * credential the window gets) is the first line written to its stdin, before any request — never on
+ * its command line, which every user of the computer can read through `ps`, and never in its
+ * environment, a file (`/proc/<pid>/environ`) the renderer's admin credential can read through an
+ * executor call. The sidecar refuses to start with `AD4M_CUSTODY_CREDENTIAL` or
+ * `AD4M_CUSTODY_CREDENTIAL_FILE` set. The admin credential does not reach it at all.
  */
 import { spawn } from 'child_process';
 import { createInterface } from 'readline';
 
-import { stopProcess } from './executorProcess.js';
-import { executorSpawnEnv } from './ipcSender.js';
+import { stopProcess, withoutCustodyCredential } from './executorProcess.js';
 
 /** How long a closing sidecar has to exit on its own before it is killed. */
 const EXIT_GRACE_MS = 3_000;
 
-/** The command, arguments and environment of one sidecar start. */
+/**
+ * The command, arguments and environment of one sidecar start, and `stdin`: the line to write to it
+ * before anything else, the credential.
+ */
 export function custodySpawn({ binary, executorPort, credential, baseEnv }) {
+  if (typeof credential !== 'string' || !credential.trim() || /[\r\n]/.test(credential)) {
+    throw new Error('[we] the custody sidecar needs the custody credential, one non-blank line');
+  }
+  // The admin credential is the renderer's, and a custody credential travels on stdin only.
+  const env = withoutCustodyCredential(baseEnv);
+  delete env.AD4M_ADMIN_CREDENTIAL;
   return {
     command: binary,
     args: ['--executor-port', String(executorPort)],
-    env: executorSpawnEnv(baseEnv, credential),
+    env,
+    stdin: `${credential}\n`,
   };
 }
 
@@ -85,10 +98,14 @@ export function startCustody({
   log = console.log,
   onExit = () => {},
 }) {
-  const { command, args, env } = custodySpawn({ binary, executorPort, credential, baseEnv });
+  const { command, args, env, stdin } = custodySpawn({ binary, executorPort, credential, baseEnv });
   // A group of its own, as the executor's is, so a stop can reach it whatever it started.
   const child = spawn(command, args, { detached: true, stdio: ['pipe', 'pipe', 'pipe'], env });
   child.unref();
+  // The credential before any request: the sidecar reads nothing else until it has it. A sidecar
+  // that failed to start is answered by `exit`/`error` below, not by a throw from this write.
+  child.stdin.on('error', () => {});
+  child.stdin.write(stdin);
   createInterface({ input: child.stderr }).on('line', (line) => log(line));
   const client = custodyClient(child);
   // How it ended goes to the log whatever ended it, and to `onExit`, which decides whether to start

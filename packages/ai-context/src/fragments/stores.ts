@@ -817,6 +817,7 @@ export const storeEntries: StoreEntry[] = [
       did: { type: 'string' },
       keyId: { type: 'string' },
       thisDeviceRevoked: { type: 'boolean' },
+      thisDeviceUnlinked: { type: 'boolean' },
       keyLog: {
         type: 'array',
         properties: ['seq', 'position', 'icon', 'title', 'detail', 'hash', 'hashShort', 'thisComputer'],
@@ -837,14 +838,49 @@ export const storeEntries: StoreEntry[] = [
     state: {
       devices: {
         type: 'array',
-        properties: ['keyId', 'label', 'subtitle', 'icon', 'thisDevice', 'revoked', 'status', 'canRevoke'],
+        properties: [
+          'keyId',
+          'label',
+          'subtitle',
+          'icon',
+          'thisDevice',
+          'unlinked',
+          'revoked',
+          'status',
+          'canUnlink',
+          'canRevoke',
+          'name',
+          'holdsMaster',
+          'master',
+        ],
       },
       devicesLoaded: { type: 'boolean' },
       validCount: { type: 'number' },
       canManage: { type: 'boolean' },
+      canShowCode: { type: 'boolean' },
+      canAskMaster: { type: 'boolean' },
+      masterWaiting: { type: 'boolean' },
+      encMismatch: { type: 'boolean' },
+      requests: { type: 'array', properties: ['id', 'kind', 'title', 'detail'] },
       error: { type: 'string' },
+      confirmingUnlink: { type: 'boolean' },
+      unlinkLeavesNoMaster: { type: 'boolean' },
+      unlinking: { type: 'boolean' },
     },
-    actions: ['refresh', 'addDevice', 'revoke'],
+    actions: [
+      'refresh',
+      'addDevice',
+      'scanDevice',
+      'showCode',
+      'takeMaster',
+      'askMaster',
+      'answerRequest',
+      'rename',
+      'unlink',
+      'cancelUnlink',
+      'unlinkThisComputer',
+      'revoke',
+    ],
   },
   {
     name: 'clockStore',
@@ -2196,13 +2232,15 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       did: 'string — the person’s identifier, or empty while this device speaks for nobody',
       keyId: 'string — this device’s id in the key log (`d1`), or empty',
       thisDeviceRevoked: 'boolean — the key log revoked this device’s key: it no longer speaks for the person',
+      thisDeviceUnlinked:
+        'boolean — the key log unlinked this device’s key, here or from another device: it no longer speaks for the person',
       keyLog:
         '{ seq, op, keys, position, icon, title, detail, hash, hashShort, thisComputer }[] — the key log, newest first, with what each row says made from `op` and `keys` (reword from those where a template wants other words), already worded: `title` "Created identity", "Added d2", "Revoked d2"; `detail` the keys it names with this computer’s marked "This computer"; `hashShort` the event’s hash for a monospace column',
       keyLogLoaded: 'boolean — the log has been read once',
       forked: 'boolean — the backend found two different logs for this identity',
       fork: '{ seq, ours, theirs } | null — where they part',
       custody:
-        "{ did, holdsMaster, unlock, blocked } | null — whether this computer can sign changes, as public facts: whether it keeps a master key (`holdsMaster`, a boolean), how that key unlocks ('os' for the computer's own prompt, or 'passphrase'), and why no change can run, if one cannot (`blocked`). Null where the backend cannot change an identity from here",
+        "{ did, holdsMaster, unlock, blocked, devices, endedHolders, requests, masterWaiting, encMismatch } | null — whether this computer can sign changes, as public facts: whether it keeps a master key (`holdsMaster`, a boolean), how that key unlocks ('os' for the computer's own prompt, or 'passphrase'), why no change can run, if one cannot (`blocked`), the devices the private record names (`devices`: { keyId, name, kind, holdsMaster: 'yes' | 'no' | 'offered' }[]), the revoked or unlinked key ids the key log says may still hold a valid master key (`endedHolders`), what other devices asked (`requests`: { id, kind, by, keyIds, expires }[]), whether a master key waits here to be taken (`masterWaiting`), and whether this computer lost the key that opens what is sent to it, so no master key or device list reaches it until it is revoked and linked again (`encMismatch`). deviceStore words all of these for a page. Null where the backend cannot change an identity from here",
       needsFirstRun:
         'boolean — ask the first-run question now: this computer can sign changes, this device speaks for nobody, and "Start now" was not chosen for this account on this computer. Still true where changeBlocked is set, so the person learns why; offer "Start now" then',
       busy: 'boolean — a change is running',
@@ -2212,7 +2250,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
     },
     actions: {
       refresh: '(): reads the status, the key log and the custody state again',
-      open: "(change: { kind: 'create' } | { kind: 'add-device' } | { kind: 'revoke', keyId }): runs a change and resolves with its outcome once it ends; the backend asks the person itself, wherever it keeps the master key, and everything is read again then. Words, passphrases and keys never reach the app",
+      open: "(change: { kind: 'create' } | { kind: 'add-device' } | { kind: 'scan-device' } | { kind: 'show-code' } | { kind: 'take-master' } | { kind: 'ask-master' } | { kind: 'answer-request', id } | { kind: 'rename', keyId } | { kind: 'unlink', keyId } | { kind: 'revoke', keyId }): runs a change and resolves with its outcome once it ends; the backend asks the person itself, wherever it keeps the master key, and everything is read again then. Words, passphrases and keys never reach the app",
       makeIdentity: '(): "Make my identity here" — runs `create`',
       startWithoutIdentity:
         '(): "Start now" — use this account without an identity; remembered for it on this computer, so the first-run question stops',
@@ -2221,18 +2259,50 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
   deviceStore: {
     state: {
       devices:
-        "{ keyId, addedSeq, revokedSeq, label, subtitle, icon, thisDevice, revoked, status, canRevoke }[] — the device keys of the person's key log, valid first and this computer on top. `label` is 'This computer' or 'Device d2' (devices have no names yet); `status` 'Active' or 'Removed at #2'; `canRevoke` is a valid key that is not this computer's",
+        "{ keyId, addedSeq, unlinkedSeq, revokedSeq, label, subtitle, icon, thisDevice, unlinked, revoked, status, canUnlink, canRevoke, name, holdsMaster, master }[] — the device keys of the person's key log, active first and this computer on top, named from the identity's private record (which only its devices read). `label` is the record's name, else 'This computer' or 'Device d2'; `name` the record's name or empty; `status` 'Active', 'Unlinked' (retired: it signs nothing new, and what it signed before stays valid) or 'Revoked' (lost or stolen); `canUnlink` is an active key, this computer's included (it leaves signed by itself, with no master key, after a confirm in the app, and is signed out); `canRevoke` is a key not yet revoked, unlinked or not, that is not this computer's; `holdsMaster` 'yes', 'no' or 'offered' (sent, not yet taken), worded in `master` ('Has master key', 'Master key sent', or empty). A revoked or unlinked key's `holdsMaster` is 'no', but its `master` warns when it took the master key or the key log let it (revoked: 'Still has your master key. Replace it to lock this device out.', 'May still have your master key. Replace it to lock this device out.'; unlinked: 'Still has your master key. Replace it if you don\'t have this device any more.', 'May still have your master key. Replace it if you don\'t have this device any more.'): neither a revoke nor an unlink replaces the master key, so a copy stays valid. Draw `master` in a warning tone unless `holdsMaster` is 'yes'",
       devicesLoaded: 'boolean — the list has been read once',
-      validCount: 'number — how many keys are valid',
-      canManage: 'boolean — Link a device or Remove can be offered: this computer keeps the master key of the identity',
-      error: 'string — why the last read failed, or empty',
+      validCount: 'number — how many keys are active: neither unlinked nor revoked',
+      canManage:
+        'boolean — Link a device (scanDevice, addDevice), Rename, Unlink, Revoke and answering requests can be offered: this computer keeps the master key of the identity',
+      canShowCode: 'boolean — "Show code" can be offered: this computer can join an identity and speaks for none yet',
+      canAskMaster:
+        'boolean — "Ask for master key" can be offered: a device of the identity that does not keep the master key, has none waiting, and could open one (not encMismatch)',
+      masterWaiting:
+        'boolean — a master key another device sent waits here and this computer can open it: offer "Accept master key"',
+      encMismatch:
+        'boolean — this computer lost the key that opens what is sent to it: no master key and no device names reach it (`devices` carries no names or master-key words then). Show a warning that says to revoke this computer from a device that holds the master key, then link it again',
+      requests:
+        "{ id, kind, title, detail }[] — what the person's other devices asked and is waiting for an answer, while this computer keeps the master key; empty otherwise. `kind` is 'send-master' or 'confirm-revoke'; `title` names the device that asked ('Laptop asks for the master key')",
+      error: 'string — why the last read or the last unlink of this computer failed, in a plain sentence, or empty',
+      confirmingUnlink:
+        'boolean — the confirm for unlinking this computer is up: draw it as a confirm modal whose confirm is `deviceStore.unlinkThisComputer` and whose close is `deviceStore.cancelUnlink`',
+      unlinkLeavesNoMaster:
+        'boolean — this computer keeps the master key and no other active device keeps it or is being sent it: the confirm adds that the identity’s other devices then have no master key to use',
+      unlinking:
+        'boolean — unlinking this computer is running: keep the confirm up with its button busy (`busy: { $: "deviceStore.unlinking" }`) and disable the other device buttons',
     },
     actions: {
       refresh: '(): reads the device list again',
       addDevice:
-        '(): adds a device — the backend asks the person wherever it keeps the master key (on the desktop: the offer link and QR code, then the match code, then the confirmation that signs it). Resolves with the outcome; the list is read again',
+        '(): adds a server by an offer link — the backend asks the person wherever it keeps the master key (on the desktop: the offer link and QR code, then the match code, then the confirmation that signs it). Resolves with the outcome; the list is read again',
+      scanDevice:
+        '(): "Enter code" — adds a device by the code it shows: the person pastes it, both show a match code, and the confirmation names the device and may let it keep the master key',
+      showCode:
+        '(): "Show code" — on a computer of no identity yet, shows its code (QR and link) until a device of the identity adds it',
+      takeMaster: '(): "Accept master key" — keeps the master key another device sent here',
+      askMaster:
+        '(): "Ask for master key" — asks the devices that keep it to send it here; one answers from its own requests',
+      answerRequest:
+        '(id: string): answers that request of another device, once the person says yes where the master key is kept (send the master key, or revoke the devices it names)',
+      rename: '(keyId: string): names that device, in the private record only the identity’s devices read',
+      unlink:
+        "(keyId: string): unlinks that device key — retired: it signs nothing new, and what it signed before stays valid — once the person confirms it where the master key is kept. For this computer's own key it opens no window: it sets `confirmingUnlink` and answers 'cancelled' until `unlinkThisComputer` runs. Resolves with the outcome",
+      cancelUnlink:
+        '(): dismisses the confirm for unlinking this computer; nothing is unlinked. Does nothing once the unlink has been sent',
+      unlinkThisComputer:
+        "(): unlinks this computer — its key leaves the identity, signed by itself with no master key, and this computer is signed out; it can act as the person again only once it is linked from another device. The session and the identity are read again after. A refusal is said in `error` and resolves 'failed'; a failure that may have come after the unlink was made (no answer, a closed connection) is said in `error` as one that may have happened and resolves 'uncertain', with the status read again to show which. A second call while one runs does nothing",
       revoke:
-        '(keyId: string): revokes that device key, once the person confirms it where the master key is kept. Resolves with the outcome',
+        '(keyId: string): revokes that device key, lost or stolen, once the person confirms it where the master key is kept and says since when it was missing. Resolves with the outcome',
     },
   },
   workflowStore: {

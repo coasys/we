@@ -1317,7 +1317,10 @@ describe('what the backend can do with an identity', () => {
     agentOptions = { unlocked: false, password: 'secret' };
     onPorts = (ports) => {
       // A partial answer: whatever a backend leaves out stays off rather than reading as undefined.
-      ports.identity = { capabilities: async () => ({ devices: true, linkDevice: true }) as never };
+      ports.identity = {
+        capabilities: async () => ({ devices: true, linkDevice: true }) as never,
+        unlinkSelf: async () => {},
+      };
     };
     const stores = mountShell();
     await vi.waitFor(() => expect(stores.session.bootState()).toBe('login'));

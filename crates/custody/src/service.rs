@@ -5,41 +5,47 @@
 //! the offer secret — and the window holds only what a screen showed it. The main window gets none
 //! of it: only how the step ended, and [`CustodyPublic`].
 //!
-//! The flows are the identity client's (`create`, `link`, `revoke`); the executor is reached over
-//! its WebSocket RPC with the admin credential ([`ExecutorAddress`]), never in process, so moving
-//! the executor into a child process later changes nothing here.
+//! The flows are the identity client's (`create`, `link`, `master`, `requests`, `unlink`, `revoke`, and the
+//! private record); the executor is reached over its WebSocket RPC with the admin credential
+//! ([`ExecutorAddress`]), never in process, so moving the executor into a child process later
+//! changes nothing here.
 //!
 //! The client's futures are not `Send` (their RPC trait is `?Send`), so the service runs on a
 //! thread of its own with a current-thread runtime; [`CustodyHandle`] is the `Send` way in.
 //!
-//! A state read asks the vault on a separate thread ([`keychain_call`]), one call at a time. While
-//! a device link waits for its claim, the custody task selects on Cancel, the claim's deadline and
-//! that read, so an unlock prompt cannot hold the other two. The read still completes and answers
-//! whoever asked, including when Cancel or the claim gets there first.
-//!
-//! A flow's own unlock, and resuming a pending incept, still call the vault on the custody task:
-//! the identity client's vault is synchronous and its futures are not `Send`. Those calls happen
-//! between screens, not while the claim select is running.
+//! A state read asks the vault's plain reads on a separate thread ([`keychain_call`]), one call at a
+//! time, so an unlock prompt does not stop the custody task: a flow still answers Cancel and the
+//! claim's deadline while the read waits. A flow's own unlock, and the master key a read takes while
+//! it unlocks, still call the vault on the custody task: the identity client's vault is synchronous
+//! and its futures are not `Send`. Those calls happen between screens, not while a claim is awaited.
 
-use std::collections::VecDeque;
-use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Duration;
 
 use ad4m_client::ws_rpc::WsRpcClient;
 use ad4m_identity_client::executor::IdentityStatus;
 use ad4m_identity_client::flows::create::{resume, CreateFlow, CreateScreen, Created};
 use ad4m_identity_client::flows::link::{Claimed, LinkFlow};
+use ad4m_identity_client::flows::master::{retry_pushes, take_master};
+use ad4m_identity_client::flows::requests::{self, Answered};
 use ad4m_identity_client::flows::revoke::revoke;
+use ad4m_identity_client::flows::unlink::unlink_key;
+use ad4m_identity_client::record::{self, Change};
 use ad4m_identity_client::{
     ClientError, Clock, ExecutorRpc, OsRandom, Secret, SystemClock, VaultError, ViaExecutor,
+    WithEncKey,
 };
-use ad4m_identity_core::link::OfferKind;
+use ad4m_identity_core::link::{DeviceString, OfferKind, CONFIRM_GRACE_S, OFFER_TTL_S};
+use ad4m_identity_core::record::{DeviceEntry, DeviceKind, HoldsMaster as Holds, Place};
 use ad4m_identity_core::{Event, Op};
+use ad4m_ldk::identity::DeviceRequestBody;
 use serde::{Deserialize, Serialize};
-use tokio::sync::{mpsc, oneshot};
+use serde_json::{json, Value};
+use tokio::sync::{broadcast, mpsc, oneshot};
 
+use crate::enc::CustodyEncKey;
 use crate::seal::{self, PassphraseProblem};
-use crate::vault::DesktopVault;
+use crate::vault::{DesktopVault, Unlocking};
 
 static CLOCK: SystemClock = SystemClock;
 static RANDOM: OsRandom = OsRandom;
@@ -81,104 +87,56 @@ fn keychain_sender() -> &'static std::sync::mpsc::Sender<Box<dyn FnOnce() + Send
     })
 }
 
-type ReadFut = Pin<Box<dyn std::future::Future<Output = CustodyPublic> + Send + 'static>>;
-type ReadStart = Box<dyn FnOnce() -> ReadFut + Send>;
+/// How often a device that showed its code asks whether the holder confirmed.
+const JOIN_POLL: Duration = Duration::from_secs(2);
 
-struct HeldRead {
-    reply: oneshot::Sender<CustodyPublic>,
-    start: ReadStart,
-}
-
-/// State reads whose keychain half has not finished.
-///
-/// Dropping the owner — Cancel, the next step input, or the claim arriving — does not drop the
-/// replies. The rest is spawned on the runtime, still one keychain call at a time. The caller was
-/// not asking to cancel the read. The future is `Send`: it only waits on the keychain thread.
-struct LiveReads {
-    flying: Option<(oneshot::Sender<CustodyPublic>, ReadFut)>,
-    waiting: VecDeque<HeldRead>,
-}
-
-impl LiveReads {
-    fn new() -> Self {
-        Self {
-            flying: None,
-            waiting: VecDeque::new(),
-        }
-    }
-
-    fn busy(&self) -> bool {
-        self.flying.is_some()
-    }
-
-    /// Starts `start` now, or holds it until the read already in the keychain has returned.
-    /// `start` is what calls [`keychain_call`], so a held read has not entered the keychain.
-    fn push(
-        &mut self,
-        reply: oneshot::Sender<CustodyPublic>,
-        start: impl FnOnce() -> ReadFut + Send + 'static,
-    ) {
-        if self.flying.is_some() {
-            self.waiting.push_back(HeldRead {
-                reply,
-                start: Box::new(start),
-            });
-            return;
-        }
-        self.flying = Some((reply, start()));
-    }
-
-    fn deliver(&mut self, public: CustodyPublic) {
-        if let Some((reply, _)) = self.flying.take() {
-            let _ = reply.send(public);
-        }
-        if self.flying.is_none() {
-            if let Some(held) = self.waiting.pop_front() {
-                self.flying = Some((held.reply, (held.start)()));
-            }
-        }
-    }
-
-    /// Keeps the outstanding reads going after the caller returns to the rest of the step.
-    fn detach(&mut self) {
-        let flying = self.flying.take();
-        let mut waiting = std::mem::take(&mut self.waiting);
-        if flying.is_none() && waiting.is_empty() {
-            return;
-        }
-        // Outside a runtime there is nowhere to finish them; the senders drop and the callers
-        // see the service stop. Every custody path runs inside its runtime.
-        if tokio::runtime::Handle::try_current().is_err() {
-            return;
-        }
-        tokio::spawn(async move {
-            if let Some((reply, done)) = flying {
-                let _ = reply.send(done.await);
-            }
-            while let Some(held) = waiting.pop_front() {
-                let _ = held.reply.send((held.start)().await);
-            }
-        });
-    }
-}
-
-impl Drop for LiveReads {
-    fn drop(&mut self) {
-        self.detach();
-    }
-}
-
-/// A change the main window may ask for. Making an identity, adding a device and revoking one;
-/// a later change adds more.
+/// A change the main window may ask for.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum IdentityStep {
     Create,
+    /// The holder adds a server by an offer link it gives.
     AddDevice,
+    /// The holder adds a device by the code that device shows ("Enter code").
+    ScanDevice,
+    /// This computer, a device of no identity yet, shows its code for a holder to scan.
+    ShowCode,
+    /// Takes the master key waiting in this device's inbox.
+    TakeMaster,
+    /// Asks a device that holds the master key to send it here (a `send-master` request).
+    AskMaster,
+    /// The holder answers a waiting request of another device.
+    AnswerRequest {
+        id: String,
+    },
+    /// Names a device in the private record.
+    Rename {
+        #[serde(rename = "keyId")]
+        key_id: String,
+    },
+    /// Retires a device: its history stays valid.
+    Unlink {
+        #[serde(rename = "keyId")]
+        key_id: String,
+    },
+    /// Revokes a device that was lost or stolen.
     Revoke {
         #[serde(rename = "keyId")]
         key_id: String,
     },
+}
+
+/// A key a `confirm-revoke` request asks to revoke, as the key log lists it: the key id and its
+/// signing key's fingerprint ([`crate::keylog::fingerprint`]) say which key goes, and whether it
+/// may still hold a valid master key is the log's ([`crate::keylog::device`]). `record_name`, what
+/// the private record calls it, is secondary: any linked device can write it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RevokeTarget {
+    pub key_id: String,
+    pub fingerprint: String,
+    pub record_name: Option<String>,
+    pub may_hold_master: bool,
 }
 
 /// What the identity window draws next. Only public data, except the words on `ShowWords`, which
@@ -210,14 +168,122 @@ pub enum Screen {
         qr_svg: String,
         expires: u64,
     },
-    /// Both devices show this code; the person confirms here when they match.
-    Match { code: String, hint: Option<String> },
-    /// The device was added (`add` published).
-    Linked { seq: u64 },
+    /// Both devices show this code; the person confirms here when they match, naming the new
+    /// device. `can_keep`: it may keep the master key, so the choice is offered. `own_name`: the
+    /// private record does not name this computer yet, so its name is asked too.
+    Match {
+        code: String,
+        hint: Option<String>,
+        #[serde(rename = "canKeep")]
+        can_keep: bool,
+        #[serde(rename = "ownName")]
+        own_name: bool,
+    },
+    /// The device was added (`add` published). `master_sent`: the master key is in its inbox.
+    /// `note`: what did not happen yet (the master key, the device's name), in words.
+    Linked {
+        seq: u64,
+        #[serde(rename = "masterSent")]
+        master_sent: bool,
+        note: Option<String>,
+    },
+    /// The holder: paste (or type) the code the new device shows.
+    EnterCode { error: Option<String> },
+    /// The offer went to the new device's inbox; waiting for it to claim it.
+    CodeSent { expires: u64 },
+    /// The new device: its code (`coasys:device:1:…`) and the code as a QR code, SVG.
+    DeviceCode {
+        code: String,
+        #[serde(rename = "qrSvg")]
+        qr_svg: String,
+        expires: u64,
+    },
+    /// The new device claimed the holder's offer: the code the holder shows too, and the identity.
+    /// `needs_accept`: the executor records the identity as its operator only once the person
+    /// accepts it here too ([`StepInput::Accept`]), as on a first run. `accepted`: they did;
+    /// `confirmed`: the other device confirmed, and this one waits only for the accept.
+    DeviceMatch {
+        code: String,
+        did: String,
+        #[serde(rename = "needsAccept")]
+        needs_accept: bool,
+        accepted: bool,
+        confirmed: bool,
+    },
+    /// The holder confirmed: this computer is a device of `did`.
+    Joined {
+        did: String,
+        #[serde(rename = "keyId")]
+        key_id: String,
+    },
+    /// This computer keeps the master key of `did` now.
+    MasterTaken { did: String, note: Option<String> },
+    /// A request of another device, before the person answers it. Who asks comes from the key
+    /// log, not the record any device can write: `key_id`, the poster's key; `fingerprint`, its
+    /// signing key as the log lists it ([`crate::keylog::fingerprint`]); `code`, the request's
+    /// code (the match code of the request id and that key), which the asking device shows too.
+    /// `device`: the name the record gives it, secondary; `targets`: for `confirm-revoke`, the
+    /// keys it asks to revoke, each as the log lists it ([`RevokeTarget`]).
+    Request {
+        id: String,
+        kind: &'static str,
+        #[serde(rename = "keyId")]
+        key_id: String,
+        fingerprint: String,
+        code: String,
+        device: String,
+        targets: Vec<RevokeTarget>,
+        passphrase: bool,
+        error: Option<String>,
+    },
+    /// The request was answered: the master key sent, or the keys revoked.
+    RequestAnswered {
+        kind: &'static str,
+        device: String,
+        note: Option<String>,
+    },
+    /// The request for the master key is posted: this device's key, its fingerprint and the
+    /// request's code, as the device that answers shows them.
+    Asked {
+        #[serde(rename = "keyId")]
+        key_id: String,
+        fingerprint: String,
+        code: String,
+    },
+    /// Name a device.
+    Rename {
+        #[serde(rename = "keyId")]
+        key_id: String,
+        name: String,
+        error: Option<String>,
+    },
+    Renamed {
+        #[serde(rename = "keyId")]
+        key_id: String,
+        name: String,
+    },
+    /// What unlinking will do, before it is done.
+    UnlinkConfirm {
+        #[serde(rename = "keyId")]
+        key_id: String,
+        passphrase: bool,
+        error: Option<String>,
+    },
+    /// The key was unlinked (`unlink` published).
+    Unlinked {
+        #[serde(rename = "keyId")]
+        key_id: String,
+        seq: u64,
+    },
     /// What revoking will do, before it is done.
     RevokeConfirm {
         #[serde(rename = "keyId")]
         key_id: String,
+        /// The device may still hold a valid master key: the key log let it keep one
+        /// ([`may_hold_master`]), and a revoke leaves such a copy valid until the master key is
+        /// replaced.
+        #[serde(rename = "mayHoldMaster")]
+        may_hold_master: bool,
         passphrase: bool,
         error: Option<String>,
     },
@@ -238,9 +304,15 @@ impl Screen {
     /// How the step ended, once the screen is a last one.
     pub fn outcome(&self) -> Option<StepOutcome> {
         match self {
-            Screen::IdentityReady { .. } | Screen::Linked { .. } | Screen::Revoked { .. } => {
-                Some(StepOutcome::Done)
-            }
+            Screen::IdentityReady { .. }
+            | Screen::Linked { .. }
+            | Screen::Unlinked { .. }
+            | Screen::Revoked { .. }
+            | Screen::Joined { .. }
+            | Screen::MasterTaken { .. }
+            | Screen::RequestAnswered { .. }
+            | Screen::Asked { .. }
+            | Screen::Renamed { .. } => Some(StepOutcome::Done),
             Screen::Failed { .. } => Some(StepOutcome::Failed),
             _ => None,
         }
@@ -274,11 +346,49 @@ pub enum StepInput {
     },
     /// Wait for the new device to claim the offer (resolves with `Match`).
     WaitClaim,
-    /// The codes match: sign the `add`.
-    Confirm,
-    /// Revoke, with the passphrase where the computer needs one.
+    /// The codes match: sign the `add`, with the new device's name, whether it keeps the master
+    /// key too (offered only on a `Match` with `canKeep`), and this computer's own name when
+    /// the `Match` asked for it. Each may be left out.
+    #[serde(rename_all = "camelCase")]
+    Confirm {
+        #[serde(default)]
+        name: Option<String>,
+        #[serde(default)]
+        keep_master: bool,
+        #[serde(default)]
+        this_name: Option<String>,
+    },
+    /// The code the new device shows, pasted.
+    Code {
+        code: String,
+    },
+    /// The new device: wait for a holder's offer (resolves with `DeviceMatch`).
+    WaitLink,
+    /// The new device: wait for the holder to confirm (resolves with `Joined`, or with
+    /// `DeviceMatch` once the holder confirmed a claim that still waits for [`StepInput::Accept`]).
+    WaitJoin,
+    /// The new device, on a `DeviceMatch` with `needsAccept`: the person accepts the identity, and
+    /// the executor may record it as its operator (`identity.acceptJoin`). Sent while a `WaitJoin`
+    /// waits: that one resolves with the accepted `DeviceMatch`, and this one follows the join to
+    /// its end (resolves with `Joined`).
+    Accept,
+    /// Yes to the request, with the passphrase where the computer needs one.
+    Answer {
+        passphrase: Option<String>,
+    },
+    /// The device's new name.
+    Name {
+        name: String,
+    },
+    /// Unlink, with the passphrase where the computer needs one.
+    Unlink {
+        passphrase: Option<String>,
+    },
+    /// Revoke, with the passphrase where the computer needs one, and the time (ms since the epoch)
+    /// from which the key is no longer trusted; none is the revoke's own time.
     Revoke {
         passphrase: Option<String>,
+        since: Option<u64>,
     },
     /// Forget the identity on `PendingRefused`, which can never be published.
     Discard,
@@ -292,7 +402,14 @@ impl std::fmt::Debug for StepInput {
             StepInput::Words { .. } => "words",
             StepInput::Passphrase { .. } => "passphrase",
             StepInput::WaitClaim => "wait-claim",
-            StepInput::Confirm => "confirm",
+            StepInput::Confirm { .. } => "confirm",
+            StepInput::Code { .. } => "code",
+            StepInput::WaitLink => "wait-link",
+            StepInput::WaitJoin => "wait-join",
+            StepInput::Accept => "accept",
+            StepInput::Answer { .. } => "answer",
+            StepInput::Name { .. } => "name",
+            StepInput::Unlink { .. } => "unlink",
             StepInput::Revoke { .. } => "revoke",
             StepInput::Discard => "discard",
         };
@@ -309,14 +426,64 @@ pub struct CustodyPublic {
     pub unlock: &'static str,
     /// Why no identity step can run on this computer, in words a person reads; `None` when they
     /// can. Set when the executor answers `identity.status` with no identity store, or with one it
-    /// trusts no key for, so nothing it publishes could take; `None` too while the executor does
-    /// not answer, since nothing is known then (a step asks again).
-    pub blocked: Option<&'static str>,
+    /// trusts no key for, so nothing it publishes could take ([`NO_STORE`]); and when the executor
+    /// answers but this computer's store cannot keep or read the key that opens what is sent to it
+    /// ([`enc_key_unkept`]). `None` while the executor does not answer, since nothing is known
+    /// then (a step asks again).
+    pub blocked: Option<String>,
+    /// The devices the private record names, by key id. Empty before the first record write, or
+    /// when the record cannot be read now.
+    pub devices: Vec<DeviceName>,
+    /// The revoked or unlinked keys that may still hold a valid master key, from the key log
+    /// ([`crate::keylog::ended_holders`]): the record drops a key's entry when it ends, and neither
+    /// a revoke nor an unlink replaces the master key. Empty when the log cannot be read now.
+    pub ended_holders: Vec<String>,
+    /// The requests of other devices waiting in the identity's box.
+    pub requests: Vec<RequestView>,
+    /// A master key waits in this computer's inbox ("Accept master key").
+    pub master_waiting: bool,
+    /// The key log lets this computer keep the master key but lists an enc key for it that is not
+    /// the one kept here ([`CustodyEncKey`]): lost or replaced. Nothing sealed to this computer
+    /// opens any more — no master key it is sent, no device list — and that key cannot be made
+    /// again, so the person revokes this computer from a device that holds the master key and
+    /// links it again ([`ENC_MISMATCH`]).
+    pub enc_mismatch: bool,
 }
+
+/// What the person reads when [`CustodyPublic::enc_mismatch`] is set.
+pub const ENC_MISMATCH: &str =
+    "This computer has lost the key that opens your master key and your device list, so it can \
+     no longer receive either. On a device that holds your master key, revoke this computer, then \
+     link it again.";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct HoldsMaster {
     pub index: u32,
+}
+
+/// One device of the private record: its name and whether it holds the master key (`false`,
+/// `"offered"`: waiting in its inbox, `true`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceName {
+    pub key_id: String,
+    pub name: String,
+    pub kind: DeviceKind,
+    pub holds_master: Holds,
+}
+
+/// One waiting request, as the main window lists it: never its signed parts.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestView {
+    pub id: String,
+    /// `send-master` or `confirm-revoke`.
+    pub kind: String,
+    /// The key id of the device that posted it.
+    pub by: String,
+    /// For `confirm-revoke`: the keys it asks to revoke.
+    pub key_ids: Vec<String>,
+    pub expires: u64,
 }
 
 /// Where the executor's RPC is, and the admin credential for it. Nothing else of the executor: the
@@ -325,7 +492,10 @@ pub struct HoldsMaster {
 pub struct ExecutorAddress {
     /// `http://127.0.0.1:<port>`
     pub url: String,
-    pub admin_credential: Arc<str>,
+    /// The credential custody calls the executor with: the custody credential the executor's custody
+    /// channel admits (the sidecar's on Electron, `with_custody_channel`'s on Tauri), never the admin
+    /// credential the main window holds.
+    pub credential: Arc<str>,
 }
 
 impl std::fmt::Debug for ExecutorAddress {
@@ -349,11 +519,18 @@ pub enum CustodyError {
     Stopped,
 }
 
+/// Where a cancel is answered: `None` once the step ended, else the screen to show instead
+/// ([`CustodyHandle::cancel`]).
+type CancelReply = oneshot::Sender<Option<Screen>>;
+
+/// Where the main window's state request is answered ([`CustodyHandle::public_state`]).
+type PublicReply = oneshot::Sender<CustodyPublic>;
+
 enum Request {
     Start(IdentityStep, oneshot::Sender<Result<Screen, CustodyError>>),
     Step(StepInput, oneshot::Sender<Result<Screen, CustodyError>>),
-    Cancel(oneshot::Sender<()>),
-    Public(oneshot::Sender<CustodyPublic>),
+    Cancel(CancelReply),
+    Public(PublicReply),
 }
 
 /// The `Send` handle to the custody thread.
@@ -380,9 +557,14 @@ impl CustodyHandle {
         self.ask(|tx| Request::Step(input, tx)).await?
     }
 
-    /// Ends the open step, wiping what it held. Harmless with none open.
-    pub async fn cancel(&self) {
-        let _ = self.ask(Request::Cancel).await;
+    /// Ends the open step, wiping what it held. Harmless with none open, and a stopped service
+    /// holds none. `None` once the step ended; a step that could not be ended answers the screen to
+    /// show instead, and the window stays: a new device whose claim had already joined shows
+    /// `Joined`, and one whose cancel the executor did not confirm says so ([`cancel_join`]). A
+    /// cancel sent while another is still waiting on the executor gets that one's answer
+    /// ([`cancel_claim`]).
+    pub async fn cancel(&self) -> Option<Screen> {
+        self.ask(Request::Cancel).await.unwrap_or(None)
     }
 
     pub async fn public_state(&self) -> Result<CustodyPublic, CustodyError> {
@@ -391,7 +573,8 @@ impl CustodyHandle {
 }
 
 /// Starts the custody thread.
-pub fn spawn(vault: DesktopVault, executor: ExecutorAddress) -> CustodyHandle {
+pub fn spawn(vault: impl Into<Arc<DesktopVault>>, executor: ExecutorAddress) -> CustodyHandle {
+    let vault = vault.into();
     let (tx, rx) = mpsc::unbounded_channel();
     std::thread::Builder::new()
         .name("custody".into())
@@ -408,14 +591,61 @@ pub fn spawn(vault: DesktopVault, executor: ExecutorAddress) -> CustodyHandle {
 
 type Rx = mpsc::UnboundedReceiver<Request>;
 
-async fn connect(address: &ExecutorAddress) -> Result<ViaExecutor<WsRpcClient>, String> {
-    WsRpcClient::connect(&address.url, &address.admin_credential)
+/// The executor, with every call that needs this computer's enc key answered here
+/// ([`WithEncKey`] over [`CustodyEncKey`]): the master key waiting, the inbox's kinds, the record
+/// key, and the `enc` a claim, a device or an incept names. The executor's device key, which the
+/// key is kept for, is asked first.
+async fn connect(
+    address: &ExecutorAddress,
+    vault: &Arc<DesktopVault>,
+) -> Result<ViaExecutor<WithEncKey<WsRpcClient>>, String> {
+    let (rpc, device_key) = reach(address).await?;
+    with_enc_key(rpc, &device_key, vault).await
+}
+
+/// What a step says while the executor does not answer.
+const STARTING: &str =
+    "The identity service on this computer is still starting. Try again in a moment.";
+
+/// The executor's RPC and the device key it reports; [`STARTING`] while it does not answer.
+async fn reach(address: &ExecutorAddress) -> Result<(WsRpcClient, String), String> {
+    let rpc = WsRpcClient::connect(&address.url, &address.credential)
         .await
-        .map(ViaExecutor::new)
-        .map_err(|_| {
-            "The identity service on this computer is still starting. Try again in a moment."
-                .to_string()
-        })
+        .map_err(|_| STARTING.to_string())?;
+    let status: Value = ExecutorRpc::call(&rpc, "identity.status", json!({}))
+        .await
+        .map_err(|_| STARTING.to_string())?;
+    let device_key = status["deviceKey"]
+        .as_str()
+        .ok_or_else(|| STARTING.to_string())?
+        .to_string();
+    Ok((rpc, device_key))
+}
+
+/// `rpc` behind this computer's enc key for `device_key`, kept in the vault's store; the words of
+/// [`enc_key_unkept`] when the store cannot keep or read it. The key is claimed off the custody
+/// task ([`keychain_call`]): the claim can sit inside the keychain's unlock prompt, and the task
+/// must stay free to answer Cancel and the claim deadline meanwhile.
+async fn with_enc_key<R: ExecutorRpc>(
+    rpc: R,
+    device_key: &str,
+    vault: &Arc<DesktopVault>,
+) -> Result<ViaExecutor<WithEncKey<R>>, String> {
+    let (store, device_key) = (vault.shared_store(), device_key.to_string());
+    let enc = keychain_call(move || CustodyEncKey::for_device(store, &device_key))
+        .await
+        .map_err(|e| enc_key_unkept(&e))?;
+    Ok(ViaExecutor::new(WithEncKey::new(
+        rpc,
+        Box::new(enc),
+        Box::new(SystemClock),
+    )))
+}
+
+/// What the person reads when this computer's store cannot keep or read its enc key: every step
+/// stops there, and the main window says so rather than calling the executor offline.
+fn enc_key_unkept(e: &VaultError) -> String {
+    format!("This computer could not keep the key that opens your master key: {e}")
 }
 
 /// What a step says when the executor has no identity store it can use — its network names none,
@@ -467,6 +697,20 @@ fn failed(e: &ClientError) -> Screen {
         ClientError::OfferEnded(state) => {
             format!("The offer ended ({state}) before it was confirmed. Nothing was added.")
         }
+        ClientError::NotAKeeper(_) => "That device can't have the master key. Only the app on \
+                                       a computer or phone can. Nothing was sent."
+            .into(),
+        ClientError::Poster(why) => {
+            log::warn!("custody: the request does not check out: {why}");
+            "This request couldn't be verified. Nothing changed.".into()
+        }
+        ClientError::NeedsWords => "This request also replaces the master key, which needs \
+                                    your recovery phrase. This version of the app can't do \
+                                    that yet."
+            .into(),
+        ClientError::RecordBusy => {
+            "Another device is changing your device list. Try again in a moment.".into()
+        }
         ClientError::Rpc(e) => format!(
             "The identity service on this computer answered: {}",
             e.message
@@ -476,33 +720,133 @@ fn failed(e: &ClientError) -> Screen {
     Screen::Failed { message }
 }
 
-async fn serve(vault: DesktopVault, address: ExecutorAddress, mut rx: Rx) {
-    let vault = Arc::new(vault);
-    while let Some(request) = rx.recv().await {
+/// The custody thread: one step at a time, and the main window's state read beside whatever runs
+/// ([`StateReads`]). The reads outlive the flow that took them: one still under way when a step
+/// ends is kept here and polled beside the next request, so a stalled read holds no later request,
+/// and every state request is answered once its read ends.
+async fn serve(vault: Arc<DesktopVault>, address: ExecutorAddress, mut rx: Rx) {
+    let mut reads = StateReads::new(&vault, &address);
+    while let Some((step, reply)) = idle(&mut reads, &mut rx).await {
+        run_step(step, &mut reads, &mut rx, &mut Some(reply)).await;
+    }
+    reads.finish().await;
+}
+
+/// Runs `step` to its end. The show-code flow takes its state requests into `reads`; every other
+/// flow answers its own, and a read a step before it left under way goes on beside it ([`beside`]).
+async fn run_step(step: IdentityStep, reads: &mut StateReads<'_>, rx: &mut Rx, reply: &mut Reply) {
+    let (vault, address) = (reads.vault, reads.address);
+    // What `beside` forwards to a flow: everything but the state requests, which `reads` keeps.
+    let (to_flow, mut flow_rx) = mpsc::unbounded_channel();
+    match step {
+        IdentityStep::ShowCode => run_show_code(reads, rx, reply).await,
+        IdentityStep::Create => {
+            let flow = run_create(vault, address, &mut flow_rx, reply);
+            beside(reads, rx, to_flow, flow).await
+        }
+        IdentityStep::AddDevice => {
+            let flow = run_link(vault, address, &mut flow_rx, reply);
+            beside(reads, rx, to_flow, flow).await
+        }
+        IdentityStep::ScanDevice => {
+            let flow = run_scan(vault, address, &mut flow_rx, reply);
+            beside(reads, rx, to_flow, flow).await
+        }
+        IdentityStep::TakeMaster => {
+            let flow = run_take_master(vault, address, &mut flow_rx, reply);
+            beside(reads, rx, to_flow, flow).await
+        }
+        IdentityStep::AskMaster => {
+            beside(reads, rx, to_flow, run_ask_master(vault, address, reply)).await
+        }
+        IdentityStep::AnswerRequest { id } => {
+            let flow = run_answer(vault, address, &mut flow_rx, reply, id);
+            beside(reads, rx, to_flow, flow).await
+        }
+        IdentityStep::Rename { key_id } => {
+            let flow = run_rename(vault, address, &mut flow_rx, reply, key_id);
+            beside(reads, rx, to_flow, flow).await
+        }
+        IdentityStep::Unlink { key_id } => {
+            let flow = run_unlink(vault, address, &mut flow_rx, reply, key_id);
+            beside(reads, rx, to_flow, flow).await
+        }
+        IdentityStep::Revoke { key_id } => {
+            let flow = run_revoke(vault, address, &mut flow_rx, reply, key_id);
+            beside(reads, rx, to_flow, flow).await
+        }
+    }
+    refuse_late(reads, &mut flow_rx);
+}
+
+/// Answers what reached a flow's channel as it ended the way the next request would have been: a
+/// step input has no step, a second start finds one open, a cancel finds nothing to cancel.
+fn refuse_late(reads: &mut StateReads<'_>, flow_rx: &mut Rx) {
+    while let Ok(request) = flow_rx.try_recv() {
         match request {
-            Request::Start(step, reply) => {
-                let mut reply = Some(reply);
-                match step {
-                    IdentityStep::Create => run_create(&vault, &address, &mut rx, &mut reply).await,
-                    IdentityStep::AddDevice => {
-                        run_link(&vault, &address, &mut rx, &mut reply).await
-                    }
-                    IdentityStep::Revoke { key_id } => {
-                        run_revoke(&vault, &address, &mut rx, &mut reply, key_id).await
+            Request::Step(_, r) => {
+                let _ = r.send(Err(CustodyError::NoStep));
+            }
+            Request::Start(_, r) => {
+                let _ = r.send(Err(CustodyError::Busy));
+            }
+            Request::Cancel(r) => {
+                let _ = r.send(None);
+            }
+            Request::Public(r) => reads.ask(r),
+        }
+    }
+}
+
+/// Runs `flow` with the window's requests going to it through `to_flow`, and the state requests
+/// taken into `reads` on the way ([`StateReads::recv`]). The reads, the ones a step before left
+/// under way too, are answered as each ends rather than after the flow, and a read waiting in the
+/// keychain ([`keychain_call`]) holds neither the flow's Cancel nor its claim deadline: the flow
+/// never sees a state request.
+async fn beside(
+    reads: &mut StateReads<'_>,
+    rx: &mut Rx,
+    to_flow: mpsc::UnboundedSender<Request>,
+    flow: impl std::future::Future<Output = ()>,
+) {
+    let mut to_flow = Some(to_flow);
+    tokio::pin!(flow);
+    loop {
+        tokio::select! {
+            () = &mut flow => return,
+            request = reads.recv(rx) => match request {
+                Some(request) => {
+                    if let Some(to_flow) = &to_flow {
+                        let _ = to_flow.send(request);
                     }
                 }
-            }
+                // The app is gone: the flow sees its channel end, as it would the window's.
+                None => {
+                    drop(to_flow.take());
+                    return flow.await;
+                }
+            },
+        }
+    }
+}
+
+/// The custody thread between steps: the next `Start` and its reply, the state read beside the wait
+/// ([`StateReads`]); `None` once the app is gone. A step input or a cancel with no step open is
+/// answered at once, never held by a read under way.
+async fn idle(
+    reads: &mut StateReads<'_>,
+    rx: &mut Rx,
+) -> Option<(IdentityStep, oneshot::Sender<Result<Screen, CustodyError>>)> {
+    loop {
+        match reads.recv(rx).await? {
+            Request::Start(step, reply) => return Some((step, reply)),
             Request::Step(_, reply) => {
                 let _ = reply.send(Err(CustodyError::NoStep));
             }
             Request::Cancel(reply) => {
-                let _ = reply.send(());
+                let _ = reply.send(None);
             }
-            // No step is open, so nothing is selecting on Cancel. The keychain half still runs
-            // off this task; this arm just waits for it before the next request.
-            Request::Public(reply) => {
-                let _ = reply.send(public_state(&vault, &address).await);
-            }
+            Request::Public(reply) => reads.ask(reply),
         }
     }
 }
@@ -517,7 +861,20 @@ async fn serve(vault: DesktopVault, address: ExecutorAddress, mut rx: Rx) {
 /// because it already speaks for another identity, is forgotten.
 async fn finish_pending<R: ExecutorRpc>(
     executor: &ViaExecutor<R>,
-    vault: &DesktopVault,
+    vault: &Arc<DesktopVault>,
+) -> Result<Option<Created>, ClientError> {
+    let _one = FINISHING.lock().await;
+    finish_pending_locked(executor, vault).await
+}
+
+/// One publish of a kept incept at a time: a state read left running beside a step and the step
+/// (Create, a restore) can both finish it, and two publishes of the same incept would make the
+/// store answer the second with a conflict. The later caller finds nothing pending.
+static FINISHING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+async fn finish_pending_locked<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &Arc<DesktopVault>,
 ) -> Result<Option<Created>, ClientError> {
     if vault.pending_incepts()?.is_empty() {
         return Ok(None);
@@ -541,7 +898,7 @@ async fn finish_pending<R: ExecutorRpc>(
 }
 
 /// The kept incept that lists `device_key` — this executor's, when it is the executor's own key.
-fn own_pending(vault: &DesktopVault, device_key: &str) -> Result<Option<Event>, VaultError> {
+fn own_pending(vault: &Arc<DesktopVault>, device_key: &str) -> Result<Option<Event>, VaultError> {
     Ok(vault.pending_incepts()?.into_iter().find(|incept| {
         matches!(&incept.op, Op::Incept { add, .. } if add.iter().any(|d| d.sign == device_key))
     }))
@@ -579,123 +936,265 @@ fn refused_for_good(e: &ClientError, did: &str) -> Option<(String, bool)> {
     }
 }
 
-/// [`finish_pending`] where a step does not depend on it: a failure is logged, and the next
-/// attempt (any step, or the main window asking for the state) tries again.
-async fn finish_pending_quietly<R: ExecutorRpc>(executor: &ViaExecutor<R>, vault: &DesktopVault) {
-    if let Err(e) = finish_pending(executor, vault).await {
+/// [`finish_pending`] for a state read: skipped while a step is finishing the incept itself, so the
+/// read never waits on the step.
+async fn finish_pending_quietly<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &Arc<DesktopVault>,
+) {
+    let Ok(_one) = FINISHING.try_lock() else {
+        return;
+    };
+    if let Err(e) = finish_pending_locked(executor, vault).await {
         log::warn!("custody: the pending identity is not finished yet: {e}");
     }
 }
 
-struct Prepared {
-    did: Option<String>,
-    blocked: Option<&'static str>,
-    scid: Option<String>,
-}
-
-async fn prepare_connected(vault: &Arc<DesktopVault>, address: &ExecutorAddress) -> Prepared {
-    match connect(address).await {
-        Ok(executor) => prepare(Some(&executor), vault).await,
-        Err(_) => prepare::<WsRpcClient>(None, vault).await,
+async fn public_state(vault: &Arc<DesktopVault>, address: &ExecutorAddress) -> CustodyPublic {
+    match reach(address).await {
+        Ok((rpc, device_key)) => public_state_reached(rpc, &device_key, vault).await,
+        // Not answering: nothing is known, and a step asks again.
+        Err(_) => public_state_on::<WithEncKey<WsRpcClient>>(None, vault).await,
     }
 }
 
-/// The executor's did and whether a step is blocked, without asking the keychain. The keychain
-/// half is [`finish_from`], so a caller can select while that half waits.
-async fn prepare<R: ExecutorRpc>(
-    executor: Option<&ViaExecutor<R>>,
-    vault: &DesktopVault,
-) -> Prepared {
-    let (did, blocked) = match executor {
-        Some(executor) => {
-            finish_pending_quietly(executor, vault).await;
-            match executor.status().await {
-                Ok(status) => (
-                    status.did,
-                    (!status.store.is_some_and(|s| s.trusted)).then_some(NO_STORE),
-                ),
-                Err(_) => (None, None),
+/// [`public_state`] once the executor answers. A store that cannot keep this computer's enc key
+/// is not an executor offline: every step would stop on it, so the person is told why
+/// ([`CustodyPublic::blocked`]) in the words a step would show.
+async fn public_state_reached<R: ExecutorRpc>(
+    rpc: R,
+    device_key: &str,
+    vault: &Arc<DesktopVault>,
+) -> CustodyPublic {
+    match with_enc_key(rpc, device_key, vault).await {
+        Ok(executor) => public_state_on(Some(&executor), vault).await,
+        Err(message) => {
+            log::warn!("custody: {message}");
+            CustodyPublic {
+                blocked: Some(message),
+                ..public_state_on::<WithEncKey<R>>(None, vault).await
             }
         }
-        None => (None, None),
-    };
-    let scid = did
-        .as_deref()
-        .and_then(ad4m_identity_core::scid_of)
-        .map(str::to_string);
-    Prepared { did, blocked, scid }
-}
-
-async fn public_state(vault: &Arc<DesktopVault>, address: &ExecutorAddress) -> CustodyPublic {
-    match connect(address).await {
-        Ok(executor) => public_state_on(Some(&executor), vault).await,
-        Err(_) => public_state_on::<WsRpcClient>(None, vault).await,
     }
 }
 
-/// [`public_state`] with the executor, when it answers. `None` asks the vault with no did.
+/// [`public_state`] with the executor, when it answers.
 async fn public_state_on<R: ExecutorRpc>(
     executor: Option<&ViaExecutor<R>>,
     vault: &Arc<DesktopVault>,
 ) -> CustodyPublic {
-    let prepared = prepare(executor, vault).await;
-    finish_from(Arc::clone(vault), prepared).await
+    let status = match executor {
+        Some(executor) => {
+            finish_pending_quietly(executor, vault).await;
+            executor.status().await.ok()
+        }
+        None => None,
+    };
+    let did = status.as_ref().and_then(|s| s.did.clone());
+    let blocked = status
+        .as_ref()
+        .and_then(|s| (!s.store.as_ref().is_some_and(|s| s.trusted)).then(|| NO_STORE.into()));
+    let mut master_waiting = false;
+    let mut devices = Vec::new();
+    let mut requests = Vec::new();
+    let mut ended_holders = Vec::new();
+    let mut enc_mismatch = false;
+    if let (Some(executor), Some(did)) = (executor, did.as_deref()) {
+        master_waiting = master_waits(executor).await;
+        // Where the operating system unlocks a new item, the master key waiting is taken as the
+        // app starts and whenever the main window asks: the keychain's own unlock guards it, as
+        // it guards the key made here. A sealed item needs the passphrase, so the person takes
+        // it in the identity window ("Accept master key").
+        let held = match ad4m_identity_core::scid_of(did) {
+            Some(scid) => Some(held_sealed_off(vault, scid).await),
+            None => None,
+        };
+        // The same unlock pushes again what the retry list keeps: a master key given to a device
+        // whose push the app did not see through. `retry_pushes` unlocks only when a push is left.
+        if let Some(Ok(Some(false))) = held {
+            retry_quietly(executor, &vault.unlocking(None), did).await;
+        }
+        // Not held yet: where a new item goes decides. Held: where it rests.
+        let os_unlocks = match held {
+            Some(Ok(None)) => !needs_passphrase_off(vault).await,
+            Some(Ok(Some(sealed))) => !sealed,
+            _ => false,
+        };
+        if master_waiting && os_unlocks {
+            match take_master(executor, &vault.unlocking(None), &RANDOM).await {
+                Ok(Some(taken)) => {
+                    log::info!("custody: took master #{} of the identity", taken.index);
+                    master_waiting = master_waits(executor).await;
+                }
+                Ok(None) => master_waiting = false,
+                Err(e) => log::warn!("custody: the waiting master key was not taken: {e}"),
+            }
+        }
+        devices = match record::read(executor, &vault.unlocking(None), did).await {
+            Ok(opened) => opened.map(|o| device_names(&o.record)).unwrap_or_default(),
+            Err(e) => {
+                log::warn!("custody: the device list cannot be read now: {e}");
+                Vec::new()
+            }
+        };
+        match executor.events(did).await {
+            Ok(events) => {
+                ended_holders = crate::keylog::ended_holders(&events);
+                enc_mismatch = status
+                    .as_ref()
+                    .is_some_and(|status| enc_lost(&events, status));
+            }
+            Err(e) => log::warn!("custody: the key log cannot be read now: {e}"),
+        }
+        requests = waiting_requests(executor).await;
+    }
+    // Whether this identity's key is held here and, if so, whether it is sealed.
+    let sealed = match did.as_deref().and_then(ad4m_identity_core::scid_of) {
+        Some(scid) => match held_sealed_off(vault, scid).await {
+            Ok(sealed) => sealed,
+            // The store could not be asked (no Secret Service, a keychain error, a copy on both
+            // sides): reported as not known to hold one, and logged so the cause is not lost.
+            Err(e) => {
+                log::warn!("custody: cannot tell whether the master key is held here: {e}");
+                None
+            }
+        },
+        None => None,
+    };
+    // The index sits inside the sealed item; only master #0 is held for now (no rotation yet).
+    let holds_master = sealed.map(|_| HoldsMaster { index: 0 });
+    // The unlock of the key reported as held; with none held, the unlock a new one would get.
+    let needs_new = match sealed {
+        Some(_) => false,
+        None => needs_passphrase_off(vault).await,
+    };
+    let unlock = if sealed.unwrap_or(needs_new) {
+        "passphrase"
+    } else {
+        // The operating system's own prompt: Touch ID or the login password on macOS, the Secret
+        // Service's unlock on Linux. One word for every platform, so no caller names one.
+        "os"
+    };
+    CustodyPublic {
+        did,
+        holds_master,
+        unlock,
+        blocked,
+        devices,
+        ended_holders,
+        requests,
+        master_waiting,
+        enc_mismatch,
+    }
 }
 
-/// Whether this identity's key is held here and, if so, whether it is sealed. Off the custody
-/// task: `holds` and `needs_passphrase` reach the keychain or the Secret Service, and either can
-/// sit inside an unlock prompt. With none held, the unlock a new key would get.
-fn finish_from(vault: Arc<DesktopVault>, prepared: Prepared) -> ReadFut {
-    Box::pin(async move {
-        let Prepared { did, blocked, scid } = prepared;
-        let (sealed, needs_new) = keychain_call(move || {
-            let sealed = match scid.as_deref() {
-                Some(scid) => match held_sealed(&vault, scid) {
-                    Ok(sealed) => sealed,
-                    // The store could not be asked (no Secret Service, a keychain error, a copy on
-                    // both sides): reported as not known to hold one, and logged so the cause is
-                    // not lost.
-                    Err(e) => {
-                        log::warn!("custody: cannot tell whether the master key is held here: {e}");
-                        None
-                    }
-                },
-                None => None,
-            };
-            let needs_new = if sealed.is_none() {
-                vault.needs_passphrase()
-            } else {
-                false
-            };
-            (sealed, needs_new)
-        })
-        .await;
-        // The index sits inside the sealed item; only master #0 is held for now (no rotation yet).
-        let holds_master = sealed.map(|_| HoldsMaster { index: 0 });
-        let unlock = if sealed.unwrap_or(needs_new) {
-            "passphrase"
-        } else {
-            // The operating system's own prompt: Touch ID or the login password on macOS, the
-            // Secret Service's unlock on Linux. One word for every platform, so no caller names
-            // one.
-            "os"
-        };
-        CustodyPublic {
-            did,
-            holds_master,
-            unlock,
-            blocked,
+/// [`CustodyPublic::enc_mismatch`] for this computer's device key, from the identity's log.
+/// `status` is the executor's answer through the adapter, whose `deviceEnc` is the custody enc key.
+fn enc_lost(events: &[Event], status: &IdentityStatus) -> bool {
+    crate::keylog::enc_mismatch(events, status.key_id.as_deref(), &status.device_enc)
+}
+
+/// Whether the log lists another enc key for this computer than the one kept here; false when it
+/// cannot be asked.
+async fn enc_lost_now<R: ExecutorRpc>(executor: &ViaExecutor<R>) -> bool {
+    let Ok(status) = executor.status().await else {
+        return false;
+    };
+    let Some(did) = status.did.as_deref() else {
+        return false;
+    };
+    match executor.events(did).await {
+        Ok(events) => enc_lost(&events, &status),
+        Err(_) => false,
+    }
+}
+
+/// Whether a master key waits in this computer's inbox. `identity.inbox` reads the store first,
+/// so a key put there since the executor's last read is seen. False when it cannot be asked.
+async fn master_waits<R: ExecutorRpc>(executor: &ViaExecutor<R>) -> bool {
+    match executor.rpc().call("identity.inbox", json!({})).await {
+        Ok(Value::Array(messages)) => messages.iter().any(|m| m["kind"] == "master"),
+        Ok(_) => false,
+        Err(e) => {
+            log::warn!(
+                "custody: this computer's inbox cannot be read: {}",
+                e.message
+            );
+            false
         }
-    })
+    }
+}
+
+/// The record's devices, as the main window shows them.
+fn device_names(record: &ad4m_identity_core::record::PrivateRecord) -> Vec<DeviceName> {
+    record
+        .devices
+        .iter()
+        .map(|(key_id, entry)| DeviceName {
+            key_id: key_id.clone(),
+            name: entry.name.clone(),
+            kind: entry.kind,
+            holds_master: entry.holds_master,
+        })
+        .collect()
+}
+
+/// The identity's waiting requests, without their signed parts. Empty when the box cannot be
+/// read: the requests are asked for again each time.
+async fn waiting_requests<R: ExecutorRpc>(executor: &ViaExecutor<R>) -> Vec<RequestView> {
+    let listed = match executor
+        .rpc()
+        .call("identity.requests", json!({ "since": 0 }))
+        .await
+    {
+        Ok(Value::Array(listed)) => listed,
+        Ok(_) => return Vec::new(),
+        Err(e) => {
+            log::warn!("custody: the request box cannot be read now: {}", e.message);
+            return Vec::new();
+        }
+    };
+    listed
+        .iter()
+        .filter_map(|r| {
+            let text = |v: &Value| v.as_str().map(str::to_string);
+            Some(RequestView {
+                id: text(&r["id"])?,
+                kind: text(&r["body"]["kind"])?,
+                by: text(&r["by"])?,
+                key_ids: r["body"]["keyIds"]
+                    .as_array()
+                    .map(|ids| ids.iter().filter_map(text).collect())
+                    .unwrap_or_default(),
+                expires: r["expires"].as_u64()?,
+            })
+        })
+        .collect()
 }
 
 /// `None` when `scid`'s key is not held here; else whether it is sealed under a passphrase — from
 /// where that one item rests, never from where a new one would go.
-fn held_sealed(vault: &DesktopVault, scid: &str) -> Result<Option<bool>, VaultError> {
+fn held_sealed(vault: &Arc<DesktopVault>, scid: &str) -> Result<Option<bool>, VaultError> {
     if !vault.holds(scid)? {
         return Ok(None);
     }
     Ok(Some(vault.needs_passphrase_for(scid)?))
+}
+
+/// [`held_sealed`] off the custody task ([`keychain_call`]): the read can sit inside an unlock
+/// prompt, and the task must stay free to answer Cancel meanwhile.
+async fn held_sealed_off(
+    vault: &Arc<DesktopVault>,
+    scid: &str,
+) -> Result<Option<bool>, VaultError> {
+    let (vault, scid) = (Arc::clone(vault), scid.to_string());
+    keychain_call(move || held_sealed(&vault, &scid)).await
+}
+
+/// Whether a new item would be sealed under a passphrase here, asked off the custody task.
+async fn needs_passphrase_off(vault: &Arc<DesktopVault>) -> bool {
+    let vault = Arc::clone(vault);
+    keychain_call(move || vault.needs_passphrase()).await
 }
 
 type Reply = Option<oneshot::Sender<Result<Screen, CustodyError>>>;
@@ -708,40 +1207,45 @@ fn answer(reply: &mut Reply, screen: Result<Screen, CustodyError>) {
 }
 
 /// The next request inside a flow: a step input (with its reply slot filled), or the flow's end.
-/// A second `Start` while a step is open is refused. A `Public` read runs off this task, and the
-/// loop selects on it and on the next request, so Cancel is not held by the read. Leaving the
-/// loop does not drop a read that is still in the keychain ([`LiveReads`]).
+/// A second `Start` while a step is open is refused, and `Public` is answered in passing.
 async fn next_input(
     vault: &Arc<DesktopVault>,
     address: &ExecutorAddress,
     rx: &mut Rx,
     reply: &mut Reply,
 ) -> Option<StepInput> {
-    let mut reads = LiveReads::new();
-    loop {
-        tokio::select! {
-            request = rx.recv() => {
-                match request? {
-                    Request::Step(input, r) => {
-                        *reply = Some(r);
-                        return Some(input);
-                    }
-                    Request::Cancel(r) => {
-                        let _ = r.send(());
-                        return None;
-                    }
-                    Request::Start(_, r) => {
-                        let _ = r.send(Err(CustodyError::Busy));
-                    }
-                    Request::Public(r) => {
-                        let prepared = prepare_connected(vault, address).await;
-                        let vault = Arc::clone(vault);
-                        reads.push(r, move || finish_from(vault, prepared));
-                    }
-                }
+    match next_input_or_cancel(vault, address, rx, reply).await {
+        Ok(input) => Some(input),
+        Err(cancel) => {
+            if let Some(cancel) = cancel {
+                let _ = cancel.send(None);
             }
-            public = async { reads.flying.as_mut().unwrap().1.as_mut().await }, if reads.busy() => {
-                reads.deliver(public);
+            None
+        }
+    }
+}
+
+/// [`next_input`], for a flow that must end something before the cancel is answered: the flow's
+/// end comes with the cancel's reply (`None` when the window went away).
+async fn next_input_or_cancel(
+    vault: &Arc<DesktopVault>,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) -> Result<StepInput, Option<CancelReply>> {
+    loop {
+        match rx.recv().await {
+            None => return Err(None),
+            Some(Request::Step(input, r)) => {
+                *reply = Some(r);
+                return Ok(input);
+            }
+            Some(Request::Cancel(r)) => return Err(Some(r)),
+            Some(Request::Start(_, r)) => {
+                let _ = r.send(Err(CustodyError::Busy));
+            }
+            Some(Request::Public(r)) => {
+                let _ = r.send(public_state(vault, address).await);
             }
         }
     }
@@ -775,7 +1279,7 @@ async fn run_create(
     rx: &mut Rx,
     reply: &mut Reply,
 ) {
-    let executor = match connect(address).await {
+    let executor = match connect(address, vault).await {
         Ok(e) => e,
         Err(message) => return answer(reply, Ok(Screen::Failed { message })),
     };
@@ -891,34 +1395,10 @@ async fn create_on<R: ExecutorRpc>(
     // written. A sealed item: the passphrase comes first.
     let mut passphrase: Option<Secret<String>> = None;
     if vault.needs_passphrase() {
-        answer(reply, Ok(Screen::SetPassphrase { error: None }));
-        loop {
-            let Some(input) = next_input(vault, address, rx, reply).await else {
-                return;
-            };
-            match input {
-                StepInput::Passphrase {
-                    passphrase: p,
-                    confirm,
-                } => {
-                    let p = Secret::new(p);
-                    let confirm = Secret::new(confirm.unwrap_or_default());
-                    match seal::check_new(p.expose(), confirm.expose()) {
-                        Ok(()) => {
-                            passphrase = Some(p);
-                            break;
-                        }
-                        Err(problem) => answer(
-                            reply,
-                            Ok(Screen::SetPassphrase {
-                                error: passphrase_error(problem),
-                            }),
-                        ),
-                    }
-                }
-                _ => answer(reply, Err(CustodyError::WrongInput)),
-            }
-        }
+        let Some(p) = new_passphrase(vault, address, rx, reply).await else {
+            return;
+        };
+        passphrase = Some(p);
     }
 
     // incept, the executor's co-signature, the vault keeps master #0 and the incept, publish.
@@ -1006,7 +1486,7 @@ async fn offer_discard<R: ExecutorRpc>(
 
 /// Whether a flow on the key of `did`, an identity already made, asks for a passphrase: decided by
 /// where that key rests here, since two identities on one computer can rest in different stores.
-fn passphrase_for(vault: &DesktopVault, did: &str) -> Result<bool, ClientError> {
+fn passphrase_for(vault: &Arc<DesktopVault>, did: &str) -> Result<bool, ClientError> {
     let scid = ad4m_identity_core::scid_of(did).ok_or(VaultError::NotFound)?;
     Ok(vault.needs_passphrase_for(scid)?)
 }
@@ -1017,15 +1497,15 @@ async fn run_link(
     rx: &mut Rx,
     reply: &mut Reply,
 ) {
-    let executor = match connect(address).await {
+    let executor = match connect(address, vault).await {
         Ok(e) => e,
         Err(message) => return answer(reply, Ok(Screen::Failed { message })),
     };
     link_on(&executor, vault, address, rx, reply, &CLOCK).await
 }
 
-/// [`run_link`] once the executor answers. `clock` is the offer's clock: the claim deadline is
-/// `open` time plus the offer's lifetime, checked while [`LinkFlow::wait_for_claim`] is polled.
+/// [`run_link`] once the executor answers. `clock` is the offer's clock: the claim deadline is the
+/// time the offer opened plus its lifetime, checked while [`LinkFlow::wait_for_claim`] is polled.
 async fn link_on<R: ExecutorRpc>(
     executor: &ViaExecutor<R>,
     vault: &Arc<DesktopVault>,
@@ -1039,29 +1519,19 @@ async fn link_on<R: ExecutorRpc>(
         Ok(url) => url,
         Err(refused) => return answer(reply, Ok(refused)),
     };
-    finish_pending_quietly(executor, vault).await;
-    let did = match executor.status().await {
-        Ok(status) => match status.did {
-            Some(did) => did,
-            None => {
-                return answer(
-                    reply,
-                    Ok(Screen::Failed {
-                        message: "Make your identity first.".into(),
-                    }),
-                )
-            }
-        },
-        Err(e) => return answer(reply, Ok(failed(&ClientError::Rpc(e)))),
+    let (did, own_key) = match holder_of(executor, vault).await {
+        Ok(holder) => holder,
+        Err(screen) => return answer(reply, Ok(screen)),
     };
 
     // The one unlock of the flow — a flow asks the person to unlock once, not per signature: where
-    // this identity's key is sealed, after the passphrase.
+    // this identity's key is sealed, after the passphrase. The unlocking outlives the flow, which
+    // pushes the master key with it when the person keeps it on the new device.
     let needs = match passphrase_for(vault, &did) {
         Ok(needs) => needs,
         Err(e) => return answer(reply, Ok(failed(&e))),
     };
-    let mut passphrase: Option<Secret<String>> = None;
+    let mut unlocking = vault.unlocking(None);
     if needs {
         answer(reply, Ok(Screen::EnterPassphrase { error: None }));
     }
@@ -1074,14 +1544,14 @@ async fn link_on<R: ExecutorRpc>(
                 answer(reply, Err(CustodyError::WrongInput));
                 continue;
             };
-            passphrase = Some(Secret::new(p));
+            unlocking = vault.unlocking(Some(Secret::new(p)));
         }
-        let unlocking = vault.unlocking(passphrase.take());
         match LinkFlow::open(
             executor,
             &unlocking,
             &did,
             OfferKind::Node,
+            None,
             &store_url,
             clock,
             &RANDOM,
@@ -1090,12 +1560,7 @@ async fn link_on<R: ExecutorRpc>(
         {
             Ok(flow) => break flow,
             Err(ClientError::Vault(VaultError::Cancelled)) if needs => {
-                answer(
-                    reply,
-                    Ok(Screen::EnterPassphrase {
-                        error: Some("That passphrase does not open your master key.".into()),
-                    }),
-                );
+                answer(reply, Ok(wrong_passphrase()));
             }
             Err(e) => return answer(reply, Ok(failed(&e))),
         }
@@ -1109,7 +1574,67 @@ async fn link_on<R: ExecutorRpc>(
             expires: offer_expiry(clock),
         }),
     );
+    follow_link(
+        &flow,
+        executor,
+        &unlocking,
+        &did,
+        own_key.as_deref(),
+        vault,
+        address,
+        rx,
+        reply,
+    )
+    .await
+}
 
+/// The identity this computer speaks for and this computer's key id in its log, finishing a
+/// pending identity first. A screen that ends the step when there is none.
+async fn holder_of<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &Arc<DesktopVault>,
+) -> Result<(String, Option<String>), Screen> {
+    finish_pending_quietly(executor, vault).await;
+    match executor.status().await {
+        Ok(status) => match status.did {
+            Some(did) => Ok((did, status.key_id)),
+            None => Err(Screen::Failed {
+                message: "Make your identity first.".into(),
+            }),
+        },
+        Err(e) => Err(failed(&ClientError::Rpc(e))),
+    }
+}
+
+fn wrong_passphrase() -> Screen {
+    Screen::EnterPassphrase {
+        error: Some("That passphrase does not open your master key.".into()),
+    }
+}
+
+/// The link after its offer is out (a link shown, or a ticket put for a scanned code): waits for
+/// the claim, shows the match code with the choices the device allows, and confirms.
+///
+/// The device is listed by the name the person gives (else the name it suggested). The first
+/// link also lists this computer, which made the identity before any record existed, under the
+/// name the person gives it then: the Devices page shows every device by name from then on.
+#[allow(clippy::too_many_arguments)]
+async fn follow_link<R: ExecutorRpc>(
+    flow: &LinkFlow<'_, R>,
+    executor: &ViaExecutor<R>,
+    unlocking: &Unlocking<'_>,
+    did: &str,
+    own_key: Option<&str>,
+    vault: &Arc<DesktopVault>,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) {
+    let own_listed = match (own_key, record::read(executor, unlocking, did).await) {
+        (Some(key), Ok(opened)) => opened.is_some_and(|o| o.record.devices.contains_key(key)),
+        // Unknown: not asked, rather than a second entry over one the record may hold.
+        (_, Err(_)) | (None, _) => true,
+    };
     let mut claimed: Option<Claimed> = None;
     loop {
         let Some(input) = next_input(vault, address, rx, reply).await else {
@@ -1117,17 +1642,18 @@ async fn link_on<R: ExecutorRpc>(
         };
         match input {
             StepInput::WaitClaim if claimed.is_none() => {
-                // The claim future carries the deadline (the offer's expiry). `wait_cancel`
-                // selects on Cancel and on the state read, which runs off this task.
+                // Waits for the claim, or for the window to cancel meanwhile.
                 let outcome = tokio::select! {
                     claim = flow.wait_for_claim() => Some(claim),
-                    () = wait_cancel(executor, vault, rx) => None,
+                    () = wait_cancel(vault, address, rx) => None,
                 };
                 match outcome {
                     Some(Ok(claim)) => {
                         let screen = Screen::Match {
                             code: claim.match_code.clone(),
                             hint: claim.hint.clone(),
+                            can_keep: flow.may_keep(&claim),
+                            own_name: !own_listed,
                         };
                         claimed = Some(claim);
                         answer(reply, Ok(screen));
@@ -1136,11 +1662,466 @@ async fn link_on<R: ExecutorRpc>(
                     None => return answer(reply, Err(CustodyError::NoStep)),
                 }
             }
-            StepInput::Confirm if claimed.is_some() => {
+            StepInput::Confirm {
+                name,
+                keep_master,
+                this_name,
+            } if claimed.is_some() => {
                 let claim = claimed.take().expect("checked above");
-                let screen = match flow.confirm(&claim).await {
-                    Ok(head) => Screen::Linked { seq: head.seq },
-                    Err(e) => failed(&e),
+                let app = flow.may_keep(&claim);
+                let entry = DeviceEntry {
+                    name: given_name(name)
+                        .or_else(|| claim.hint.clone())
+                        .unwrap_or_else(|| "Another device".into()),
+                    kind: if app {
+                        DeviceKind::DesktopApp
+                    } else {
+                        DeviceKind::Server
+                    },
+                    place: Some(if app { Place::Computer } else { Place::Server }),
+                    address: None,
+                    runs_executor: true,
+                    holds_master: Holds::No,
+                    operator: None,
+                };
+                let linked = match flow.confirm(&claim, entry, keep_master && app).await {
+                    Ok(linked) => linked,
+                    Err(e) => return answer(reply, Ok(failed(&e))),
+                };
+                let mut notes = Vec::new();
+                if let (false, Some(own)) = (own_listed, own_key) {
+                    let own_entry = this_computer(given_name(this_name), true);
+                    let change = Change::Device {
+                        key_id: own.to_string(),
+                        entry: own_entry,
+                    };
+                    if let Err(e) =
+                        record::write(executor, unlocking, did, &[change], &RANDOM).await
+                    {
+                        log::warn!("custody: this computer was not listed in the record: {e}");
+                        notes.push(
+                            "This computer's name wasn't saved. Rename it in Settings > Devices.",
+                        );
+                    }
+                }
+                if let Err(e) = &linked.record {
+                    log::warn!("custody: the linked device was not listed in the record: {e}");
+                    notes.push("Its name wasn't saved. Rename it in Settings > Devices.");
+                }
+                if let Some(Err(e)) = &linked.master {
+                    log::warn!("custody: the master key was not put in its inbox: {e}");
+                    notes.push(
+                        "The master key wasn't sent yet. It's sent again the next time this \
+                         computer unlocks.",
+                    );
+                }
+                retry_quietly(executor, unlocking, did).await;
+                return answer(
+                    reply,
+                    Ok(Screen::Linked {
+                        seq: linked.head.seq,
+                        master_sent: matches!(linked.master, Some(Ok(_))),
+                        note: (!notes.is_empty()).then(|| notes.join(" ")),
+                    }),
+                );
+            }
+            _ => answer(reply, Err(CustodyError::WrongInput)),
+        }
+    }
+}
+
+/// A name the person typed, trimmed; `None` when blank.
+fn given_name(name: Option<String>) -> Option<String> {
+    name.map(|n| n.trim().to_string()).filter(|n| !n.is_empty())
+}
+
+/// This computer's entry in the record: the desktop app, holding the master key or not.
+fn this_computer(name: Option<String>, holds: bool) -> DeviceEntry {
+    DeviceEntry {
+        name: name.unwrap_or_else(|| "This computer".into()),
+        kind: DeviceKind::DesktopApp,
+        place: Some(Place::Computer),
+        address: None,
+        runs_executor: true,
+        holds_master: if holds { Holds::Yes } else { Holds::No },
+        operator: None,
+    }
+}
+
+/// Pushes again what the retry list keeps for `did`, with `unlocking`. Failures stay on the list
+/// for the next unlock and are only logged: the step that called this succeeded either way.
+async fn retry_quietly<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    unlocking: &Unlocking<'_>,
+    did: &str,
+) {
+    match retry_pushes(executor, unlocking, did, &CLOCK, &RANDOM).await {
+        Ok(retried) => {
+            for (key_id, pushed) in &retried.pushes {
+                match pushed {
+                    Ok(_) => log::info!("custody: the master key reached {key_id}"),
+                    Err(e) => log::warn!("custody: the master key did not reach {key_id} yet: {e}"),
+                }
+            }
+            if let Some(Err(e)) = retried.record {
+                log::warn!("custody: the record was not marked after the pushes: {e}");
+            }
+        }
+        Err(e) => log::warn!("custody: the master-key pushes were not tried again: {e}"),
+    }
+}
+
+// ─── link by scan (the holder's side) ───────────────────────────────────────────
+
+/// The holder takes the new device's code (scanned or pasted), opens an offer bound to its key and
+/// puts the ticket where the device reads it; then the link goes on as one the device claimed.
+async fn run_scan(
+    vault: &Arc<DesktopVault>,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) {
+    let executor = match connect(address, vault).await {
+        Ok(e) => e,
+        Err(message) => return answer(reply, Ok(Screen::Failed { message })),
+    };
+    let store_url = match trusted_store(&executor).await {
+        Ok(url) => url,
+        Err(refused) => return answer(reply, Ok(refused)),
+    };
+    let (did, own_key) = match holder_of(&executor, vault).await {
+        Ok(holder) => holder,
+        Err(screen) => return answer(reply, Ok(screen)),
+    };
+    let needs = match passphrase_for(vault, &did) {
+        Ok(needs) => needs,
+        Err(e) => return answer(reply, Ok(failed(&e))),
+    };
+
+    // The code first: one that cannot link is said before any passphrase is asked for.
+    answer(reply, Ok(Screen::EnterCode { error: None }));
+    let device = loop {
+        let Some(input) = next_input(vault, address, rx, reply).await else {
+            return;
+        };
+        let StepInput::Code { code } = input else {
+            answer(reply, Err(CustodyError::WrongInput));
+            continue;
+        };
+        match check_code(&code, &store_url, CLOCK.now()) {
+            Ok(device) => break device,
+            Err(error) => answer(reply, Ok(Screen::EnterCode { error: Some(error) })),
+        }
+    };
+
+    let mut unlocking = vault.unlocking(None);
+    if needs {
+        answer(reply, Ok(Screen::EnterPassphrase { error: None }));
+    }
+    let flow = loop {
+        if needs {
+            let Some(input) = next_input(vault, address, rx, reply).await else {
+                return;
+            };
+            let StepInput::Passphrase { passphrase: p, .. } = input else {
+                answer(reply, Err(CustodyError::WrongInput));
+                continue;
+            };
+            unlocking = vault.unlocking(Some(Secret::new(p)));
+        }
+        match LinkFlow::scan(
+            &executor,
+            &unlocking,
+            &did,
+            OfferKind::Device,
+            &device,
+            &store_url,
+            &CLOCK,
+            &RANDOM,
+        )
+        .await
+        {
+            Ok(flow) => break flow,
+            Err(ClientError::Vault(VaultError::Cancelled)) if needs => {
+                answer(reply, Ok(wrong_passphrase()));
+            }
+            Err(e) => return answer(reply, Ok(failed(&e))),
+        }
+    };
+    answer(
+        reply,
+        Ok(Screen::CodeSent {
+            expires: offer_expiry(&CLOCK),
+        }),
+    );
+    follow_link(
+        &flow,
+        &executor,
+        &unlocking,
+        &did,
+        own_key.as_deref(),
+        vault,
+        address,
+        rx,
+        reply,
+    )
+    .await
+}
+
+/// The device string in `code` (its link, or the bare string), when it can be linked now through
+/// `store_url`; else what to tell the person.
+fn check_code(code: &str, store_url: &str, now: u64) -> Result<DeviceString, String> {
+    let device = DeviceString::parse(code).map_err(|_| {
+        "That isn't a device code. Copy the whole code from the new device.".to_string()
+    })?;
+    if now >= device.exp {
+        return Err("That code expired. Show a new code on the new device.".into());
+    }
+    if device.store.trim_end_matches('/') != store_url.trim_end_matches('/') {
+        return Err(format!(
+            "That device uses a different identity store ({}). Both devices need the same one.",
+            device.store
+        ));
+    }
+    Ok(device)
+}
+
+// ─── show my code (the new device's side) ────────────────────────────────────────
+
+/// The new device shows its code; a holder scans it, the executor claims the ticket the holder
+/// put for it (`link-ticket`), the person compares the match code, and the device follows the
+/// claim until the holder confirms. The main window's state is read beside it into `reads`, which
+/// the service keeps polling once the flow ends.
+async fn run_show_code(reads: &mut StateReads<'_>, rx: &mut Rx, reply: &mut Reply) {
+    let executor = match connect(reads.address, reads.vault).await {
+        Ok(e) => e,
+        Err(message) => return answer(reply, Ok(Screen::Failed { message })),
+    };
+    // Subscribed before the code exists, so a claim made at once is not missed.
+    let events = match executor
+        .rpc()
+        .rpc()
+        .watch_events(json!({ "link-ticket": null }))
+        .await
+    {
+        Ok(events) => events,
+        Err(e) => {
+            log::warn!("custody: link-ticket events cannot be watched: {e}");
+            return answer(
+                reply,
+                Ok(Screen::Failed {
+                    message: "The identity service on this computer is still starting. Try \
+                              again in a moment."
+                        .into(),
+                }),
+            );
+        }
+    };
+    show_code_on(&executor, events, reads, rx, reply).await
+}
+
+/// [`run_show_code`] once the executor answers and its `link-ticket` events are watched.
+async fn show_code_on<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    mut events: broadcast::Receiver<Value>,
+    reads: &mut StateReads<'_>,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) {
+    if let Err(refused) = trusted_store(executor).await {
+        return answer(reply, Ok(refused));
+    }
+    match executor.status().await {
+        Ok(status) => {
+            if status.did.is_some() {
+                return answer(
+                    reply,
+                    Ok(Screen::Failed {
+                        message: "This computer already has an identity, so it can't link to \
+                                  another."
+                            .into(),
+                    }),
+                );
+            }
+        }
+        Err(e) => return answer(reply, Ok(failed(&ClientError::Rpc(e)))),
+    }
+    let prepared = match executor
+        .rpc()
+        .call("identity.prepareDevice", json!({}))
+        .await
+    {
+        Ok(prepared) => prepared,
+        Err(e) => return answer(reply, Ok(failed(&ClientError::Rpc(e)))),
+    };
+    let (Some(code), Some(expires)) = (prepared["device"].as_str(), prepared["expires"].as_u64())
+    else {
+        return answer(
+            reply,
+            Ok(Screen::Failed {
+                message: "Couldn't make a code. Try again.".into(),
+            }),
+        );
+    };
+    answer(
+        reply,
+        Ok(Screen::DeviceCode {
+            code: code.to_string(),
+            qr_svg: qr_svg(code),
+            expires,
+        }),
+    );
+
+    // The main window's state is read beside the steps, never in their way: a slow read holds
+    // neither a cancel nor the claim's deadline. A read still under way when the step's own
+    // answer went out stays in `reads`, which the service goes on polling beside what comes next.
+    follow_code(executor, &mut events, code, expires, reads, rx, reply).await;
+}
+
+/// [`show_code_on`] once the code is shown: the window's steps until the link ends or the window
+/// cancels. Any cancel ends the code `device` (its ticket read and every claim from it) and the
+/// claim seen here ([`cancel_claim`]).
+async fn follow_code<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    events: &mut broadcast::Receiver<Value>,
+    device: &str,
+    expires: u64,
+    reads: &mut StateReads<'_>,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) {
+    let mut claim: Option<Claim> = None;
+    loop {
+        let input = match next_input_beside(reads, rx, reply).await {
+            Ok(input) => input,
+            Err(cancel) => {
+                // A ticket already in before the window waited for it is ended with the cancel.
+                let ready = match claim {
+                    Some(_) => None,
+                    None => ticket_ready(events).map(Claim::from_ticket),
+                };
+                return cancel_claim(
+                    executor,
+                    device,
+                    claim.as_ref().or(ready.as_ref()),
+                    Cancelled {
+                        cancel,
+                        ..Default::default()
+                    },
+                    reads,
+                    rx,
+                    reply,
+                )
+                .await;
+            }
+        };
+        match input {
+            StepInput::WaitLink if claim.is_none() => {
+                let wait = Duration::from_secs(expires.saturating_sub(CLOCK.now()));
+                // A ticket in beside a cancel is taken first, so the cancel ends its claim. The
+                // state requests taken meanwhile stay with `reads`, whichever side wins.
+                let outcome = tokio::select! {
+                    biased;
+                    claimed = tokio::time::timeout(wait, next_ticket(events)) => Ok(claimed),
+                    cancel = next_cancel_beside(reads, rx) => Err(cancel),
+                };
+                match outcome {
+                    Err(cancel) => {
+                        // A ticket that came in as the cancel was taken is ended with it.
+                        let claim = ticket_ready(events).map(Claim::from_ticket);
+                        return cancel_claim(
+                            executor,
+                            device,
+                            claim.as_ref(),
+                            Cancelled {
+                                cancel,
+                                ..Default::default()
+                            },
+                            reads,
+                            rx,
+                            reply,
+                        )
+                        .await;
+                    }
+                    Ok(Err(_)) => {
+                        return answer(
+                            reply,
+                            Ok(Screen::Failed {
+                                message: "The code expired. Show a new code to try again.".into(),
+                            }),
+                        )
+                    }
+                    Ok(Ok(None)) => {
+                        return answer(
+                            reply,
+                            Ok(Screen::Failed {
+                                message: "The app stopped responding. Try again in a moment."
+                                    .into(),
+                            }),
+                        )
+                    }
+                    Ok(Ok(Some(claimed))) => {
+                        let claimed = Claim::from_ticket(claimed);
+                        answer(reply, Ok(claimed.screen()));
+                        claim = Some(claimed);
+                    }
+                }
+            }
+            StepInput::WaitJoin if claim.is_some() => {
+                let claim = claim.as_mut().expect("checked above");
+                match follow_claim(executor, claim, reads, rx, reply).await {
+                    Err(cancel) => {
+                        return cancel_claim(
+                            executor,
+                            device,
+                            Some(claim),
+                            cancel,
+                            reads,
+                            rx,
+                            reply,
+                        )
+                        .await
+                    }
+                    // The other device confirmed; the person has yet to accept here.
+                    Ok(screen @ Screen::DeviceMatch { .. }) => answer(reply, Ok(screen)),
+                    Ok(screen) => return answer(reply, Ok(screen)),
+                }
+            }
+            StepInput::Accept if claim.as_ref().is_some_and(Claim::awaits_accept) => {
+                let claim = claim.as_mut().expect("checked above");
+                match accept_or_cancel(executor, claim, reads, rx).await {
+                    Err(cancel) => {
+                        return cancel_claim(
+                            executor,
+                            device,
+                            Some(claim),
+                            Cancelled {
+                                cancel,
+                                waiting: None,
+                            },
+                            reads,
+                            rx,
+                            reply,
+                        )
+                        .await
+                    }
+                    Ok(Err(screen)) => return answer(reply, Ok(screen)),
+                    Ok(Ok(())) => {}
+                }
+                let screen = match follow_claim(executor, claim, reads, rx, reply).await {
+                    Err(cancel) => {
+                        return cancel_claim(
+                            executor,
+                            device,
+                            Some(claim),
+                            cancel,
+                            reads,
+                            rx,
+                            reply,
+                        )
+                        .await
+                    }
+                    Ok(screen) => screen,
                 };
                 return answer(reply, Ok(screen));
             }
@@ -1149,45 +2130,1178 @@ async fn link_on<R: ExecutorRpc>(
     }
 }
 
-/// Resolves when the window cancels. A `Public` read uses the flow's executor for the did, then
-/// asks the keychain off this task ([`keychain_call`]). This loop selects on the next request and
-/// on that read finishing, so Cancel is answered while the read waits. At most one read is in the
-/// keychain: a second `Public` waits for the first to finish before it asks. The caller selects
-/// this future against the claim, whose deadline is the offer's expiry. Dropping it when the
-/// claim arrives does not drop the read.
-async fn wait_cancel<R: ExecutorRpc>(
-    executor: &ViaExecutor<R>,
-    vault: &Arc<DesktopVault>,
-    rx: &mut Rx,
-) {
-    let mut reads = LiveReads::new();
+/// A ticket this executor claimed (`link-ticket`). `needs_accept`: the executor binds only once the
+/// person accepts the identity here (`needsAccept`, from coasys/ad4m#1635; absent before it).
+struct TicketClaimed {
+    did: String,
+    offer_id: String,
+    match_code: String,
+    needs_accept: bool,
+}
+
+/// The claim the new device follows, from its `link-ticket` to the join.
+struct Claim {
+    offer_id: String,
+    did: String,
+    code: String,
+    needs_accept: bool,
+    /// When the claim can no longer be confirmed.
+    deadline: u64,
+    /// The person accepted the identity here (`identity.acceptJoin`).
+    accepted: bool,
+    /// The holder confirmed (`awaiting-accept`), and the window was told.
+    confirmed: bool,
+}
+
+impl Claim {
+    fn screen(&self) -> Screen {
+        Screen::DeviceMatch {
+            code: self.code.clone(),
+            did: self.did.clone(),
+            needs_accept: self.needs_accept,
+            accepted: self.accepted,
+            confirmed: self.confirmed,
+        }
+    }
+
+    /// The executor waits for the person to accept the identity here.
+    fn awaits_accept(&self) -> bool {
+        self.needs_accept && !self.accepted
+    }
+
+    /// The claim `ticket` made, from now.
+    fn from_ticket(ticket: TicketClaimed) -> Claim {
+        Claim {
+            offer_id: ticket.offer_id,
+            did: ticket.did,
+            code: ticket.match_code,
+            needs_accept: ticket.needs_accept,
+            // The offer lives at most `OFFER_TTL_S` from its claim, and the holder's confirm may
+            // land in the store's grace after it.
+            deadline: CLOCK.now() + OFFER_TTL_S + CONFIRM_GRACE_S,
+            accepted: false,
+            confirmed: false,
+        }
+    }
+}
+
+/// The next `link-ticket` event; `None` once the connection closed.
+async fn next_ticket(events: &mut broadcast::Receiver<Value>) -> Option<TicketClaimed> {
     loop {
-        tokio::select! {
-            request = rx.recv() => {
+        match events.recv().await {
+            Ok(event) => {
+                if let Some(ticket) = ticket_of(&event) {
+                    return Some(ticket);
+                }
+            }
+            Err(broadcast::error::RecvError::Lagged(_)) => {}
+            Err(broadcast::error::RecvError::Closed) => return None,
+        }
+    }
+}
+
+/// A `link-ticket` event already received, without waiting for one.
+fn ticket_ready(events: &mut broadcast::Receiver<Value>) -> Option<TicketClaimed> {
+    loop {
+        match events.try_recv() {
+            Ok(event) => {
+                if let Some(ticket) = ticket_of(&event) {
+                    return Some(ticket);
+                }
+            }
+            Err(broadcast::error::TryRecvError::Lagged(_)) => {}
+            Err(_) => return None,
+        }
+    }
+}
+
+/// The ticket `event` is, if it is a `link-ticket` with its fields.
+fn ticket_of(event: &Value) -> Option<TicketClaimed> {
+    if event["type"] != "link-ticket" {
+        return None;
+    }
+    let text = |key: &str| event[key].as_str().map(str::to_string);
+    match (text("did"), text("offerId"), text("matchCode")) {
+        (Some(did), Some(offer_id), Some(match_code)) => Some(TicketClaimed {
+            did,
+            offer_id,
+            match_code,
+            needs_accept: event["needsAccept"].as_bool().unwrap_or(false),
+        }),
+        _ => {
+            log::warn!("custody: a link-ticket event without its fields");
+            None
+        }
+    }
+}
+
+/// Follows this executor's claim (`identity.joinStatus`) every [`JOIN_POLL`] until the holder
+/// confirms it (`Joined`), the offer ends, or the claim's deadline passes — each call and each wait
+/// cut off there. While it waits it answers the window: a cancel ends it (`Err`, with the cancel's
+/// reply for [`cancel_claim`]), and an [`StepInput::Accept`] accepts the identity, answers the
+/// waiting request with the accepted `DeviceMatch` and becomes the request this answers. A claim
+/// the holder confirmed but the person has not accepted (`awaiting-accept`) answers `DeviceMatch`
+/// once, so the window asks. The main window's state is read beside it ([`StateReads`]), so a slow
+/// read holds neither a cancel nor the deadline.
+async fn follow_claim<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    claim: &mut Claim,
+    reads: &mut StateReads<'_>,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) -> Result<Screen, Cancelled> {
+    let closed = claim_closed;
+    let mut next_poll = tokio::time::Instant::now();
+    loop {
+        if claim.deadline <= CLOCK.now() {
+            return Ok(closed());
+        }
+        let offer_id = claim.offer_id.clone();
+        let deadline = claim.deadline;
+        let poll = async move {
+            tokio::time::sleep_until(next_poll).await;
+            let left = deadline.saturating_sub(CLOCK.now());
+            tokio::time::timeout(
+                Duration::from_secs(left),
+                executor
+                    .rpc()
+                    .call("identity.joinStatus", json!({ "offerId": offer_id })),
+            )
+            .await
+        };
+        let polled = tokio::select! {
+            join = poll => Some(join),
+            request = reads.recv(rx) => {
                 match request {
-                    None => return,
+                    None => return Err(Cancelled::default()),
                     Some(Request::Cancel(r)) => {
-                        let _ = r.send(());
-                        return;
+                        return Err(Cancelled {
+                            cancel: Some(r),
+                            ..Default::default()
+                        })
                     }
-                    Some(Request::Public(r)) => {
-                        // The did comes from this flow's executor (a reconnect would miss a fake
-                        // one, and would open a second socket in production). The keychain half
-                        // owns its data, so it can finish after this select is dropped.
-                        let prepared = prepare(Some(executor), vault).await;
-                        let vault = Arc::clone(vault);
-                        reads.push(r, move || finish_from(vault, prepared));
-                    }
+                    Some(Request::Public(r)) => reads.ask(r),
                     Some(Request::Start(_, r)) => {
                         let _ = r.send(Err(CustodyError::Busy));
+                    }
+                    Some(Request::Step(StepInput::Accept, r)) if claim.awaits_accept() => {
+                        match accept_or_cancel(executor, claim, reads, rx).await {
+                            // The wait and the accept are both cut short: the cancel answers both.
+                            Err(cancel) => {
+                                let waiting = reply.replace(r);
+                                return Err(Cancelled { cancel, waiting });
+                            }
+                            Ok(Err(screen)) => {
+                                answer(reply, Ok(screen.clone()));
+                                *reply = Some(r);
+                                return Ok(screen);
+                            }
+                            Ok(Ok(())) => {}
+                        }
+                        answer(reply, Ok(claim.screen()));
+                        *reply = Some(r);
+                        // Asked again at once: the holder may have confirmed already.
+                        next_poll = tokio::time::Instant::now();
                     }
                     Some(Request::Step(_, r)) => {
                         let _ = r.send(Err(CustodyError::Busy));
                     }
                 }
+                None
             }
-            public = async { reads.flying.as_mut().unwrap().1.as_mut().await }, if reads.busy() => {
-                reads.deliver(public);
+        };
+        let Some(join) = polled else {
+            continue;
+        };
+        let join = match join {
+            Ok(Ok(join)) => join,
+            Ok(Err(e)) => return Ok(failed(&ClientError::Rpc(e))),
+            Err(_) => return Ok(closed()),
+        };
+        match join["state"].as_str() {
+            Some("claimed") => {}
+            // The holder confirmed; the executor binds once the person accepts here.
+            Some("awaiting-accept") => {
+                if !claim.accepted && !claim.confirmed {
+                    claim.needs_accept = true;
+                    claim.confirmed = true;
+                    return Ok(claim.screen());
+                }
+            }
+            Some("cancelled") => return Ok(cancelled_here()),
+            Some("spent") => {
+                return Ok(match (join["did"].as_str(), join["keyId"].as_str()) {
+                    (Some(did), Some(key_id)) => Screen::Joined {
+                        did: did.to_string(),
+                        key_id: key_id.to_string(),
+                    },
+                    _ => Screen::Failed {
+                        message: "The link was confirmed, but this computer isn't in your key \
+                                  log. Show a new code to try again."
+                            .into(),
+                    },
+                })
+            }
+            other => {
+                log::warn!(
+                    "custody: the link ended unconfirmed ({})",
+                    other.unwrap_or("unknown")
+                );
+                return Ok(Screen::Failed {
+                    message: "The link wasn't confirmed. Show a new code to try again.".into(),
+                });
+            }
+        }
+        next_poll = tokio::time::Instant::now()
+            + JOIN_POLL.min(Duration::from_secs(
+                claim.deadline.saturating_sub(CLOCK.now()),
+            ));
+    }
+}
+
+/// The person accepts the identity of `offer_id` here: the executor may record it as its operator
+/// once the holder confirms. `identity.acceptJoin` `{ offerId }` → `{ accepted: true }` is new in
+/// coasys/ad4m#1635 and not in the client this crate pins yet, so it is called by name.
+async fn accept_join<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    offer_id: &str,
+) -> Result<(), Screen> {
+    match executor
+        .rpc()
+        .call("identity.acceptJoin", json!({ "offerId": offer_id }))
+        .await
+    {
+        Ok(_) => Ok(()),
+        Err(e) if e.code == 409 && e.message.starts_with("cancelled") => Err(cancelled_here()),
+        Err(e) if e.code == 404 => Err(Screen::Failed {
+            message: "This link has closed. Show a new code to try again.".into(),
+        }),
+        Err(e) => Err(failed(&ClientError::Rpc(e))),
+    }
+}
+
+/// [`accept_join`] while the window can still cancel: the accept is cut off at the claim's
+/// deadline, and a cancel that arrives meanwhile ends the wait (`Err`, with the cancel's reply for
+/// [`cancel_claim`], which ends the executor's claim before it answers). The main window's state is
+/// read beside the accept ([`StateReads`]): its lookup is several calls to the executor, which
+/// would otherwise hold a cancel past the claim's deadline. Anything else is refused. `Ok` holds
+/// what the accept came to; accepted, the claim says so.
+async fn accept_or_cancel<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    claim: &mut Claim,
+    reads: &mut StateReads<'_>,
+    rx: &mut Rx,
+) -> Result<Result<(), Screen>, Option<CancelReply>> {
+    let offer_id = claim.offer_id.clone();
+    let left = Duration::from_secs(claim.deadline.saturating_sub(CLOCK.now()));
+    let accepting = tokio::time::timeout(left, accept_join(executor, &offer_id));
+    tokio::pin!(accepting);
+    loop {
+        tokio::select! {
+            accepted = &mut accepting => {
+                return Ok(match accepted {
+                    Ok(Ok(())) => {
+                        claim.accepted = true;
+                        Ok(())
+                    }
+                    Ok(Err(screen)) => Err(screen),
+                    Err(_) => Err(claim_closed()),
+                });
+            }
+            request = reads.recv(rx) => match request {
+                None => return Err(None),
+                Some(Request::Cancel(r)) => return Err(Some(r)),
+                Some(Request::Public(r)) => reads.ask(r),
+                Some(Request::Start(_, r) | Request::Step(_, r)) => {
+                    let _ = r.send(Err(CustodyError::Busy));
+                }
+            },
+        }
+    }
+}
+
+/// What a claim the holder did not confirm before its deadline ends with.
+fn claim_closed() -> Screen {
+    Screen::Failed {
+        message: "The other device didn't confirm in time. Show a new code to try again.".into(),
+    }
+}
+
+/// Ends this executor's claim of `offer_id` when the person cancels, so a confirm that lands later
+/// does not join this computer: the fallback of [`end_code`] when the code's own end did not
+/// cancel the claim seen here. `identity.cancelJoin` `{ offerId }` → `{ cancelled: true }` is new
+/// in coasys/ad4m#1635, called by name until the pinned client has it. `None` once the executor
+/// confirms the claim ended (or was cancelled already, 409 `cancelled`); else the screen to show
+/// instead of a cancel. A claim that already bound (409 `already-joined`) is not undone, so this
+/// computer did join. Any other answer, or none by `deadline` (an executor without `cancelJoin`
+/// keeps the claim until the offer expires), leaves the claim standing: a confirm may still join
+/// this computer, and the screen says so. The join's lookup is cut off at `deadline` too: the
+/// custody thread answers nothing else meanwhile.
+async fn cancel_join<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    offer_id: &str,
+    deadline: tokio::time::Instant,
+) -> Option<Screen> {
+    let cancelled = tokio::time::timeout_at(
+        deadline,
+        executor
+            .rpc()
+            .call("identity.cancelJoin", json!({ "offerId": offer_id })),
+    )
+    .await;
+    match cancelled {
+        Ok(Ok(_)) => None,
+        Ok(Err(e)) if e.code == 409 && e.message.starts_with("cancelled") => None,
+        Ok(Err(e)) if e.code == 409 && e.message.starts_with("already-joined") => {
+            log::info!("custody: the claim of offer {offer_id} had already joined; not cancelled");
+            Some(already_joined(executor, offer_id, deadline).await)
+        }
+        Ok(Err(e)) => {
+            log::warn!("custody: the claim was not cancelled: {e}");
+            Some(cancel_unconfirmed())
+        }
+        Err(_) => {
+            log::warn!("custody: the executor did not answer the cancel of offer {offer_id}");
+            Some(cancel_unconfirmed())
+        }
+    }
+}
+
+/// Ends the shown code `device` when the person cancels, so neither a ticket read later nor a claim
+/// already made joins this computer. `identity.endPrepared` `{ device }` (new in coasys/ad4m#1635,
+/// called by name until the pinned client has it) stops the code's ticket read, waits for a ticket
+/// it is taking, and cancels every claim the read made: `{ state: "ended", cancelled: [offerId] }`,
+/// or `{ state: "already-joined", offerId, did }` when one had bound. `None` once the code ended
+/// (the window closes as any cancel), with `claim`, the one seen here, among the cancelled or then
+/// ended by [`cancel_join`]. An already joined claim shows the join ([`already_joined`]). An
+/// executor that refuses the call (one without it, or restarted since the code was made) leaves the
+/// claim seen here to [`cancel_join`]; with none seen, the code may still link: the cancel says it
+/// was not confirmed. All of it is cut off at [`CANCEL_WAIT`].
+async fn end_code<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    device: &str,
+    claim: Option<&Claim>,
+) -> Option<Screen> {
+    let deadline = tokio::time::Instant::now() + CANCEL_WAIT;
+    let ended = tokio::time::timeout_at(
+        deadline,
+        executor
+            .rpc()
+            .call("identity.endPrepared", json!({ "device": device })),
+    )
+    .await;
+    let answer = match ended {
+        Ok(Ok(answer)) => answer,
+        Ok(Err(e)) => {
+            log::warn!("custody: the code was not ended: {e}");
+            return match claim {
+                Some(claim) => cancel_join(executor, &claim.offer_id, deadline).await,
+                None => Some(cancel_unconfirmed()),
+            };
+        }
+        Err(_) => {
+            log::warn!("custody: the executor did not answer the end of the code");
+            return Some(cancel_unconfirmed());
+        }
+    };
+    match answer["state"].as_str() {
+        Some("ended") => {
+            let cancelled = |offer_id: &str| {
+                answer["cancelled"]
+                    .as_array()
+                    .is_some_and(|ids| ids.iter().any(|id| id.as_str() == Some(offer_id)))
+            };
+            match claim {
+                Some(claim) if !cancelled(&claim.offer_id) => {
+                    cancel_join(executor, &claim.offer_id, deadline).await
+                }
+                _ => None,
+            }
+        }
+        Some("already-joined") => {
+            let offer_id = answer["offerId"]
+                .as_str()
+                .or(claim.map(|c| c.offer_id.as_str()));
+            log::info!("custody: a claim of the code had already joined; not cancelled");
+            Some(match offer_id {
+                Some(offer_id) => already_joined(executor, offer_id, deadline).await,
+                None => Screen::Failed {
+                    message: ALREADY_JOINED.into(),
+                },
+            })
+        }
+        _ => {
+            log::warn!("custody: the end of the code answered {answer}");
+            match claim {
+                Some(claim) => cancel_join(executor, &claim.offer_id, deadline).await,
+                None => Some(cancel_unconfirmed()),
+            }
+        }
+    }
+}
+
+/// How long a cancel waits for the executor to end the claim before saying it could not.
+const CANCEL_WAIT: Duration = Duration::from_secs(10);
+
+/// Ends the code `device` and `claim` when the window cancels the step, before the cancel is
+/// answered, so the window closes only once the executor confirmed it ([`end_code`]). The cancel
+/// and a request still waiting on the claim are answered alike: `None`/`NoStep` once it ended, else
+/// the screen to show. A claim whose `link-ticket` is still on the way is ended with the code, so
+/// a cancel with no claim seen here closes the window too. A cancel that arrives while the executor is
+/// asked, or is queued when the answer is known (with a claim or without), is the same cancel and
+/// gets the same answer: answered later by the idle service, its `None` would close a window that
+/// should show the join or the warning. The main window's state is read beside the cancel
+/// ([`StateReads`]), and a read still under way once the cancel is answered stays there for the
+/// service: its lookup is several calls to the executor, which would otherwise hold the cancel
+/// past [`CANCEL_WAIT`].
+async fn cancel_claim<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    device: &str,
+    claim: Option<&Claim>,
+    cancelled: Cancelled,
+    reads: &mut StateReads<'_>,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) {
+    let Cancelled {
+        cancel,
+        mut waiting,
+    } = cancelled;
+    let mut cancels: Vec<CancelReply> = cancel.into_iter().collect();
+    let mut taken = |request, reads: &mut StateReads<'_>| match request {
+        Request::Cancel(r) => cancels.push(r),
+        Request::Public(r) => reads.ask(r),
+        Request::Start(_, r) | Request::Step(_, r) => {
+            let _ = r.send(Err(CustodyError::Busy));
+        }
+    };
+    let ending = end_code(executor, device, claim);
+    tokio::pin!(ending);
+    let instead = loop {
+        tokio::select! {
+            instead = &mut ending => break instead,
+            Some(request) = reads.recv(rx) => taken(request, reads),
+        }
+    };
+    // Requests queued by the time the cancel is decided are this cancel's too, with or without a
+    // claim: a second cancel left to the idle service would close the window over the answer.
+    while let Ok(request) = rx.try_recv() {
+        taken(request, reads);
+    }
+    answer(reply, instead.clone().ok_or(CustodyError::NoStep));
+    answer(&mut waiting, instead.clone().ok_or(CustodyError::NoStep));
+    for cancel in cancels {
+        let _ = cancel.send(instead.clone());
+    }
+}
+
+/// The main window's state requests, read beside whatever the service does: one read of the state
+/// at a time answers every request that came before it started, and the next answers those that
+/// came while it ran. A wait that selects on [`StateReads::recv`] keeps the read going; the read
+/// lives here, not in the wait, so a wait that loses its select drops no request and no read part
+/// way. The service owns it across steps ([`serve`]): a read a flow left under way when its step
+/// was answered goes on beside the next request ([`idle`]) or the next flow ([`beside`]), so it
+/// never holds them, and [`StateReads::finish`] answers whatever is left once the app is gone.
+struct StateReads<'a> {
+    vault: &'a Arc<DesktopVault>,
+    address: &'a ExecutorAddress,
+    /// Starts one read of the state.
+    read: Box<dyn Fn() -> StateRead<'a> + 'a>,
+    /// The read under way and the requests it answers.
+    reading: Option<Reading<'a>>,
+    /// Requests that came while a read was under way: the next read answers them.
+    queued: Vec<PublicReply>,
+}
+
+type StateRead<'a> = std::pin::Pin<Box<dyn std::future::Future<Output = CustodyPublic> + 'a>>;
+
+type Reading<'a> = (StateRead<'a>, Vec<PublicReply>);
+
+impl<'a> StateReads<'a> {
+    fn new(vault: &'a Arc<DesktopVault>, address: &'a ExecutorAddress) -> Self {
+        StateReads {
+            vault,
+            address,
+            read: Box::new(move || Box::pin(public_state(vault, address))),
+            reading: None,
+            queued: Vec::new(),
+        }
+    }
+
+    /// [`StateReads::new`] with `read` standing for the executor that answers, which a test has
+    /// no socket for.
+    #[cfg(test)]
+    fn with_read(
+        vault: &'a Arc<DesktopVault>,
+        address: &'a ExecutorAddress,
+        read: impl Fn() -> StateRead<'a> + 'a,
+    ) -> Self {
+        StateReads {
+            read: Box::new(read),
+            ..StateReads::new(vault, address)
+        }
+    }
+
+    /// Takes a state request: read now when no read is under way, else by the next.
+    fn ask(&mut self, r: PublicReply) {
+        self.queued.push(r);
+        self.start();
+    }
+
+    fn start(&mut self) {
+        if self.reading.is_none() && !self.queued.is_empty() {
+            let read = (self.read)();
+            self.reading = Some((read, std::mem::take(&mut self.queued)));
+        }
+    }
+
+    /// Answers the read under way once it ends, and starts the next; never ends with none under
+    /// way. Safe to drop part way: the read stays here.
+    async fn answer_one(&mut self) {
+        let Some((read, _)) = self.reading.as_mut() else {
+            return std::future::pending().await;
+        };
+        let state = read.await;
+        if let Some((_, waiting)) = self.reading.take() {
+            for r in waiting {
+                let _ = r.send(state.clone());
+            }
+        }
+        self.start();
+    }
+
+    /// The window's next request, the state read going on beside the wait. A state request is
+    /// taken here and never returned. Safe to drop part way, as `rx.recv` is.
+    async fn recv(&mut self, rx: &mut Rx) -> Option<Request> {
+        loop {
+            tokio::select! {
+                request = rx.recv() => match request {
+                    Some(Request::Public(r)) => self.ask(r),
+                    other => return other,
+                },
+                () = self.answer_one() => {}
+            }
+        }
+    }
+
+    /// Answers every request taken, the read under way finished rather than dropped: once the app
+    /// is gone, so no state request is left unanswered.
+    async fn finish(&mut self) {
+        while self.reading.is_some() {
+            self.answer_one().await;
+        }
+    }
+}
+
+/// [`next_input_or_cancel`] with the state read beside the wait ([`StateReads`]).
+async fn next_input_beside(
+    reads: &mut StateReads<'_>,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) -> Result<StepInput, Option<CancelReply>> {
+    loop {
+        match reads.recv(rx).await {
+            None => return Err(None),
+            Some(Request::Step(input, r)) => {
+                *reply = Some(r);
+                return Ok(input);
+            }
+            Some(Request::Cancel(r)) => return Err(Some(r)),
+            Some(Request::Start(_, r)) => {
+                let _ = r.send(Err(CustodyError::Busy));
+            }
+            Some(Request::Public(r)) => reads.ask(r),
+        }
+    }
+}
+
+/// [`next_cancel`] with the state read beside the wait ([`StateReads`]): a wait that loses its
+/// select drops no state request.
+async fn next_cancel_beside(reads: &mut StateReads<'_>, rx: &mut Rx) -> Option<CancelReply> {
+    loop {
+        match reads.recv(rx).await {
+            None => return None,
+            Some(Request::Cancel(r)) => return Some(r),
+            Some(Request::Public(r)) => reads.ask(r),
+            Some(Request::Start(_, r) | Request::Step(_, r)) => {
+                let _ = r.send(Err(CustodyError::Busy));
+            }
+        }
+    }
+}
+
+/// A cancel of a claim, for [`cancel_claim`]: the cancel's own reply (`None` once the window
+/// closed), and a request it cut short beside the step's own (the wait for the join an accept
+/// arrived beside), answered the same.
+#[derive(Default)]
+struct Cancelled {
+    cancel: Option<CancelReply>,
+    waiting: Reply,
+}
+
+/// What a cancel that came too late shows: `Joined`, from the claim's `identity.joinStatus`, or in
+/// words when that does not name the key this computer joined as, or does not answer by `deadline`.
+async fn already_joined<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    offer_id: &str,
+    deadline: tokio::time::Instant,
+) -> Screen {
+    let status = tokio::time::timeout_at(
+        deadline,
+        executor
+            .rpc()
+            .call("identity.joinStatus", json!({ "offerId": offer_id })),
+    )
+    .await;
+    match &status {
+        Ok(Ok(join)) => {
+            if let (Some("spent"), Some(did), Some(key_id)) = (
+                join["state"].as_str(),
+                join["did"].as_str(),
+                join["keyId"].as_str(),
+            ) {
+                return Screen::Joined {
+                    did: did.to_string(),
+                    key_id: key_id.to_string(),
+                };
+            }
+        }
+        Ok(Err(_)) => {}
+        Err(_) => log::warn!("custody: the executor did not say how offer {offer_id} joined"),
+    }
+    Screen::Failed {
+        message: ALREADY_JOINED.into(),
+    }
+}
+
+/// A cancel that reached the executor after this computer joined, when the join's key is unknown.
+const ALREADY_JOINED: &str =
+    "This computer was already linked when you cancelled, so it stays linked.";
+
+/// A cancel the executor did not confirm: the claim may stand, and a confirm still join.
+fn cancel_unconfirmed() -> Screen {
+    Screen::Failed {
+        message: CANCEL_UNCONFIRMED.into(),
+    }
+}
+
+const CANCEL_UNCONFIRMED: &str =
+    "The cancel wasn't confirmed. This computer is still linked if your other device \
+     confirms.";
+
+/// The claim was cancelled on this computer (`identity.acceptJoin` 409 `cancelled`, or a
+/// `cancelled` `identity.joinStatus`).
+fn cancelled_here() -> Screen {
+    Screen::Failed {
+        message: "This link was cancelled. Show a new code to try again.".into(),
+    }
+}
+
+// ─── the master key on a linked device ──────────────────────────────────────────
+
+/// A passphrase for a new sealed item, asked until it passes [`seal::check_new`]; `None` when
+/// the window cancels.
+async fn new_passphrase(
+    vault: &Arc<DesktopVault>,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) -> Option<Secret<String>> {
+    answer(reply, Ok(Screen::SetPassphrase { error: None }));
+    loop {
+        let input = next_input(vault, address, rx, reply).await?;
+        match input {
+            StepInput::Passphrase {
+                passphrase: p,
+                confirm,
+            } => {
+                let p = Secret::new(p);
+                let confirm = Secret::new(confirm.unwrap_or_default());
+                match seal::check_new(p.expose(), confirm.expose()) {
+                    Ok(()) => return Some(p),
+                    Err(problem) => answer(
+                        reply,
+                        Ok(Screen::SetPassphrase {
+                            error: passphrase_error(problem),
+                        }),
+                    ),
+                }
+            }
+            _ => answer(reply, Err(CustodyError::WrongInput)),
+        }
+    }
+}
+
+/// Takes the master key waiting in this computer's inbox into the vault, where this computer
+/// keeps a new item: behind the OS unlock, or sealed under a passphrase set here. Where the OS
+/// unlocks it the key is also taken without this step ([`public_state_on`]).
+async fn run_take_master(
+    vault: &Arc<DesktopVault>,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) {
+    let executor = match connect(address, vault).await {
+        Ok(e) => e,
+        Err(message) => return answer(reply, Ok(Screen::Failed { message })),
+    };
+    take_master_on(&executor, vault, address, rx, reply).await
+}
+
+const NO_MASTER_WAITING: &str = "No master key was sent to this computer. Ask for it, then \
+     send it from a device that has it.";
+
+/// [`run_take_master`] once the executor answers.
+async fn take_master_on<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &Arc<DesktopVault>,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) {
+    let did = match executor.status().await {
+        Ok(status) => match status.did {
+            Some(did) => did,
+            None => {
+                return answer(
+                    reply,
+                    Ok(Screen::Failed {
+                        message: "This computer isn't linked yet.".into(),
+                    }),
+                )
+            }
+        },
+        Err(e) => return answer(reply, Ok(failed(&ClientError::Rpc(e)))),
+    };
+    if !master_waits(executor).await {
+        // A key sealed to an enc key this computer no longer keeps never shows as waiting.
+        let message = if enc_lost_now(executor).await {
+            ENC_MISMATCH
+        } else {
+            NO_MASTER_WAITING
+        };
+        return answer(
+            reply,
+            Ok(Screen::Failed {
+                message: message.into(),
+            }),
+        );
+    }
+    let Some(scid) = ad4m_identity_core::scid_of(&did) else {
+        return answer(reply, Ok(failed(&ClientError::Vault(VaultError::NotFound))));
+    };
+    // A key already kept here is replaced where it rests, and opened with its passphrase; a new
+    // one goes where a new item goes.
+    let sealed = match held_sealed(vault, scid) {
+        Ok(Some(sealed)) => sealed,
+        Ok(None) => false,
+        Err(e) => return answer(reply, Ok(failed(&ClientError::Vault(e)))),
+    };
+    let held = matches!(vault.holds(scid), Ok(true));
+    let mut unlocking = vault.unlocking(None);
+    if !held && vault.needs_passphrase() {
+        let Some(p) = new_passphrase(vault, address, rx, reply).await else {
+            return;
+        };
+        unlocking = vault.unlocking(Some(p));
+    } else if sealed {
+        answer(reply, Ok(Screen::EnterPassphrase { error: None }));
+    }
+    loop {
+        if sealed {
+            let Some(input) = next_input(vault, address, rx, reply).await else {
+                return;
+            };
+            let StepInput::Passphrase { passphrase: p, .. } = input else {
+                answer(reply, Err(CustodyError::WrongInput));
+                continue;
+            };
+            unlocking = vault.unlocking(Some(Secret::new(p)));
+        }
+        let screen = match take_master(executor, &unlocking, &RANDOM).await {
+            Ok(Some(taken)) => Screen::MasterTaken {
+                note: taken.record.err().map(|e| {
+                    log::warn!("custody: the record does not mark this computer yet: {e}");
+                    "Your device list shows this after its next change.".to_string()
+                }),
+                did: taken.did,
+            },
+            Ok(None) => Screen::Failed {
+                message: NO_MASTER_WAITING.into(),
+            },
+            Err(ClientError::Vault(VaultError::Cancelled)) if sealed => {
+                answer(reply, Ok(wrong_passphrase()));
+                continue;
+            }
+            Err(e) => failed(&e),
+        };
+        return answer(reply, Ok(screen));
+    }
+}
+
+/// A linked app without the master key asks the identity's other devices for it: a
+/// `send-master` request in the identity's box, which a holder answers.
+async fn run_ask_master(vault: &Arc<DesktopVault>, address: &ExecutorAddress, reply: &mut Reply) {
+    let executor = match connect(address, vault).await {
+        Ok(e) => e,
+        Err(message) => return answer(reply, Ok(Screen::Failed { message })),
+    };
+    answer(reply, Ok(ask_master_on(&executor, vault).await));
+}
+
+/// [`run_ask_master`] once the executor answers.
+async fn ask_master_on<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &Arc<DesktopVault>,
+) -> Screen {
+    let status = match executor.status().await {
+        Ok(status) => status,
+        Err(e) => return failed(&ClientError::Rpc(e)),
+    };
+    let (Some(did), Some(key_id)) = (status.did, status.key_id) else {
+        return Screen::Failed {
+            message: "This computer isn't linked yet.".into(),
+        };
+    };
+    let Some(scid) = ad4m_identity_core::scid_of(&did) else {
+        return Screen::Failed {
+            message: "This computer isn't linked yet.".into(),
+        };
+    };
+    if matches!(vault.holds(scid), Ok(true)) {
+        return Screen::Failed {
+            message: "This computer already has the master key.".into(),
+        };
+    }
+    // The holder would seal it to the enc key the log lists, which this computer cannot open.
+    if enc_lost_now(executor).await {
+        return Screen::Failed {
+            message: ENC_MISMATCH.into(),
+        };
+    }
+    match executor
+        .post_request(&DeviceRequestBody::SendMaster {}, None)
+        .await
+    {
+        Ok(id) => Screen::Asked {
+            key_id,
+            fingerprint: crate::keylog::fingerprint(&status.device_key),
+            code: ad4m_identity_core::link::match_code(scid, &id, &status.device_key),
+        },
+        Err(e) => failed(&ClientError::Rpc(e)),
+    }
+}
+
+// ─── a request in the box (the holder's answer) ───────────────────────────────────
+
+/// Shows a waiting request, by the names the record gives its devices, and does what it asks
+/// when the person says yes. Saying no is closing the window: the request waits until it
+/// expires, for another holder to answer.
+async fn run_answer(
+    vault: &Arc<DesktopVault>,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+    id: String,
+) {
+    let executor = match connect(address, vault).await {
+        Ok(e) => e,
+        Err(message) => return answer(reply, Ok(Screen::Failed { message })),
+    };
+    answer_on(&executor, vault, address, rx, reply, id).await
+}
+
+/// [`run_answer`] once the executor answers.
+async fn answer_on<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &Arc<DesktopVault>,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+    id: String,
+) {
+    if let Err(refused) = trusted_store(executor).await {
+        return answer(reply, Ok(refused));
+    }
+    let (did, _) = match holder_of(executor, vault).await {
+        Ok(holder) => holder,
+        Err(screen) => return answer(reply, Ok(screen)),
+    };
+    let request = match executor.requests(0).await {
+        Ok(requests) => requests.into_iter().find(|r| r.id == id),
+        Err(e) => return answer(reply, Ok(failed(&ClientError::Rpc(e)))),
+    };
+    let Some(request) = request else {
+        return answer(
+            reply,
+            Ok(Screen::Failed {
+                message: "This request is no longer open.".into(),
+            }),
+        );
+    };
+    let needs = match passphrase_for(vault, &did) {
+        Ok(needs) => needs,
+        Err(e) => return answer(reply, Ok(failed(&e))),
+    };
+    let names = match record::read(executor, &vault.unlocking(None), &did).await {
+        Ok(Some(opened)) => opened.record.devices,
+        _ => Default::default(),
+    };
+    let name_of = |key_id: &str| {
+        names
+            .get(key_id)
+            .map(|entry| entry.name.clone())
+            .unwrap_or_else(|| format!("Device {key_id}"))
+    };
+    // Who asks and, for a revoke, which keys go, from the log: signing keys and whether each
+    // claim said it may keep the master key. The record's names and kinds, and what it says
+    // about the master key, are any linked device's to write.
+    let events = match executor.events(&did).await {
+        Ok(events) => events,
+        Err(e) => return answer(reply, Ok(failed(&ClientError::Rpc(e)))),
+    };
+    let (kind, targets) = match &request.body {
+        DeviceRequestBody::SendMaster {} => ("send-master", Vec::new()),
+        DeviceRequestBody::ConfirmRevoke { key_ids, .. } => {
+            let mut targets = Vec::with_capacity(key_ids.len());
+            for key_id in key_ids {
+                let Some(logged) = crate::keylog::device(&events, key_id) else {
+                    return answer(
+                        reply,
+                        Ok(Screen::Failed {
+                            message: format!(
+                                "This request asks to remove {key_id}, which isn't in your key log."
+                            ),
+                        }),
+                    );
+                };
+                targets.push(RevokeTarget {
+                    key_id: key_id.clone(),
+                    fingerprint: crate::keylog::fingerprint(&logged.sign),
+                    record_name: names.get(key_id.as_str()).map(|entry| entry.name.clone()),
+                    may_hold_master: logged.may_keep_master,
+                });
+            }
+            ("confirm-revoke", targets)
+        }
+    };
+    let logged = crate::keylog::device(&events, &request.by);
+    let (Some(logged), Some(scid)) = (logged, ad4m_identity_core::scid_of(&did)) else {
+        return answer(
+            reply,
+            Ok(Screen::Failed {
+                message: "The device asking isn't in your key log.".into(),
+            }),
+        );
+    };
+    let fingerprint = crate::keylog::fingerprint(&logged.sign);
+    if kind == "send-master" && !logged.may_keep_master {
+        return answer(
+            reply,
+            Ok(Screen::Failed {
+                message: format!(
+                    "Device {} (key {fingerprint}) was linked as a device that can't have the \
+                     master key. Nothing was sent.",
+                    request.by
+                ),
+            }),
+        );
+    }
+    let code = ad4m_identity_core::link::match_code(scid, &request.id, &logged.sign);
+    let device = name_of(&request.by);
+    let card = |error: Option<String>| Screen::Request {
+        id: id.clone(),
+        kind,
+        key_id: request.by.clone(),
+        fingerprint: fingerprint.clone(),
+        code: code.clone(),
+        device: device.clone(),
+        targets: targets.clone(),
+        passphrase: needs,
+        error,
+    };
+    answer(reply, Ok(card(None)));
+    loop {
+        let Some(input) = next_input(vault, address, rx, reply).await else {
+            return;
+        };
+        let StepInput::Answer { passphrase } = input else {
+            answer(reply, Err(CustodyError::WrongInput));
+            continue;
+        };
+        let unlocking = vault.unlocking(passphrase.map(Secret::new));
+        match requests::answer(executor, &unlocking, &did, &request, &CLOCK, &RANDOM).await {
+            Ok(answered) => {
+                let record = match &answered {
+                    Answered::MasterSent(sent) => sent.record.as_ref().err(),
+                    Answered::Revoked(revoked) => revoked.record.as_ref().err(),
+                };
+                if let Some(e) = record {
+                    log::warn!("custody: the record was not changed after the answer: {e}");
+                }
+                retry_quietly(executor, &unlocking, &did).await;
+                return answer(
+                    reply,
+                    Ok(Screen::RequestAnswered {
+                        kind,
+                        device: device.clone(),
+                        note: record.map(|_| {
+                            "Your device list shows this after its next change.".to_string()
+                        }),
+                    }),
+                );
+            }
+            Err(ClientError::Vault(VaultError::Cancelled)) if needs => answer(
+                reply,
+                Ok(card(Some(
+                    "That passphrase does not open your master key.".into(),
+                ))),
+            ),
+            Err(e) => return answer(reply, Ok(failed(&e))),
+        }
+    }
+}
+
+// ─── rename a device ────────────────────────────────────────────────────────────────
+
+/// Names the device `key_id` in the identity's private record. Any linked device may: the record
+/// is written with this executor's device key, and no master key is unlocked.
+async fn run_rename(
+    vault: &Arc<DesktopVault>,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+    key_id: String,
+) {
+    let executor = match connect(address, vault).await {
+        Ok(e) => e,
+        Err(message) => return answer(reply, Ok(Screen::Failed { message })),
+    };
+    rename_on(&executor, vault, address, rx, reply, key_id).await
+}
+
+/// [`run_rename`] once the executor answers.
+async fn rename_on<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &Arc<DesktopVault>,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+    key_id: String,
+) {
+    let (did, own_key) = match holder_of(executor, vault).await {
+        Ok(holder) => holder,
+        Err(screen) => return answer(reply, Ok(screen)),
+    };
+    // A device without the master key names only itself: the record is written with any
+    // linked device's key, so naming another device is the master key holder's to do.
+    let holds =
+        ad4m_identity_core::scid_of(&did).is_some_and(|scid| matches!(vault.holds(scid), Ok(true)));
+    if !holds && own_key.as_deref() != Some(key_id.as_str()) {
+        return answer(
+            reply,
+            Ok(Screen::Failed {
+                message: "Only a device with the master key can rename other devices.".into(),
+            }),
+        );
+    }
+    let listed = match record::read(executor, &vault.unlocking(None), &did).await {
+        Ok(opened) => opened.and_then(|o| o.record.devices.get(&key_id).cloned()),
+        Err(e) => return answer(reply, Ok(failed(&e))),
+    };
+    answer(
+        reply,
+        Ok(Screen::Rename {
+            key_id: key_id.clone(),
+            name: listed.as_ref().map(|e| e.name.clone()).unwrap_or_default(),
+            error: None,
+        }),
+    );
+    loop {
+        let Some(input) = next_input(vault, address, rx, reply).await else {
+            return;
+        };
+        let StepInput::Name { name } = input else {
+            answer(reply, Err(CustodyError::WrongInput));
+            continue;
+        };
+        let Some(name) = given_name(Some(name)) else {
+            answer(
+                reply,
+                Ok(Screen::Rename {
+                    key_id: key_id.clone(),
+                    name: String::new(),
+                    error: Some("Enter a name.".into()),
+                }),
+            );
+            continue;
+        };
+        // A device the record does not list yet (this computer, which made the identity before
+        // any record existed) is listed with the name; a rename alone would change nothing.
+        let change = if listed.is_some() {
+            Change::Rename {
+                key_id: key_id.clone(),
+                name: name.clone(),
+            }
+        } else if own_key.as_deref() == Some(key_id.as_str()) {
+            let holds = ad4m_identity_core::scid_of(&did)
+                .is_some_and(|scid| matches!(vault.holds(scid), Ok(true)));
+            Change::Device {
+                key_id: key_id.clone(),
+                entry: this_computer(Some(name.clone()), holds),
+            }
+        } else {
+            Change::Device {
+                key_id: key_id.clone(),
+                entry: DeviceEntry {
+                    name: name.clone(),
+                    kind: DeviceKind::Server,
+                    place: None,
+                    address: None,
+                    runs_executor: true,
+                    holds_master: Holds::No,
+                    operator: None,
+                },
+            }
+        };
+        let screen =
+            match record::write(executor, &vault.unlocking(None), &did, &[change], &RANDOM).await {
+                Ok(_) => Screen::Renamed {
+                    key_id: key_id.clone(),
+                    name,
+                },
+                Err(e) => failed(&e),
+            };
+        return answer(reply, Ok(screen));
+    }
+}
+
+/// Resolves when the window cancels; answers `Public` in passing and refuses anything else.
+async fn wait_cancel(vault: &Arc<DesktopVault>, address: &ExecutorAddress, rx: &mut Rx) {
+    if let Some(cancel) = next_cancel(vault, address, rx).await {
+        let _ = cancel.send(None);
+    }
+}
+
+/// [`wait_cancel`], for a flow that must end something before the cancel is answered: the
+/// cancel's reply, `None` when the window went away.
+async fn next_cancel(
+    vault: &Arc<DesktopVault>,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+) -> Option<CancelReply> {
+    loop {
+        match rx.recv().await {
+            None => return None,
+            Some(Request::Cancel(r)) => return Some(r),
+            Some(Request::Public(r)) => {
+                let _ = r.send(public_state(vault, address).await);
+            }
+            Some(Request::Start(_, r)) => {
+                let _ = r.send(Err(CustodyError::Busy));
+            }
+            Some(Request::Step(_, r)) => {
+                let _ = r.send(Err(CustodyError::Busy));
             }
         }
     }
@@ -1209,53 +3323,92 @@ pub fn qr_svg(link: &str) -> String {
     }
 }
 
-// ─── revoke ─────────────────────────────────────────────────────────────────────
+// ─── unlink and revoke ──────────────────────────────────────────────────────────
 
-async fn run_revoke(
+/// What the store said about a revoke's `since`, as a sentence for the confirm screen; `None` when
+/// the error is not about `since`.
+fn since_refusal(e: &ClientError) -> Option<String> {
+    let ClientError::Rpc(rpc) = e else {
+        return None;
+    };
+    if !rpc.message.contains("since") {
+        return None;
+    }
+    Some(if rpc.message.contains("later than") {
+        "That time is in the future. Pick a time that has passed.".into()
+    } else if rpc.message.contains("before the store appended") {
+        "That is before this device was added. Pick a later time.".into()
+    } else {
+        format!("The time was refused: {}", rpc.message)
+    })
+}
+
+/// What a key change opens with, shared by unlink and revoke: the store is trusted, a pending
+/// identity is finished, the identity exists, the key is not this computer's own, and whether the
+/// passphrase is needed. `Err` is the screen that ends the step.
+async fn open_key_change<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &Arc<DesktopVault>,
+    key_id: &str,
+    own_key_refused: &str,
+) -> Result<(String, bool), Screen> {
+    trusted_store(executor).await?;
+    finish_pending_quietly(executor, vault).await;
+    let status = executor
+        .status()
+        .await
+        .map_err(|e| failed(&ClientError::Rpc(e)))?;
+    let Some(did) = status.did else {
+        return Err(Screen::Failed {
+            message: "Make your identity first.".into(),
+        });
+    };
+    if status.key_id.as_deref() == Some(key_id) {
+        return Err(Screen::Failed {
+            message: own_key_refused.into(),
+        });
+    }
+    let needs = passphrase_for(vault, &did).map_err(|e| failed(&e))?;
+    Ok((did, needs))
+}
+
+async fn run_unlink(
     vault: &Arc<DesktopVault>,
     address: &ExecutorAddress,
     rx: &mut Rx,
     reply: &mut Reply,
     key_id: String,
 ) {
-    let executor = match connect(address).await {
+    let executor = match connect(address, vault).await {
         Ok(e) => e,
         Err(message) => return answer(reply, Ok(Screen::Failed { message })),
     };
-    if let Err(refused) = trusted_store(&executor).await {
-        return answer(reply, Ok(refused));
-    }
-    finish_pending_quietly(&executor, vault).await;
-    let (did, own) = match executor.status().await {
-        Ok(status) => match status.did {
-            Some(did) => (did, status.key_id),
-            None => {
-                return answer(
-                    reply,
-                    Ok(Screen::Failed {
-                        message: "Make your identity first.".into(),
-                    }),
-                )
-            }
-        },
-        Err(e) => return answer(reply, Ok(failed(&ClientError::Rpc(e)))),
-    };
-    if own.as_deref() == Some(key_id.as_str()) {
-        return answer(
-            reply,
-            Ok(Screen::Failed {
-                message: "This computer cannot revoke its own key. Revoke it from another device."
-                    .into(),
-            }),
-        );
-    }
-    let needs = match passphrase_for(vault, &did) {
-        Ok(needs) => needs,
-        Err(e) => return answer(reply, Ok(failed(&e))),
+    unlink_on(&executor, vault, address, rx, reply, key_id).await
+}
+
+/// [`run_unlink`] once the executor answers.
+async fn unlink_on<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &Arc<DesktopVault>,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+    key_id: String,
+) {
+    let (did, needs) = match open_key_change(
+        executor,
+        vault,
+        &key_id,
+        "This computer cannot unlink its own key. Unlink it from another device.",
+    )
+    .await
+    {
+        Ok(opened) => opened,
+        Err(screen) => return answer(reply, Ok(screen)),
     };
     answer(
         reply,
-        Ok(Screen::RevokeConfirm {
+        Ok(Screen::UnlinkConfirm {
             key_id: key_id.clone(),
             passphrase: needs,
             error: None,
@@ -1265,32 +3418,29 @@ async fn run_revoke(
         let Some(input) = next_input(vault, address, rx, reply).await else {
             return;
         };
-        let StepInput::Revoke { passphrase } = input else {
+        let StepInput::Unlink { passphrase } = input else {
             answer(reply, Err(CustodyError::WrongInput));
             continue;
         };
         let unlocking = vault.unlocking(passphrase.map(Secret::new));
-        match revoke(
-            &executor,
-            &unlocking,
-            &did,
-            std::slice::from_ref(&key_id),
-            &CLOCK,
-        )
-        .await
-        {
-            Ok(head) => {
+        match unlink_key(executor, &unlocking, &did, &key_id, &CLOCK, &RANDOM).await {
+            Ok(unlinked) => {
+                if let Err(e) = &unlinked.record {
+                    log::warn!("custody: the record still lists the unlinked device: {e}");
+                }
+                // The main window's refreshes cannot unlock a sealed key; this unlock can.
+                retry_quietly(executor, &unlocking, &did).await;
                 return answer(
                     reply,
-                    Ok(Screen::Revoked {
+                    Ok(Screen::Unlinked {
                         key_id,
-                        seq: head.seq,
+                        seq: unlinked.head.seq,
                     }),
-                )
+                );
             }
             Err(ClientError::Vault(VaultError::Cancelled)) if needs => answer(
                 reply,
-                Ok(Screen::RevokeConfirm {
+                Ok(Screen::UnlinkConfirm {
                     key_id: key_id.clone(),
                     passphrase: true,
                     error: Some("That passphrase does not open your master key.".into()),
@@ -1301,13 +3451,133 @@ async fn run_revoke(
     }
 }
 
+async fn run_revoke(
+    vault: &Arc<DesktopVault>,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+    key_id: String,
+) {
+    let executor = match connect(address, vault).await {
+        Ok(e) => e,
+        Err(message) => return answer(reply, Ok(Screen::Failed { message })),
+    };
+    revoke_on(&executor, vault, address, rx, reply, key_id).await
+}
+
+/// [`run_revoke`] once the executor answers.
+async fn revoke_on<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &Arc<DesktopVault>,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+    key_id: String,
+) {
+    let (did, needs) = match open_key_change(
+        executor,
+        vault,
+        &key_id,
+        "This computer cannot revoke its own key. Revoke it from another device.",
+    )
+    .await
+    {
+        Ok(opened) => opened,
+        Err(screen) => return answer(reply, Ok(screen)),
+    };
+    let may_hold_master = may_hold_master(executor, &did, &key_id).await;
+    answer(
+        reply,
+        Ok(Screen::RevokeConfirm {
+            key_id: key_id.clone(),
+            may_hold_master,
+            passphrase: needs,
+            error: None,
+        }),
+    );
+    loop {
+        let Some(input) = next_input(vault, address, rx, reply).await else {
+            return;
+        };
+        let StepInput::Revoke { passphrase, since } = input else {
+            answer(reply, Err(CustodyError::WrongInput));
+            continue;
+        };
+        let unlocking = vault.unlocking(passphrase.map(Secret::new));
+        match revoke(
+            executor,
+            &unlocking,
+            &did,
+            std::slice::from_ref(&key_id),
+            since,
+            &CLOCK,
+            &RANDOM,
+        )
+        .await
+        {
+            Ok(revoked) => {
+                if let Err(e) = &revoked.record {
+                    log::warn!("custody: the record still lists the revoked device: {e}");
+                }
+                // The main window's refreshes cannot unlock a sealed key; this unlock can.
+                retry_quietly(executor, &unlocking, &did).await;
+                return answer(
+                    reply,
+                    Ok(Screen::Revoked {
+                        key_id,
+                        seq: revoked.head.seq,
+                    }),
+                );
+            }
+            Err(ClientError::Vault(VaultError::Cancelled)) if needs => answer(
+                reply,
+                Ok(Screen::RevokeConfirm {
+                    key_id: key_id.clone(),
+                    may_hold_master,
+                    passphrase: true,
+                    error: Some("That passphrase does not open your master key.".into()),
+                }),
+            ),
+            Err(e) => match since_refusal(&e) {
+                Some(error) => answer(
+                    reply,
+                    Ok(Screen::RevokeConfirm {
+                        key_id: key_id.clone(),
+                        may_hold_master,
+                        passphrase: needs,
+                        error: Some(error),
+                    }),
+                ),
+                None => return answer(reply, Ok(failed(&e))),
+            },
+        }
+    }
+}
+
+/// Whether device `key_id` may still hold a valid master key, as the key log says
+/// ([`crate::keylog::device`]): it made the identity (a standing key of the incept), or the claim
+/// it joined with said `canKeepMaster`. Never the private record, which any linked device can write:
+/// a record that says `holdsMaster: false` cannot hide a copy the log let the device keep. A revoke
+/// does not change the master key, so such a copy stays valid until it is replaced. With no log to
+/// read, it may.
+async fn may_hold_master<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    did: &str,
+    key_id: &str,
+) -> bool {
+    match executor.events(did).await {
+        Ok(events) => crate::keylog::device(&events, key_id).is_some_and(|d| d.may_keep_master),
+        Err(e) => {
+            log::warn!("custody: the key log cannot be read now: {e}");
+            true
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::cell::{Cell, RefCell};
-    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-    use std::sync::{Condvar, Mutex};
-    use std::time::{Duration, Instant};
 
     use ad4m_identity_client::vault::KeySigner;
     use ad4m_identity_client::{RpcError, Vault};
@@ -1317,7 +3587,7 @@ mod tests {
 
     use crate::pending::PendingIncepts;
     use crate::seal::Kdf;
-    use crate::store::{FileStore, SecretStore, StoreKind};
+    use crate::store::FileStore;
 
     const CHEAP: Kdf = Kdf {
         m_kib: 64,
@@ -1339,14 +3609,24 @@ mod tests {
         store: RefCell<Value>,
         publishes: Cell<u32>,
         calls: Cell<u32>,
+        /// What any other method answers, by name (`identity.inbox`, `identity.prepareDevice`, …).
+        canned: RefCell<std::collections::HashMap<&'static str, Value>>,
+        /// Every call by name, with its params, in order.
+        seen: RefCell<Vec<(String, Value)>>,
+        /// Once the key's method is called, the method named beside it answers its value.
+        then: RefCell<std::collections::HashMap<&'static str, (&'static str, Value)>>,
+        /// What a method refuses with, by name, ahead of anything it would answer.
+        refusals: RefCell<std::collections::HashMap<&'static str, (u16, &'static str)>>,
+        /// How long a method takes to answer, by name.
+        delays: RefCell<std::collections::HashMap<&'static str, Duration>>,
         /// Events `identity.publish` took, in order, answered back by `identity.log`.
         events: RefCell<Vec<Value>>,
         /// The signed offer `identity.openOffer` took, listed by `identity.offers`.
         offer: RefCell<Option<Value>>,
-        /// When set, an `identity.offers` call with `wait > 0` waits until it clears.
-        hold_offers: Arc<AtomicBool>,
-        /// Set while that wait is in progress.
-        offers_waiting: Arc<AtomicBool>,
+        /// While set, an `identity.offers` call that waits (`wait > 0`) waits until it clears.
+        hold_offers: Arc<std::sync::atomic::AtomicBool>,
+        /// Set while such a wait is in progress.
+        offers_waiting: Arc<std::sync::atomic::AtomicBool>,
         /// Wakes the waiting `identity.offers` so it rechecks `hold_offers`.
         offer_release: Arc<tokio::sync::Notify>,
     }
@@ -1362,12 +3642,47 @@ mod tests {
                 store: RefCell::new(json!({ "url": "https://store.example", "trusted": true })),
                 publishes: Cell::new(0),
                 calls: Cell::new(0),
+                canned: RefCell::new(Default::default()),
+                seen: RefCell::new(Vec::new()),
+                then: RefCell::new(Default::default()),
+                refusals: RefCell::new(Default::default()),
+                delays: RefCell::new(Default::default()),
                 events: RefCell::new(Vec::new()),
                 offer: RefCell::new(None),
-                hold_offers: Arc::new(AtomicBool::new(false)),
-                offers_waiting: Arc::new(AtomicBool::new(false)),
+                hold_offers: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                offers_waiting: Arc::new(std::sync::atomic::AtomicBool::new(false)),
                 offer_release: Arc::new(tokio::sync::Notify::new()),
             }
+        }
+
+        /// `method` answers `value` from now on.
+        fn answer(&self, method: &'static str, value: Value) {
+            self.canned.borrow_mut().insert(method, value);
+        }
+
+        /// Once `when` is called, `method` answers `value` (an `identity.acceptJoin` that lets the
+        /// executor join, say).
+        fn answer_after(&self, when: &'static str, method: &'static str, value: Value) {
+            self.then.borrow_mut().insert(when, (method, value));
+        }
+
+        /// `method` refuses with `code` and `message` from now on.
+        fn refuse(&self, method: &'static str, code: u16, message: &'static str) {
+            self.refusals.borrow_mut().insert(method, (code, message));
+        }
+
+        /// `method` answers only `by` after it is called, from now on.
+        fn delay(&self, method: &'static str, by: Duration) {
+            self.delays.borrow_mut().insert(method, by);
+        }
+
+        fn called(&self, method: &str) -> Vec<Value> {
+            self.seen
+                .borrow()
+                .iter()
+                .filter(|(m, _)| m == method)
+                .map(|(_, p)| p.clone())
+                .collect()
         }
     }
 
@@ -1375,6 +3690,24 @@ mod tests {
     impl ExecutorRpc for FakeExecutor {
         async fn call(&self, method: &str, p: Value) -> Result<Value, RpcError> {
             self.calls.set(self.calls.get() + 1);
+            self.seen.borrow_mut().push((method.to_string(), p.clone()));
+            let delay = self.delays.borrow().get(method).copied();
+            if let Some(delay) = delay {
+                tokio::time::sleep(delay).await;
+            }
+            let then = self.then.borrow_mut().remove(method);
+            if let Some((next, value)) = then {
+                self.canned.borrow_mut().insert(next, value);
+            }
+            if let Some((code, message)) = self.refusals.borrow().get(method) {
+                return Err(RpcError {
+                    code: *code,
+                    message: message.to_string(),
+                });
+            }
+            if let Some(value) = self.canned.borrow().get(method) {
+                return Ok(value.clone());
+            }
             match method {
                 "identity.status" => {
                     let held = self.held.borrow().clone();
@@ -1419,8 +3752,8 @@ mod tests {
                         "store": "did:key:zStore", "sig": "s",
                     }))
                 }
-                "identity.log" => {
-                    let did = p["did"].as_str().unwrap_or("").to_string();
+                // The log of what `identity.publish` took; no log before any publish.
+                "identity.log" if !self.events.borrow().is_empty() => {
                     let events = self.events.borrow().clone();
                     let scid = events
                         .first()
@@ -1428,13 +3761,11 @@ mod tests {
                         .unwrap_or("")
                         .to_string();
                     Ok(json!({
-                        "did": did,
-                        "events": events,
+                        "did": p["did"], "events": events, "fork": null,
                         "head": {
                             "scid": scid, "seq": 0, "hash": "h", "time": 0,
                             "store": "did:key:zStore", "sig": "s",
                         },
-                        "fork": null,
                     }))
                 }
                 "identity.openOffer" => {
@@ -1444,16 +3775,33 @@ mod tests {
                     Ok(json!({ "offerId": id }))
                 }
                 "identity.offers" => {
-                    let wait = p["wait"].as_u64().unwrap_or(0);
-                    if wait > 0 && self.hold_offers.load(Ordering::SeqCst) {
-                        self.offers_waiting.store(true, Ordering::SeqCst);
-                        while self.hold_offers.load(Ordering::SeqCst) {
-                            self.offer_release.notified().await;
+                    use std::sync::atomic::Ordering::SeqCst;
+                    if p["wait"].as_u64().unwrap_or(0) > 0 && self.hold_offers.load(SeqCst) {
+                        self.offers_waiting.store(true, SeqCst);
+                        while self.hold_offers.load(SeqCst) {
+                            // A release that lands between the check and the wait is caught by the
+                            // short timeout.
+                            let _ = tokio::time::timeout(
+                                Duration::from_millis(20),
+                                self.offer_release.notified(),
+                            )
+                            .await;
                         }
-                        self.offers_waiting.store(false, Ordering::SeqCst);
+                        self.offers_waiting.store(false, SeqCst);
                     }
                     let offer = self.offer.borrow().clone().unwrap_or(Value::Null);
                     Ok(json!([{ "offer": offer, "state": { "state": "open" } }]))
+                }
+                // Ends the code `identity.prepareDevice` gave, with no claim of it: a test that
+                // sees a claim cancelled by the end answers it.
+                "identity.endPrepared"
+                    if self
+                        .canned
+                        .borrow()
+                        .get("identity.prepareDevice")
+                        .is_some_and(|prepared| prepared["device"] == p["device"]) =>
+                {
+                    Ok(json!({ "state": "ended", "cancelled": [] }))
                 }
                 other => Err(RpcError {
                     code: 404,
@@ -1464,6 +3812,428 @@ mod tests {
     }
 
     /// A create of fixed words, past the two words typed back.
+    /// A store whose reads sit inside an unlock prompt until it is let through, as the OS
+    /// keychain's can. A reader that blocked the custody task would hold everything else with it.
+    struct PromptStore {
+        inner: crate::store::MemoryStore,
+        open: Arc<(std::sync::Mutex<bool>, std::sync::Condvar)>,
+    }
+
+    impl PromptStore {
+        fn pass(&self) {
+            let (held, released) = &*self.open;
+            let mut held = held.lock().unwrap();
+            while *held {
+                held = released.wait(held).unwrap();
+            }
+        }
+    }
+
+    impl crate::store::SecretStore for PromptStore {
+        fn kind(&self) -> crate::store::StoreKind {
+            self.inner.kind()
+        }
+        fn kind_of(&self, n: &str) -> Result<crate::store::StoreKind, VaultError> {
+            self.pass();
+            self.inner.kind_of(n)
+        }
+        fn put(&self, n: &str, b: &[u8]) -> Result<(), VaultError> {
+            self.inner.put(n, b)
+        }
+        fn get(&self, n: &str) -> Result<Option<Vec<u8>>, VaultError> {
+            self.pass();
+            self.inner.get(n)
+        }
+        fn contains(&self, n: &str) -> Result<bool, VaultError> {
+            self.pass();
+            self.inner.contains(n)
+        }
+        fn delete(&self, n: &str) -> Result<(), VaultError> {
+            self.inner.delete(n)
+        }
+        fn claim_secret(
+            &self,
+            n: &str,
+            b: &[u8],
+        ) -> Result<zeroize::Zeroizing<Vec<u8>>, VaultError> {
+            self.inner.claim_secret(n, b)
+        }
+    }
+
+    /// A state read whose keychain half waits in an unlock prompt leaves the custody task free: a
+    /// timer on the same task fires, and the read finishes once the prompt does. With the read on
+    /// the task, the timer never gets its turn and the read ends only when the prompt does.
+    #[tokio::test]
+    async fn a_state_read_waiting_in_the_keychain_leaves_the_custody_task_free() {
+        let open = Arc::new((std::sync::Mutex::new(false), std::sync::Condvar::new()));
+        let vault = Arc::new(DesktopVault::with_kdf(
+            Box::new(PromptStore {
+                inner: crate::store::MemoryStore::as_kind(crate::store::StoreKind::Keychain),
+                open: Arc::clone(&open),
+            }),
+            PendingIncepts::memory(),
+            CHEAP,
+        ));
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        confirmed(41)
+            .finish(&executor, &vault.unlocking(None))
+            .await
+            .expect("create");
+        fn let_through(open: &(std::sync::Mutex<bool>, std::sync::Condvar)) {
+            *open.0.lock().unwrap() = false;
+            open.1.notify_all();
+        }
+        *open.0.lock().unwrap() = true;
+        // If the read blocks the task, this frees it after three seconds and the test fails below.
+        let watchdog = std::thread::spawn({
+            let open = Arc::clone(&open);
+            move || {
+                std::thread::sleep(Duration::from_secs(3));
+                let_through(&open);
+            }
+        });
+        let read = public_state_on(Some(&executor), &vault);
+        tokio::pin!(read);
+        let started = std::time::Instant::now();
+        tokio::select! {
+            _ = &mut read => panic!("the read ended while the keychain was in its prompt"),
+            () = tokio::time::sleep(Duration::from_millis(300)) => {}
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "the custody task waited on the keychain"
+        );
+        let_through(&open);
+        let public = tokio::time::timeout(Duration::from_secs(5), read)
+            .await
+            .expect("the read ends once the prompt does");
+        assert!(public.did.is_some(), "{public:?}");
+        watchdog.join().unwrap();
+    }
+
+    /// A keychain whose calls sit until [`Block::release`], once [`Block::arm`]ed: the unlock
+    /// prompt a locked Secret Service opens. The claim of the enc key is where the state read waits.
+    struct BlockingKeychain {
+        inner: crate::store::MemoryStore,
+        block: Arc<Block>,
+    }
+
+    struct Block {
+        state: std::sync::Mutex<BlockState>,
+        changed: std::sync::Condvar,
+    }
+
+    #[derive(Default)]
+    struct BlockState {
+        armed: bool,
+        in_flight: u32,
+        max_in_flight: u32,
+    }
+
+    impl Block {
+        fn new() -> Arc<Self> {
+            Arc::new(Block {
+                state: Default::default(),
+                changed: std::sync::Condvar::new(),
+            })
+        }
+
+        fn enter(&self) {
+            let mut g = self.state.lock().unwrap();
+            if !g.armed {
+                return;
+            }
+            g.in_flight += 1;
+            g.max_in_flight = g.max_in_flight.max(g.in_flight);
+            while g.armed {
+                g = self.changed.wait(g).unwrap();
+            }
+            g.in_flight -= 1;
+        }
+
+        fn arm(&self) {
+            self.state.lock().unwrap().armed = true;
+        }
+
+        fn release(&self) {
+            self.state.lock().unwrap().armed = false;
+            self.changed.notify_all();
+        }
+
+        fn in_flight(&self) -> u32 {
+            self.state.lock().unwrap().in_flight
+        }
+
+        fn max_in_flight(&self) -> u32 {
+            self.state.lock().unwrap().max_in_flight
+        }
+    }
+
+    impl crate::store::SecretStore for BlockingKeychain {
+        fn kind(&self) -> crate::store::StoreKind {
+            crate::store::StoreKind::Keychain
+        }
+        fn kind_of(&self, n: &str) -> Result<crate::store::StoreKind, VaultError> {
+            self.block.enter();
+            self.inner.kind_of(n)
+        }
+        fn put(&self, n: &str, b: &[u8]) -> Result<(), VaultError> {
+            self.block.enter();
+            self.inner.put(n, b)
+        }
+        fn get(&self, n: &str) -> Result<Option<Vec<u8>>, VaultError> {
+            self.block.enter();
+            self.inner.get(n)
+        }
+        fn contains(&self, n: &str) -> Result<bool, VaultError> {
+            self.block.enter();
+            self.inner.contains(n)
+        }
+        fn delete(&self, n: &str) -> Result<(), VaultError> {
+            self.block.enter();
+            self.inner.delete(n)
+        }
+        fn claim_secret(
+            &self,
+            n: &str,
+            b: &[u8],
+        ) -> Result<zeroize::Zeroizing<Vec<u8>>, VaultError> {
+            self.block.enter();
+            self.inner.claim_secret(n, b)
+        }
+    }
+
+    struct ManualClock(std::sync::atomic::AtomicU64);
+
+    impl Clock for ManualClock {
+        fn now(&self) -> u64 {
+            self.0.load(std::sync::atomic::Ordering::SeqCst)
+        }
+    }
+
+    fn wait_until(timeout: Duration, pred: impl Fn() -> bool) -> bool {
+        let start = std::time::Instant::now();
+        while start.elapsed() < timeout {
+            if pred() {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        pred()
+    }
+
+    /// Which answer must arrive while the enc key's claim is still inside its prompt.
+    enum WhileBlocked {
+        Cancel,
+        Deadline,
+    }
+
+    /// One link waiting for its claim, served as the window reaches it ([`beside`] over
+    /// [`StateReads`]), while the window's state read waits in the keychain's unlock prompt for the
+    /// enc key. `mode` is the answer that has to arrive within a second anyway.
+    async fn blocked_enc_key_claim_while_linked(mode: WhileBlocked) -> Result<(), String> {
+        use std::sync::atomic::{AtomicU64, Ordering::SeqCst};
+        let block = Block::new();
+        let clock = Arc::new(ManualClock(AtomicU64::new(1_700_000_000)));
+        let (to_service, mut rx) = mpsc::unbounded_channel();
+        let (first_tx, first_rx) = oneshot::channel();
+        let held = FakeExecutor::new();
+        let (hold_offers, offers_waiting, offer_release) = (
+            Arc::clone(&held.hold_offers),
+            Arc::clone(&held.offers_waiting),
+            Arc::clone(&held.offer_release),
+        );
+        hold_offers.store(true, SeqCst);
+
+        let thread = std::thread::Builder::new()
+            .name("custody-link-test".into())
+            .spawn({
+                let (block, clock) = (Arc::clone(&block), Arc::clone(&clock));
+                move || {
+                    let rt = tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .expect("test runtime");
+                    rt.block_on(async move {
+                        let device_key = Signer::key(&held.device).as_str().to_string();
+                        let executor = ViaExecutor::new(held);
+                        let vault = Arc::new(DesktopVault::with_kdf(
+                            Box::new(BlockingKeychain {
+                                inner: crate::store::MemoryStore::as_kind(
+                                    crate::store::StoreKind::Keychain,
+                                ),
+                                block,
+                            }),
+                            PendingIncepts::memory(),
+                            CHEAP,
+                        ));
+                        confirmed(41)
+                            .finish(&executor, &vault.unlocking(None))
+                            .await
+                            .expect("create");
+                        let (address, _, _, _, _) = opened();
+                        // The window's state read, as the served path makes it: through the enc key.
+                        let mut reads = StateReads::with_read(&vault, &address, || {
+                            Box::pin(public_state_reached(
+                                FakeExecutor::new(),
+                                &device_key,
+                                &vault,
+                            ))
+                        });
+                        let (to_flow, mut flow_rx) = mpsc::unbounded_channel();
+                        let mut reply = Some(first_tx);
+                        let flow = link_on(
+                            &executor,
+                            &vault,
+                            &address,
+                            &mut flow_rx,
+                            &mut reply,
+                            clock.as_ref(),
+                        );
+                        beside(&mut reads, &mut rx, to_flow, flow).await;
+                        reads.finish().await;
+                    });
+                }
+            })
+            .expect("custody test thread");
+
+        // Lets the prompt and the offer poll go if this case returns early, then joins.
+        struct Stop {
+            block: Arc<Block>,
+            hold_offers: Arc<std::sync::atomic::AtomicBool>,
+            offer_release: Arc<tokio::sync::Notify>,
+            thread: Option<std::thread::JoinHandle<()>>,
+        }
+        impl Drop for Stop {
+            fn drop(&mut self) {
+                self.block.release();
+                self.hold_offers.store(false, SeqCst);
+                self.offer_release.notify_waiters();
+                if let Some(thread) = self.thread.take() {
+                    if thread.join().is_err() {
+                        eprintln!("the custody test thread panicked");
+                    }
+                }
+            }
+        }
+        let _stop = Stop {
+            block: Arc::clone(&block),
+            hold_offers: Arc::clone(&hold_offers),
+            offer_release: Arc::clone(&offer_release),
+            thread: Some(thread),
+        };
+
+        let first = match tokio::time::timeout(Duration::from_secs(20), first_rx).await {
+            Ok(Ok(Ok(screen))) => screen,
+            Ok(Ok(Err(e))) => return Err(format!("the link refused the step: {e:?}")),
+            Ok(Err(_)) => return Err("the link ended before a screen".into()),
+            Err(_) => return Err("no screen within 20s".into()),
+        };
+        let Screen::Offer { expires, .. } = first else {
+            return Err(format!("expected the offer, got {first:?}"));
+        };
+
+        let (step_tx, step_rx) = oneshot::channel();
+        to_service
+            .send(Request::Step(StepInput::WaitClaim, step_tx))
+            .map_err(|_| "the link ended before wait-claim".to_string())?;
+        if !wait_until(Duration::from_secs(10), || offers_waiting.load(SeqCst)) {
+            return Err("the claim poll never started".into());
+        }
+
+        block.arm();
+        let (pub_tx, _pub_rx) = oneshot::channel();
+        let (pub2_tx, _pub2_rx) = oneshot::channel();
+        for public in [pub_tx, pub2_tx] {
+            to_service
+                .send(Request::Public(public))
+                .map_err(|_| "the link ended before the state read".to_string())?;
+        }
+        if !wait_until(Duration::from_secs(10), || block.in_flight() >= 1) {
+            return Err("the state read never reached the keychain".into());
+        }
+        // The second read is queued behind the first, so the keychain sees one call.
+        std::thread::sleep(Duration::from_millis(50));
+        let max = block.max_in_flight();
+        if max != 1 {
+            return Err(format!("keychain calls in flight at once: {max}"));
+        }
+
+        let bound = Duration::from_secs(1);
+        match mode {
+            WhileBlocked::Cancel => {
+                let (cancel_tx, cancel_rx) = oneshot::channel();
+                to_service
+                    .send(Request::Cancel(cancel_tx))
+                    .map_err(|_| "the link ended before cancel".to_string())?;
+                match tokio::time::timeout(bound, cancel_rx).await {
+                    Ok(Ok(_)) => Ok(()),
+                    Ok(Err(_)) => Err("cancel was dropped".into()),
+                    Err(_) => Err(
+                        "cancel did not answer within 1s while the enc key's claim was blocked"
+                            .into(),
+                    ),
+                }
+            }
+            WhileBlocked::Deadline => {
+                clock.0.store(expires, SeqCst);
+                hold_offers.store(false, SeqCst);
+                offer_release.notify_waiters();
+                match tokio::time::timeout(bound, step_rx).await {
+                    Ok(Ok(Ok(Screen::Failed { message }))) if message.contains("expired") => Ok(()),
+                    Ok(Ok(other)) => Err(format!("the deadline answered {other:?}")),
+                    Ok(Err(_)) => Err("the claim wait was dropped".into()),
+                    Err(_) => Err("the claim deadline did not answer within 1s while the enc \
+                                   key's claim was blocked"
+                        .into()),
+                }
+            }
+        }
+    }
+
+    /// A window's state read, served beside a link waiting for its claim, whose enc key's claim sits
+    /// in the keychain's unlock prompt: Cancel and the claim deadline are answered meanwhile, and a
+    /// second read waits behind the first instead of opening another prompt. With the claim made on
+    /// the custody task, neither is answered until the prompt ends.
+    #[tokio::test]
+    async fn a_blocked_enc_key_claim_during_a_link_lets_cancel_and_the_deadline_fire() {
+        blocked_enc_key_claim_while_linked(WhileBlocked::Cancel)
+            .await
+            .unwrap();
+        blocked_enc_key_claim_while_linked(WhileBlocked::Deadline)
+            .await
+            .unwrap();
+    }
+
+    /// A flow under `beside` is not shown state requests, and its Cancel is answered while the
+    /// state request waits: the read stays with `reads`, which answers it.
+    #[tokio::test]
+    async fn a_flow_under_beside_gets_its_cancel_and_never_a_state_request() {
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, _, window, _) = opened();
+        let mut reads = StateReads::new(&vault, &address);
+        let (to_flow, mut flow_rx) = mpsc::unbounded_channel();
+        let flow = async {
+            let Some(Request::Cancel(r)) = flow_rx.recv().await else {
+                panic!("the flow was shown something but its cancel");
+            };
+            let _ = r.send(None);
+        };
+        let (public_tx, public) = oneshot::channel();
+        window.tx.send(Request::Public(public_tx)).unwrap();
+        let (cancel_tx, cancelled) = oneshot::channel();
+        window.tx.send(Request::Cancel(cancel_tx)).unwrap();
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            beside(&mut reads, &mut rx, to_flow, flow),
+        )
+        .await
+        .expect("the flow ended on its cancel");
+        assert_eq!(cancelled.await.unwrap(), None);
+        reads.finish().await;
+        assert!(public.await.is_ok(), "the state request was answered");
+    }
+
     fn confirmed(entropy: u8) -> CreateFlow {
         let words = words::from_entropy(&[entropy; 16]);
         let list: Vec<String> = words.words().iter().map(|w| w.to_string()).collect();
@@ -1526,11 +4296,19 @@ mod tests {
         };
         assert!(message.contains(did.as_str()), "{message}");
 
-        // Finishing it publishes the same incept, with no unlock, and forgets it.
-        let created = finish_pending(&executor, &vault)
-            .await
-            .unwrap()
-            .expect("a pending identity");
+        // Finishing it publishes the same incept, with no unlock, and forgets it. A state read and a
+        // step that finish it at the same time publish it once.
+        executor
+            .rpc()
+            .delay("identity.publish", Duration::from_millis(50));
+        let (created, also, ()) = tokio::join!(
+            finish_pending(&executor, &vault),
+            finish_pending(&executor, &vault),
+            finish_pending_quietly(&executor, &vault),
+        );
+        executor.rpc().delays.borrow_mut().clear();
+        assert!(also.unwrap().is_none(), "the second finish found it done");
+        let created = created.unwrap().expect("a pending identity");
         assert_eq!(created.did, did_of(&scid));
         assert_eq!(created.device_key_id, "d1");
         assert_eq!(executor.rpc().publishes.get(), 1);
@@ -1565,6 +4343,31 @@ mod tests {
     }
 
     #[test]
+    fn the_stores_since_refusals_become_sentences_on_the_confirm_screen() {
+        let refused = |message: &str| {
+            ClientError::Rpc(RpcError {
+                code: 400,
+                message: message.into(),
+            })
+        };
+        assert!(since_refusal(&refused(
+            "since: since is later than the store's time of the revoke"
+        ))
+        .unwrap()
+        .contains("future"));
+        assert!(since_refusal(&refused(
+            "since: since is before the store appended the add of d2"
+        ))
+        .unwrap()
+        .contains("before this device was added"));
+        assert_eq!(since_refusal(&refused("the keystore is locked")), None);
+        assert_eq!(
+            since_refusal(&ClientError::Vault(VaultError::Cancelled)),
+            None
+        );
+    }
+
+    #[test]
     fn steps_and_screens_cross_ipc_in_the_shapes_the_windows_expect() {
         let step: IdentityStep = serde_json::from_str(r#"{"kind":"revoke","keyId":"d2"}"#).unwrap();
         assert_eq!(
@@ -1572,6 +4375,42 @@ mod tests {
             IdentityStep::Revoke {
                 key_id: "d2".into()
             }
+        );
+        let step: IdentityStep = serde_json::from_str(r#"{"kind":"unlink","keyId":"d2"}"#).unwrap();
+        assert_eq!(
+            step,
+            IdentityStep::Unlink {
+                key_id: "d2".into()
+            }
+        );
+        let input: StepInput =
+            serde_json::from_str(r#"{"kind":"revoke","passphrase":null,"since":1700000000000}"#)
+                .unwrap();
+        assert!(matches!(
+            input,
+            StepInput::Revoke {
+                passphrase: None,
+                since: Some(1_700_000_000_000)
+            }
+        ));
+        let input: StepInput = serde_json::from_str(r#"{"kind":"revoke"}"#).unwrap();
+        assert!(matches!(input, StepInput::Revoke { since: None, .. }));
+        let input: StepInput =
+            serde_json::from_str(r#"{"kind":"unlink","passphrase":"x"}"#).unwrap();
+        assert!(matches!(
+            input,
+            StepInput::Unlink {
+                passphrase: Some(_)
+            }
+        ));
+        let screen = serde_json::to_value(Screen::Unlinked {
+            key_id: "d2".into(),
+            seq: 2,
+        })
+        .unwrap();
+        assert_eq!(
+            (screen["screen"].as_str(), screen["keyId"].as_str()),
+            (Some("unlinked"), Some("d2"))
         );
         let step: IdentityStep = serde_json::from_str(r#"{"kind":"add-device"}"#).unwrap();
         assert_eq!(step, IdentityStep::AddDevice);
@@ -1586,9 +4425,33 @@ mod tests {
             did: Some("did:scid:coasys:1:Qm".into()),
             holds_master: Some(HoldsMaster { index: 0 }),
             unlock: "passphrase",
-            blocked: Some(NO_STORE),
+            blocked: Some(NO_STORE.into()),
+            devices: vec![DeviceName {
+                key_id: "d1".into(),
+                name: "Work laptop".into(),
+                kind: DeviceKind::DesktopApp,
+                holds_master: Holds::Offered,
+            }],
+            ended_holders: vec!["d3".into()],
+            requests: vec![RequestView {
+                id: "r1".into(),
+                kind: "send-master".into(),
+                by: "d2".into(),
+                key_ids: vec![],
+                expires: 9,
+            }],
+            master_waiting: true,
+            enc_mismatch: true,
         })
         .unwrap();
+        assert_eq!(public["devices"][0]["keyId"], "d1");
+        assert_eq!(public["devices"][0]["kind"], "desktop-app");
+        assert_eq!(public["devices"][0]["holdsMaster"], "offered");
+        assert_eq!(public["requests"][0]["kind"], "send-master");
+        assert_eq!(public["requests"][0]["keyIds"], json!([]));
+        assert_eq!(public["masterWaiting"], true);
+        assert_eq!(public["encMismatch"], true);
+        assert_eq!(public["endedHolders"], json!(["d3"]));
         assert_eq!(public["holdsMaster"]["index"], 0);
         assert_eq!(public["blocked"], NO_STORE);
         let screen = serde_json::to_value(Screen::PendingRefused {
@@ -1615,7 +4478,59 @@ mod tests {
     #[test]
     fn only_the_last_screens_end_a_step() {
         assert_eq!(Screen::ShowWords { words: vec![] }.outcome(), None);
-        assert_eq!(Screen::Linked { seq: 1 }.outcome(), Some(StepOutcome::Done));
+        assert_eq!(
+            Screen::Linked {
+                seq: 1,
+                master_sent: false,
+                note: None
+            }
+            .outcome(),
+            Some(StepOutcome::Done)
+        );
+        for done in [
+            Screen::Joined {
+                did: "did:scid:x".into(),
+                key_id: "d2".into(),
+            },
+            Screen::MasterTaken {
+                did: "did:scid:x".into(),
+                note: None,
+            },
+            Screen::RequestAnswered {
+                kind: "send-master",
+                device: "Phone".into(),
+                note: None,
+            },
+            Screen::Asked {
+                key_id: "d2".into(),
+                fingerprint: "ABCD EFGH".into(),
+                code: "R7K Q2M".into(),
+            },
+            Screen::Renamed {
+                key_id: "d2".into(),
+                name: "Desk".into(),
+            },
+        ] {
+            assert_eq!(done.outcome(), Some(StepOutcome::Done), "{done:?}");
+        }
+        for open in [
+            Screen::EnterCode { error: None },
+            Screen::CodeSent { expires: 1 },
+            Screen::DeviceCode {
+                code: "c".into(),
+                qr_svg: String::new(),
+                expires: 1,
+            },
+            Screen::DeviceMatch {
+                code: "R7K Q2M".into(),
+                did: "did:scid:x".into(),
+                needs_accept: true,
+                accepted: true,
+                confirmed: false,
+            },
+        ] {
+            assert_eq!(open.outcome(), None, "{open:?}");
+        }
         assert_eq!(
             Screen::Failed {
                 message: String::new()
@@ -1684,7 +4599,7 @@ mod tests {
             *executor.rpc().store.borrow_mut() = store;
             assert_eq!(
                 public_state_on(Some(&executor), &vault).await.blocked,
-                Some(NO_STORE)
+                Some(NO_STORE.into())
             );
         }
         assert_eq!(
@@ -1693,27 +4608,102 @@ mod tests {
         );
     }
 
+    /// A store that answers everything but the enc key's claim: a Secret Service whose collection
+    /// will not unlock, say.
+    struct NoClaims(crate::store::MemoryStore);
+
+    impl crate::store::SecretStore for NoClaims {
+        fn kind(&self) -> crate::store::StoreKind {
+            self.0.kind()
+        }
+        fn kind_of(&self, n: &str) -> Result<crate::store::StoreKind, VaultError> {
+            self.0.kind_of(n)
+        }
+        fn put(&self, n: &str, b: &[u8]) -> Result<(), VaultError> {
+            self.0.put(n, b)
+        }
+        fn get(&self, n: &str) -> Result<Option<Vec<u8>>, VaultError> {
+            self.0.get(n)
+        }
+        fn contains(&self, n: &str) -> Result<bool, VaultError> {
+            self.0.contains(n)
+        }
+        fn delete(&self, n: &str) -> Result<(), VaultError> {
+            self.0.delete(n)
+        }
+        fn claim_secret(
+            &self,
+            _: &str,
+            _: &[u8],
+        ) -> Result<zeroize::Zeroizing<Vec<u8>>, VaultError> {
+            Err(VaultError::Unavailable(
+                "Secret Service: the collection would not unlock".into(),
+            ))
+        }
+    }
+
+    /// An executor that answers while the store cannot keep this computer's enc key is not
+    /// offline: the main window is told why nothing can be done, in a step's own words.
+    #[tokio::test]
+    async fn a_store_that_cannot_keep_the_enc_key_reaches_the_person_not_offline() {
+        let vault = Arc::new(DesktopVault::new(
+            Box::new(NoClaims(crate::store::MemoryStore::new())),
+            PendingIncepts::memory(),
+        ));
+        let fake = FakeExecutor::new();
+        let device_key = Signer::key(&fake.device).as_str().to_string();
+        let public = public_state_reached(fake, &device_key, &vault).await;
+        let blocked = public.blocked.expect("the person is told");
+        assert_eq!(
+            blocked,
+            "This computer could not keep the key that opens your master key: the vault is \
+             unavailable: Secret Service: the collection would not unlock"
+        );
+        // The step's own refusal is the same words.
+        assert_eq!(
+            with_enc_key(FakeExecutor::new(), &device_key, &vault)
+                .await
+                .err(),
+            Some(blocked.clone())
+        );
+        // And it crosses to the main window as the reason, where `NO_STORE` does.
+        let json = serde_json::to_value(CustodyPublic {
+            blocked: Some(blocked.clone()),
+            ..public_state_on::<FakeExecutor>(None, &vault).await
+        })
+        .unwrap();
+        assert_eq!(json["blocked"], blocked);
+
+        // A store that keeps it: not blocked, and the executor's state is read.
+        let vault = Arc::new(DesktopVault::new(
+            Box::new(crate::store::MemoryStore::new()),
+            PendingIncepts::memory(),
+        ));
+        let public = public_state_reached(FakeExecutor::new(), &device_key, &vault).await;
+        assert_eq!(public.blocked, None);
+    }
+
     #[test]
     fn an_offer_link_becomes_a_qr_code() {
-        let svg = qr_svg("https://id.coasys.org/o#coasys:offer:1:abc");
+        let svg = qr_svg("https://coasys.id/o#coasys:offer:1:abc");
         assert!(svg.starts_with("<?xml") || svg.starts_with("<svg"));
     }
 
     #[tokio::test]
     async fn a_step_input_with_no_step_open_is_refused_and_cancel_is_harmless() {
-        let vault = DesktopVault::new(
+        let vault = Arc::new(DesktopVault::new(
             Box::new(crate::store::MemoryStore::new()),
             crate::pending::PendingIncepts::memory(),
-        );
+        ));
         let handle = spawn(
             vault,
             ExecutorAddress {
                 url: "http://127.0.0.1:9".into(),
-                admin_credential: Arc::from("x"),
+                credential: Arc::from("x"),
             },
         );
         assert_eq!(
-            handle.step(StepInput::Confirm).await,
+            handle.step(StepInput::WaitClaim).await,
             Err(CustodyError::NoStep)
         );
         handle.cancel().await;
@@ -1965,7 +4955,7 @@ mod tests {
     {
         let address = ExecutorAddress {
             url: "http://127.0.0.1:9".into(),
-            admin_credential: Arc::from("x"),
+            credential: Arc::from("x"),
         };
         let (tx, mut rx) = mpsc::unbounded_channel();
         let (first_tx, first_rx) = oneshot::channel();
@@ -2003,331 +4993,2693 @@ mod tests {
             .await
     }
 
-    /// A keychain whose calls sit until [`Block::release`]. `kind` does not: a new item's unlock
-    /// is decided without a prompt, and the block stands in for the prompt a later read opens.
-    struct BlockingKeychain {
-        items: Mutex<std::collections::HashMap<String, Vec<u8>>>,
-        block: Arc<Block>,
-    }
+    type FirstScreen = oneshot::Receiver<Result<Screen, CustodyError>>;
 
-    struct Block {
-        mu: Mutex<BlockInner>,
-        cv: Condvar,
-    }
-
-    struct BlockInner {
-        armed: bool,
-        in_flight: u32,
-        max_in_flight: u32,
-    }
-
-    impl Block {
-        fn new() -> Arc<Self> {
-            Arc::new(Block {
-                mu: Mutex::new(BlockInner {
-                    armed: false,
-                    in_flight: 0,
-                    max_in_flight: 0,
-                }),
-                cv: Condvar::new(),
-            })
-        }
-
-        fn enter(&self) {
-            let mut g = self.mu.lock().unwrap();
-            if !g.armed {
-                return;
-            }
-            g.in_flight += 1;
-            g.max_in_flight = g.max_in_flight.max(g.in_flight);
-            while g.armed {
-                g = self.cv.wait(g).unwrap();
-            }
-            g.in_flight = g.in_flight.saturating_sub(1);
-        }
-
-        fn arm(&self) {
-            self.mu.lock().unwrap().armed = true;
-        }
-
-        fn release(&self) {
-            let mut g = self.mu.lock().unwrap();
-            g.armed = false;
-            self.cv.notify_all();
-        }
-
-        fn in_flight(&self) -> u32 {
-            self.mu.lock().unwrap().in_flight
-        }
-
-        fn max_in_flight(&self) -> u32 {
-            self.mu.lock().unwrap().max_in_flight
-        }
-    }
-
-    impl BlockingKeychain {
-        fn new(block: Arc<Block>) -> Self {
-            BlockingKeychain {
-                items: Mutex::new(std::collections::HashMap::new()),
-                block,
-            }
-        }
-    }
-
-    impl SecretStore for BlockingKeychain {
-        fn kind(&self) -> StoreKind {
-            StoreKind::Keychain
-        }
-
-        fn kind_of(&self, _: &str) -> Result<StoreKind, VaultError> {
-            self.block.enter();
-            Ok(StoreKind::Keychain)
-        }
-
-        fn put(&self, name: &str, bytes: &[u8]) -> Result<(), VaultError> {
-            self.block.enter();
-            self.items
-                .lock()
-                .unwrap()
-                .insert(name.to_string(), bytes.to_vec());
-            Ok(())
-        }
-
-        fn get(&self, name: &str) -> Result<Option<Vec<u8>>, VaultError> {
-            self.block.enter();
-            Ok(self.items.lock().unwrap().get(name).cloned())
-        }
-
-        fn contains(&self, name: &str) -> Result<bool, VaultError> {
-            self.block.enter();
-            Ok(self.items.lock().unwrap().contains_key(name))
-        }
-
-        fn delete(&self, name: &str) -> Result<(), VaultError> {
-            self.block.enter();
-            self.items.lock().unwrap().remove(name);
-            Ok(())
-        }
-    }
-
-    struct ManualClock(AtomicU64);
-
-    impl Clock for ManualClock {
-        fn now(&self) -> u64 {
-            self.0.load(Ordering::SeqCst)
-        }
-    }
-
-    fn wait_until(timeout: Duration, pred: impl Fn() -> bool) -> bool {
-        let start = Instant::now();
-        while start.elapsed() < timeout {
-            if pred() {
-                return true;
-            }
-            std::thread::sleep(Duration::from_millis(10));
-        }
-        pred()
-    }
-
-    /// Which answer must arrive while the keychain call is still inside its prompt.
-    enum WhileBlocked {
-        Cancel,
-        Deadline,
-    }
-
-    /// One active link whose state read blocks in the keychain. `mode` is the answer that has to
-    /// arrive within a second anyway: Cancel, or the claim deadline.
-    async fn blocking_keychain_while_linked(mode: WhileBlocked) -> Result<(), String> {
-        let block = Block::new();
-        let hold_offers = Arc::new(AtomicBool::new(true));
-        let offers_waiting = Arc::new(AtomicBool::new(false));
-        let offer_release = Arc::new(tokio::sync::Notify::new());
-        let clock = Arc::new(ManualClock(AtomicU64::new(1_700_000_000)));
-        let (to_service, mut rx) = mpsc::unbounded_channel();
+    /// A step's channels as the app opens them: an address no executor answers on (each test hands
+    /// the flow its fake executor), the flow's ends, the window, and the first screen's slot.
+    fn opened() -> (ExecutorAddress, Rx, Reply, Window, FirstScreen) {
+        let (tx, rx) = mpsc::unbounded_channel();
         let (first_tx, first_rx) = oneshot::channel();
+        let address = ExecutorAddress {
+            url: "http://127.0.0.1:9".into(),
+            credential: Arc::from("x"),
+        };
+        (address, rx, Some(first_tx), Window { tx }, first_rx)
+    }
 
-        let block_thread = Arc::clone(&block);
-        let hold_thread = Arc::clone(&hold_offers);
-        let waiting_thread = Arc::clone(&offers_waiting);
-        let release_thread = Arc::clone(&offer_release);
-        let clock_thread = Arc::clone(&clock);
-        let thread = std::thread::Builder::new()
-            .name("custody-link-test".into())
-            .spawn(move || {
-                let rt = tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                    .expect("test runtime");
-                rt.block_on(async move {
-                    let mut fake = FakeExecutor::new();
-                    fake.hold_offers = hold_thread;
-                    fake.offers_waiting = waiting_thread;
-                    fake.offer_release = release_thread;
-                    let executor = ViaExecutor::new(fake);
-                    let vault = Arc::new(DesktopVault::with_kdf(
-                        Box::new(BlockingKeychain::new(block_thread)),
-                        PendingIncepts::memory(),
-                        CHEAP,
-                    ));
-                    confirmed(41)
-                        .finish(&executor, &vault.unlocking(None))
-                        .await
-                        .expect("create");
-                    let address = ExecutorAddress {
-                        url: "http://127.0.0.1:9".into(),
-                        admin_credential: Arc::from("x"),
-                    };
-                    let mut reply = Some(first_tx);
-                    link_on(
-                        &executor,
-                        &vault,
-                        &address,
-                        &mut rx,
-                        &mut reply,
-                        clock_thread.as_ref(),
-                    )
-                    .await;
-                });
+    fn memory_vault(kind: crate::store::StoreKind) -> Arc<DesktopVault> {
+        Arc::new(DesktopVault::new(
+            Box::new(crate::store::MemoryStore::as_kind(kind)),
+            PendingIncepts::memory(),
+        ))
+    }
+
+    /// [`show_code_on`] on its own, without the service around it: its state reads its own, every
+    /// one answered once the flow ends.
+    async fn show_code_alone(
+        executor: &ViaExecutor<FakeExecutor>,
+        events: broadcast::Receiver<Value>,
+        vault: &Arc<DesktopVault>,
+        address: &ExecutorAddress,
+        rx: &mut Rx,
+        reply: &mut Reply,
+    ) {
+        let mut reads = StateReads::new(vault, address);
+        show_code_on(executor, events, &mut reads, rx, reply).await;
+        reads.finish().await;
+    }
+
+    /// A SCID `ad4m_identity_core::scid_of` reads: a sha2-256 multihash.
+    const LINKED_SCID: &str = "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG";
+
+    /// An executor that speaks for an identity (`did_of(LINKED_SCID)`, this computer `d1`) whose
+    /// master key this vault does not hold: a linked device.
+    fn linked_executor() -> ViaExecutor<FakeExecutor> {
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        *executor.rpc().held.borrow_mut() = Some(LINKED_SCID.into());
+        executor
+    }
+
+    /// The device `d2` of `keylog::tests::log_with_d2_enc`'s identity, which may keep the master
+    /// key, its executor behind the custody enc adapter as [`connect`] puts it. The log lists `d2`
+    /// with `listed` (this vault's custody enc key when `None`), and the executor's sealed inbox
+    /// holds master #0 sealed to that key, as `m1`. Answers the identity's SCID.
+    fn joined_executor(
+        vault: &Arc<DesktopVault>,
+        listed: Option<String>,
+    ) -> (ViaExecutor<WithEncKey<FakeExecutor>>, String) {
+        use ad4m_identity_client::EncKey;
+        use ad4m_identity_core::inbox::{seal, sign_payload, InboxAddress, InboxBody};
+        use ad4m_identity_core::link::SignedBy;
+        let d2 = KeySigner::new(&[4u8; 32], 0);
+        let device_key = Signer::key(&d2);
+        let custody = CustodyEncKey::for_device(vault.shared_store(), device_key.as_str()).unwrap();
+        let enc = listed.unwrap_or_else(|| custody.enc().as_str().to_string());
+        let (events, _) = crate::keylog::tests::log_with_d2_enc(true, enc.clone());
+        let chain = ad4m_identity_core::fold(&events).unwrap();
+        let scid = events[0].scid.clone();
+        let fake = FakeExecutor {
+            device: d2,
+            ..FakeExecutor::new()
+        };
+        fake.answer(
+            "identity.status",
+            json!({
+                "did": did_of(&scid),
+                "deviceKey": device_key,
+                // The executor's wallet key: the adapter answers the custody enc key instead.
+                "deviceEnc": ad4m_identity_core::encode_x25519_multikey(&[6u8; 32]),
+                "keyId": "d2",
+                "revoked": null,
+                "head": null,
+                "fork": null,
+                "store": { "url": "https://store.example", "trusted": true },
+            }),
+        );
+        fake.answer("identity.log", log_answer(&events));
+        let master = words::master_key(&words::seed(&words::from_entropy(&[41u8; 16])), 0).unwrap();
+        let payload = sign_payload(
+            device_key,
+            InboxBody::Master {
+                did: did_of(&scid),
+                index: 0,
+                secret: bs58::encode(master.to_bytes()).into_string(),
+            },
+            CLOCK.now(),
+            SignedBy {
+                key_id: "m0".into(),
+                kel_seq: 0,
+                kel_hash: chain.hash_at(0).unwrap().clone(),
+            },
+            &master,
+        )
+        .unwrap();
+        let address = InboxAddress::Joined {
+            scid: scid.clone(),
+            key_id: "d2".into(),
+        };
+        let sealed = seal(
+            &ad4m_identity_core::Multikey::from(enc.as_str()),
+            &address,
+            &payload,
+            &mut rand_core::OsRng,
+        )
+        .unwrap();
+        fake.answer(
+            "identity.inboxSealed",
+            json!([{
+                "id": "m1", "sealed": sealed, "scid": scid, "keyId": "d2",
+                "storedAt": 0, "expires": CLOCK.now() + 300,
+            }]),
+        );
+        // An acknowledged message is gone from the store.
+        fake.answer("identity.inboxAck", json!({}));
+        fake.answer_after("identity.inboxAck", "identity.inboxSealed", json!([]));
+        let adapter = WithEncKey::new(fake, Box::new(custody), Box::new(SystemClock));
+        (ViaExecutor::new(adapter), scid)
+    }
+
+    #[tokio::test]
+    async fn a_new_device_shows_its_code_and_follows_the_link_to_the_end() {
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        let expires = CLOCK.now() + 300;
+        let did = "did:scid:coasys:1:Qm";
+        executor.rpc().answer(
+            "identity.prepareDevice",
+            json!({ "sign": "z6Mk", "enc": "z6LS", "device": "coasys:device:1:abc", "expires": expires }),
+        );
+        executor.rpc().answer(
+            "identity.joinStatus",
+            json!({ "state": "spent", "did": did, "keyId": "d2", "seq": 1 }),
+        );
+        let (events_tx, events) = broadcast::channel(8);
+        // Another topic's event first: the step waits past it for the ticket.
+        events_tx.send(json!({ "type": "inbox-message" })).unwrap();
+        events_tx
+            .send(json!({ "type": "link-ticket", "did": did, "offerId": "o1", "matchCode": "R7K Q2M" }))
+            .unwrap();
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), screens) = tokio::join!(
+            show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
+            async move {
+                let first = first.await.unwrap().unwrap();
+                let matched = window.step(StepInput::WaitLink).await;
+                let joined = window.step(StepInput::WaitJoin).await;
+                vec![first, matched, joined]
+            }
+        );
+        let Screen::DeviceCode {
+            code,
+            qr_svg,
+            expires: shown,
+        } = &screens[0]
+        else {
+            panic!("{screens:?}")
+        };
+        assert_eq!(code, "coasys:device:1:abc");
+        assert!(qr_svg.contains("<svg"));
+        assert_eq!(*shown, expires);
+        assert!(
+            matches!(
+                &screens[1],
+                Screen::DeviceMatch { code, did: d, needs_accept: false, accepted: false, confirmed: false }
+                    if code == "R7K Q2M" && d == did
+            ),
+            "{screens:?}"
+        );
+        assert!(
+            matches!(&screens[2], Screen::Joined { did: d, key_id } if d == did && key_id == "d2"),
+            "{screens:?}"
+        );
+        assert_eq!(
+            executor.rpc().called("identity.joinStatus"),
+            vec![json!({ "offerId": "o1" })]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_link_that_ends_unconfirmed_says_so_on_the_new_device() {
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        executor.rpc().answer(
+            "identity.prepareDevice",
+            json!({ "device": "coasys:device:1:abc", "expires": CLOCK.now() + 300 }),
+        );
+        executor
+            .rpc()
+            .answer("identity.joinStatus", json!({ "state": "expired" }));
+        let (events_tx, events) = broadcast::channel(8);
+        events_tx
+            .send(json!({ "type": "link-ticket", "did": "did:scid:x", "offerId": "o1", "matchCode": "AAA BBB" }))
+            .unwrap();
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), last) = tokio::join!(
+            show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
+            async move {
+                first.await.unwrap().unwrap();
+                window.step(StepInput::WaitLink).await;
+                window.step(StepInput::WaitJoin).await
+            }
+        );
+        assert!(
+            matches!(&last, Screen::Failed { message } if message.contains("wasn't confirmed")),
+            "{last:?}"
+        );
+    }
+
+    /// A new device whose executor claims offer `o1` of `did:scid:x` at once, its `link-ticket`
+    /// carrying `needsAccept` when given.
+    fn claiming_device(
+        needs_accept: Option<bool>,
+    ) -> (ViaExecutor<FakeExecutor>, broadcast::Receiver<Value>) {
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        executor.rpc().answer(
+            "identity.prepareDevice",
+            json!({ "device": "coasys:device:1:abc", "expires": CLOCK.now() + 300 }),
+        );
+        let mut ticket = json!({ "type": "link-ticket", "did": "did:scid:x", "offerId": "o1", "matchCode": "AAA BBB" });
+        if let Some(needs) = needs_accept {
+            ticket["needsAccept"] = json!(needs);
+        }
+        let (events_tx, events) = broadcast::channel(8);
+        events_tx.send(ticket).unwrap();
+        (executor, events)
+    }
+
+    fn device_match(needs_accept: bool, accepted: bool, confirmed: bool) -> Screen {
+        Screen::DeviceMatch {
+            code: "AAA BBB".into(),
+            did: "did:scid:x".into(),
+            needs_accept,
+            accepted,
+            confirmed,
+        }
+    }
+
+    /// A first run: the holder confirms before the person accepts here. The window keeps asking
+    /// until they do, and the accept lets this computer join at once.
+    #[tokio::test]
+    async fn a_first_run_device_joins_only_once_the_person_accepts_the_identity() {
+        let (executor, events) = claiming_device(Some(true));
+        executor
+            .rpc()
+            .answer("identity.joinStatus", json!({ "state": "awaiting-accept" }));
+        executor
+            .rpc()
+            .answer("identity.acceptJoin", json!({ "accepted": true }));
+        executor.rpc().answer_after(
+            "identity.acceptJoin",
+            "identity.joinStatus",
+            json!({ "state": "spent", "did": "did:scid:x", "keyId": "d2", "seq": 1 }),
+        );
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), screens) = tokio::join!(
+            show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
+            async {
+                first.await.unwrap().unwrap();
+                let matched = window.step(StepInput::WaitLink).await;
+                // The holder confirmed: the window still asks, and waits again.
+                let confirmed = window.step(StepInput::WaitJoin).await;
+                let (waiting, joined) = tokio::join!(
+                    window.step(StepInput::WaitJoin),
+                    window.step(StepInput::Accept)
+                );
+                vec![matched, confirmed, waiting, joined]
+            }
+        );
+        assert_eq!(screens[0], device_match(true, false, false));
+        assert_eq!(screens[1], device_match(true, false, true));
+        // The wait the window had out answers with the accept; the accept follows to the end.
+        assert_eq!(screens[2], device_match(true, true, true));
+        assert!(
+            matches!(&screens[3], Screen::Joined { did, key_id } if did == "did:scid:x" && key_id == "d2"),
+            "{screens:?}"
+        );
+        assert_eq!(
+            executor.rpc().called("identity.acceptJoin"),
+            vec![json!({ "offerId": "o1" })]
+        );
+        assert!(executor.rpc().called("identity.cancelJoin").is_empty());
+    }
+
+    /// Accepted before the holder confirms: the accept itself waits for the join.
+    #[tokio::test]
+    async fn an_accept_before_the_holder_confirms_waits_for_the_join() {
+        let (executor, events) = claiming_device(Some(true));
+        executor
+            .rpc()
+            .answer("identity.acceptJoin", json!({ "accepted": true }));
+        executor.rpc().answer(
+            "identity.joinStatus",
+            json!({ "state": "spent", "did": "did:scid:x", "keyId": "d2", "seq": 1 }),
+        );
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), joined) = tokio::join!(
+            show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
+            async {
+                first.await.unwrap().unwrap();
+                window.step(StepInput::WaitLink).await;
+                window.step(StepInput::Accept).await
+            }
+        );
+        assert!(matches!(&joined, Screen::Joined { .. }), "{joined:?}");
+        let calls: Vec<String> = executor
+            .rpc()
+            .seen
+            .borrow()
+            .iter()
+            .map(|(m, _)| m.clone())
+            .filter(|m| m.ends_with("Join") || m.ends_with("joinStatus"))
+            .collect();
+        assert_eq!(calls, ["identity.acceptJoin", "identity.joinStatus"]);
+    }
+
+    /// An executor that waits for an accept the `link-ticket` did not announce: the window asks.
+    #[tokio::test]
+    async fn a_claim_that_awaits_an_accept_asks_for_it_whatever_the_ticket_said() {
+        let (executor, events) = claiming_device(None);
+        executor
+            .rpc()
+            .answer("identity.joinStatus", json!({ "state": "awaiting-accept" }));
+        executor
+            .rpc()
+            .answer("identity.cancelJoin", json!({ "cancelled": true }));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let (_, screens) = tokio::join!(
+            tokio::time::timeout(
+                Duration::from_secs(5),
+                show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply)
+            ),
+            async {
+                first.await.unwrap().unwrap();
+                let matched = window.step(StepInput::WaitLink).await;
+                let asked = window.step(StepInput::WaitJoin).await;
+                // Answered without a join: a wait for the step's end is refused.
+                let (tx, refused) = oneshot::channel();
+                window
+                    .tx
+                    .send(Request::Step(StepInput::WaitLink, tx))
+                    .unwrap();
+                let refused = refused.await.unwrap();
+                let (tx, cancelled) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                let cancelled = cancelled.await.unwrap();
+                (matched, asked, refused, cancelled)
+            }
+        );
+        assert_eq!(screens.0, device_match(false, false, false));
+        assert_eq!(screens.1, device_match(true, false, true));
+        assert!(matches!(screens.2, Err(CustodyError::WrongInput)));
+        // Cancelled between waits: the claim ends with it, and only then is the cancel answered.
+        assert_eq!(screens.3, None);
+        assert_eq!(
+            executor.rpc().called("identity.cancelJoin"),
+            vec![json!({ "offerId": "o1" })]
+        );
+    }
+
+    /// Cancel while the device waits ends the step and the executor's claim.
+    #[tokio::test]
+    async fn cancelling_a_claimed_link_ends_the_claim() {
+        let (executor, events) = claiming_device(Some(true));
+        executor
+            .rpc()
+            .answer("identity.joinStatus", json!({ "state": "claimed" }));
+        executor
+            .rpc()
+            .answer("identity.cancelJoin", json!({ "cancelled": true }));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), waited) = tokio::join!(
+            show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
+            async {
+                first.await.unwrap().unwrap();
+                window.step(StepInput::WaitLink).await;
+                let (tx, waited) = oneshot::channel();
+                window
+                    .tx
+                    .send(Request::Step(StepInput::WaitJoin, tx))
+                    .unwrap();
+                let (tx, cancelled) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                (cancelled.await.unwrap(), waited.await.unwrap())
+            }
+        );
+        let (cancelled, waited) = waited;
+        // Confirmed by the executor: the window may close.
+        assert_eq!(cancelled, None);
+        assert!(matches!(waited, Err(CustodyError::NoStep)), "{waited:?}");
+        assert!(executor.rpc().called("identity.acceptJoin").is_empty());
+        assert_eq!(
+            executor.rpc().called("identity.cancelJoin"),
+            vec![json!({ "offerId": "o1" })]
+        );
+    }
+
+    /// An accept the executor refuses (the offer is gone) ends the step, saying so.
+    #[tokio::test]
+    async fn an_accept_of_an_offer_the_executor_no_longer_knows_says_so() {
+        let (executor, events) = claiming_device(Some(true));
+        executor
+            .rpc()
+            .answer("identity.joinStatus", json!({ "state": "claimed" }));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), (waiting, accepted)) = tokio::join!(
+            show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
+            async {
+                first.await.unwrap().unwrap();
+                window.step(StepInput::WaitLink).await;
+                tokio::join!(
+                    window.step(StepInput::WaitJoin),
+                    window.step(StepInput::Accept)
+                )
+            }
+        );
+        // The fake answers an unknown method 404, as the executor answers an unknown offer.
+        for screen in [&waiting, &accepted] {
+            assert!(
+                matches!(screen, Screen::Failed { message } if message.contains("has closed")),
+                "{screen:?}"
+            );
+        }
+    }
+
+    /// An accept the executor does not answer leaves the window able to cancel: the cancel ends
+    /// the executor's claim and is answered, and the accept with it, without waiting on the accept.
+    #[tokio::test]
+    async fn a_cancel_while_the_accept_stalls_ends_the_claim() {
+        tokio::time::pause();
+        let (executor, events) = claiming_device(Some(true));
+        executor
+            .rpc()
+            .answer("identity.acceptJoin", json!({ "accepted": true }));
+        executor
+            .rpc()
+            .delay("identity.acceptJoin", Duration::from_secs(3600));
+        executor
+            .rpc()
+            .answer("identity.cancelJoin", json!({ "cancelled": true }));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let (_, answered) = tokio::join!(
+            tokio::time::timeout(
+                Duration::from_secs(7200),
+                show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply)
+            ),
+            tokio::time::timeout(Duration::from_secs(7200), async {
+                first.await.unwrap().unwrap();
+                window.step(StepInput::WaitLink).await;
+                let (tx, accepted) = oneshot::channel();
+                window
+                    .tx
+                    .send(Request::Step(StepInput::Accept, tx))
+                    .unwrap();
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                let asked = tokio::time::Instant::now();
+                let (tx, cancelled) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                let cancelled = cancelled.await.unwrap();
+                (asked.elapsed(), cancelled, accepted.await.unwrap())
             })
-            .expect("custody test thread");
+        );
+        let (took, cancelled, accepted) = answered.expect("the cancel was answered");
+        assert!(took < CANCEL_WAIT, "{took:?}");
+        assert_eq!(cancelled, None);
+        assert!(
+            matches!(accepted, Err(CustodyError::NoStep)),
+            "{accepted:?}"
+        );
+        assert_eq!(
+            executor.rpc().called("identity.cancelJoin"),
+            vec![json!({ "offerId": "o1" })]
+        );
+    }
 
-        // Releases the prompt and the offer poll if this case returns or panics, then joins.
-        // A panic in the custody thread fails the case: `finish` reports it, and `Drop` still
-        // joins on the paths that return earlier.
-        struct Stop {
-            block: Arc<Block>,
-            hold_offers: Arc<AtomicBool>,
-            offer_release: Arc<tokio::sync::Notify>,
-            thread: Option<std::thread::JoinHandle<()>>,
-        }
-        fn panic_payload(e: Box<dyn std::any::Any + Send>) -> String {
-            e.downcast_ref::<&str>()
-                .map(|s| (*s).to_string())
-                .or_else(|| e.downcast_ref::<String>().cloned())
-                .unwrap_or_else(|| "unknown panic".into())
-        }
-        impl Stop {
-            fn release(&self) {
-                self.block.release();
-                self.hold_offers.store(false, Ordering::SeqCst);
-                self.offer_release.notify_waiters();
+    /// The same, for an accept sent while a wait for the join is out: the cancel answers both.
+    #[tokio::test]
+    async fn a_cancel_while_an_accept_beside_a_wait_stalls_answers_both() {
+        tokio::time::pause();
+        let (executor, events) = claiming_device(Some(true));
+        executor
+            .rpc()
+            .answer("identity.joinStatus", json!({ "state": "claimed" }));
+        executor
+            .rpc()
+            .answer("identity.acceptJoin", json!({ "accepted": true }));
+        executor
+            .rpc()
+            .delay("identity.acceptJoin", Duration::from_secs(3600));
+        executor
+            .rpc()
+            .answer("identity.cancelJoin", json!({ "cancelled": true }));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let (_, answered) = tokio::join!(
+            tokio::time::timeout(
+                Duration::from_secs(7200),
+                show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply)
+            ),
+            tokio::time::timeout(Duration::from_secs(7200), async {
+                first.await.unwrap().unwrap();
+                window.step(StepInput::WaitLink).await;
+                let (tx, waited) = oneshot::channel();
+                window
+                    .tx
+                    .send(Request::Step(StepInput::WaitJoin, tx))
+                    .unwrap();
+                let (tx, accepted) = oneshot::channel();
+                window
+                    .tx
+                    .send(Request::Step(StepInput::Accept, tx))
+                    .unwrap();
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                let asked = tokio::time::Instant::now();
+                let (tx, cancelled) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                let cancelled = cancelled.await.unwrap();
+                (
+                    asked.elapsed(),
+                    cancelled,
+                    waited.await.unwrap(),
+                    accepted.await.unwrap(),
+                )
+            })
+        );
+        let (took, cancelled, waited, accepted) = answered.expect("the cancel was answered");
+        assert!(took < CANCEL_WAIT, "{took:?}");
+        assert_eq!(cancelled, None);
+        assert!(matches!(waited, Err(CustodyError::NoStep)), "{waited:?}");
+        assert!(
+            matches!(accepted, Err(CustodyError::NoStep)),
+            "{accepted:?}"
+        );
+        assert_eq!(
+            executor.rpc().called("identity.cancelJoin"),
+            vec![json!({ "offerId": "o1" })]
+        );
+    }
+
+    /// An accept that never answers ends with the claim's deadline, saying the link closed.
+    #[tokio::test]
+    async fn an_accept_that_stalls_ends_at_the_claims_deadline() {
+        tokio::time::pause();
+        let (executor, events) = claiming_device(Some(true));
+        executor
+            .rpc()
+            .answer("identity.acceptJoin", json!({ "accepted": true }));
+        executor
+            .rpc()
+            .delay("identity.acceptJoin", Duration::from_secs(100_000));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let asked = tokio::time::Instant::now();
+        let ((), accepted) = tokio::join!(
+            show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
+            async {
+                first.await.unwrap().unwrap();
+                window.step(StepInput::WaitLink).await;
+                window.step(StepInput::Accept).await
             }
+        );
+        let took = asked.elapsed();
+        assert!(
+            took <= Duration::from_secs(OFFER_TTL_S + CONFIRM_GRACE_S + 1),
+            "{took:?}"
+        );
+        assert!(
+            matches!(&accepted, Screen::Failed { message } if message.contains("didn't confirm in time")),
+            "{accepted:?}"
+        );
+    }
 
-            fn finish(mut self) -> Result<(), String> {
-                // Unblock the prompt before joining. The assertions have already run; the thread
-                // may still be leaving the step, and it must not sit in the keychain until join.
-                self.release();
-                let joined = self.thread.take().map(|thread| thread.join());
-                match joined {
-                    Some(Err(e)) => Err(format!(
-                        "custody test thread panicked: {}",
-                        panic_payload(e)
-                    )),
-                    _ => Ok(()),
+    /// The main window asking for the state while a cancel waits on the executor does not hold
+    /// the cancel: one whose executor connection stalls is answered once the cancel was.
+    #[tokio::test]
+    async fn a_state_request_during_a_cancel_does_not_hold_the_cancel() {
+        // Accepts connections and never answers the WebSocket handshake.
+        let stalled = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = ExecutorAddress {
+            url: format!("http://{}", stalled.local_addr().unwrap()),
+            credential: Arc::from("x"),
+        };
+        // On the real clock: the stalled handshake is real I/O, which a paused clock does not
+        // advance past.
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        executor
+            .rpc()
+            .answer("identity.cancelJoin", json!({ "cancelled": true }));
+        executor
+            .rpc()
+            .delay("identity.cancelJoin", Duration::from_millis(200));
+        let claim = Claim {
+            offer_id: "o1".into(),
+            did: "did:scid:x".into(),
+            code: "AAA BBB".into(),
+            needs_accept: true,
+            deadline: CLOCK.now() + 300,
+            accepted: false,
+            confirmed: false,
+        };
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let (waiting_tx, waiting) = oneshot::channel();
+        let mut reply: Reply = Some(waiting_tx);
+        let (public_tx, _public) = oneshot::channel();
+        tx.send(Request::Public(public_tx)).unwrap();
+        let mut reads = StateReads::new(&vault, &address);
+        // The state request is answered after the cancel, so the step itself is cut off here.
+        let (_, waited) = tokio::join!(
+            tokio::time::timeout(
+                Duration::from_secs(3),
+                cancel_claim(
+                    &executor,
+                    "coasys:device:1:abc",
+                    Some(&claim),
+                    Cancelled::default(),
+                    &mut reads,
+                    &mut rx,
+                    &mut reply,
+                )
+            ),
+            tokio::time::timeout(Duration::from_secs(2), waiting)
+        );
+        let waited = waited
+            .expect("the cancel was answered while the state request stalled")
+            .unwrap();
+        assert!(matches!(waited, Err(CustodyError::NoStep)), "{waited:?}");
+        drop(stalled);
+    }
+
+    /// The main window asking for the state while an accept is out does not hold a cancel that
+    /// follows: the state, whose executor connection stalls here as an unlock prompt would, is
+    /// answered once the accept or the cancel ended. `beside_wait`: the accept arrived beside a
+    /// wait for the join (`follow_claim`), else straight after the code.
+    async fn a_state_request_during_an_accept_does_not_hold_a_cancel(beside_wait: bool) {
+        // Accepts connections and never answers the WebSocket handshake; on the real clock, as
+        // the stalled handshake is real I/O.
+        let stalled = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = ExecutorAddress {
+            url: format!("http://{}", stalled.local_addr().unwrap()),
+            credential: Arc::from("x"),
+        };
+        let (executor, events) = claiming_device(Some(true));
+        executor
+            .rpc()
+            .answer("identity.joinStatus", json!({ "state": "claimed" }));
+        executor
+            .rpc()
+            .answer("identity.acceptJoin", json!({ "accepted": true }));
+        executor
+            .rpc()
+            .delay("identity.acceptJoin", Duration::from_secs(3600));
+        executor
+            .rpc()
+            .answer("identity.cancelJoin", json!({ "cancelled": true }));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (_, mut rx, mut reply, window, first) = opened();
+        let (_, answered) = tokio::join!(
+            tokio::time::timeout(
+                Duration::from_secs(3),
+                show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply)
+            ),
+            tokio::time::timeout(Duration::from_secs(2), async {
+                first.await.unwrap().unwrap();
+                window.step(StepInput::WaitLink).await;
+                let waited = beside_wait.then(|| {
+                    let (tx, waited) = oneshot::channel();
+                    window
+                        .tx
+                        .send(Request::Step(StepInput::WaitJoin, tx))
+                        .unwrap();
+                    waited
+                });
+                let (tx, accepted) = oneshot::channel();
+                window
+                    .tx
+                    .send(Request::Step(StepInput::Accept, tx))
+                    .unwrap();
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                let (tx, _public) = oneshot::channel();
+                window.tx.send(Request::Public(tx)).unwrap();
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                let (tx, cancelled) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                let cancelled = cancelled.await.unwrap();
+                let waited = match waited {
+                    Some(waited) => Some(waited.await.unwrap()),
+                    None => None,
+                };
+                (cancelled, accepted.await.unwrap(), waited)
+            })
+        );
+        let (cancelled, accepted, waited) =
+            answered.expect("the cancel was answered while the state request stalled");
+        assert_eq!(cancelled, None);
+        assert!(
+            matches!(accepted, Err(CustodyError::NoStep)),
+            "{accepted:?}"
+        );
+        if let Some(waited) = waited {
+            assert!(matches!(waited, Err(CustodyError::NoStep)), "{waited:?}");
+        }
+        assert_eq!(
+            executor.rpc().called("identity.cancelJoin"),
+            vec![json!({ "offerId": "o1" })]
+        );
+        drop(stalled);
+    }
+
+    #[tokio::test]
+    async fn a_state_request_during_an_accept_does_not_hold_the_cancel() {
+        a_state_request_during_an_accept_does_not_hold_a_cancel(false).await;
+    }
+
+    #[tokio::test]
+    async fn a_state_request_during_an_accept_beside_a_wait_does_not_hold_the_cancel() {
+        a_state_request_during_an_accept_does_not_hold_a_cancel(true).await;
+    }
+
+    /// A state request put off while an accept was out is answered once the accept is, on both
+    /// paths to the accept.
+    async fn a_state_request_during_an_accept_is_answered_after_it(beside_wait: bool) {
+        let (executor, events) = claiming_device(Some(true));
+        executor
+            .rpc()
+            .answer("identity.joinStatus", json!({ "state": "claimed" }));
+        executor
+            .rpc()
+            .answer("identity.acceptJoin", json!({ "accepted": true }));
+        executor
+            .rpc()
+            .delay("identity.acceptJoin", Duration::from_millis(200));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        // No executor answers on this address: the state is read without one, at once.
+        let (address, mut rx, mut reply, window, first) = opened();
+        let (_, answered) = tokio::join!(
+            tokio::time::timeout(
+                Duration::from_secs(3),
+                show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply)
+            ),
+            tokio::time::timeout(Duration::from_secs(2), async {
+                first.await.unwrap().unwrap();
+                window.step(StepInput::WaitLink).await;
+                let _waited = beside_wait.then(|| {
+                    let (tx, waited) = oneshot::channel();
+                    window
+                        .tx
+                        .send(Request::Step(StepInput::WaitJoin, tx))
+                        .unwrap();
+                    waited
+                });
+                let (tx, _accepted) = oneshot::channel();
+                window
+                    .tx
+                    .send(Request::Step(StepInput::Accept, tx))
+                    .unwrap();
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                let (tx, public) = oneshot::channel();
+                window.tx.send(Request::Public(tx)).unwrap();
+                let public = public.await;
+                // Closed: the flow ends with the window.
+                drop(window);
+                public
+            })
+        );
+        let public = answered.expect("the state request was answered");
+        assert!(public.is_ok(), "the state request was dropped unanswered");
+        assert_eq!(executor.rpc().called("identity.acceptJoin").len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_state_request_during_an_accept_is_answered_after_the_accept() {
+        a_state_request_during_an_accept_is_answered_after_it(false).await;
+    }
+
+    #[tokio::test]
+    async fn a_state_request_during_an_accept_beside_a_wait_is_answered_after_the_accept() {
+        a_state_request_during_an_accept_is_answered_after_it(true).await;
+    }
+
+    /// A cancel that arrives with the `link-ticket` already in ends the claim the ticket made:
+    /// left unclaimed here, a holder's confirm of a claim that needs no accept would still join
+    /// this computer after its window closed. Repeated, as which of the two is seen first was
+    /// left to chance.
+    #[tokio::test]
+    async fn a_cancel_beside_a_ticket_ends_the_claim_the_ticket_made() {
+        for _ in 0..32 {
+            let (executor, events) = claiming_device(Some(false));
+            executor
+                .rpc()
+                .answer("identity.cancelJoin", json!({ "cancelled": true }));
+            let vault = memory_vault(crate::store::StoreKind::Keychain);
+            let (address, mut rx, mut reply, window, first) = opened();
+            let ((), cancelled) = tokio::join!(
+                show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
+                async {
+                    first.await.unwrap().unwrap();
+                    let (tx, _waited) = oneshot::channel();
+                    window
+                        .tx
+                        .send(Request::Step(StepInput::WaitLink, tx))
+                        .unwrap();
+                    let (tx, cancelled) = oneshot::channel();
+                    window.tx.send(Request::Cancel(tx)).unwrap();
+                    cancelled.await.unwrap()
                 }
-            }
+            );
+            assert_eq!(cancelled, None);
+            assert_eq!(
+                executor.rpc().called("identity.cancelJoin"),
+                vec![json!({ "offerId": "o1" })]
+            );
         }
-        impl Drop for Stop {
-            fn drop(&mut self) {
-                self.release();
-                if let Some(thread) = self.thread.take() {
-                    if let Err(e) = thread.join() {
-                        eprintln!("custody test thread panicked: {}", panic_payload(e));
+    }
+
+    /// A cancel sent before the window waits for the ticket, with the ticket already in, ends the
+    /// claim the ticket made, as one beside the wait does.
+    #[tokio::test]
+    async fn a_cancel_before_the_wait_ends_the_claim_a_ticket_already_made() {
+        let (executor, events) = claiming_device(Some(false));
+        executor
+            .rpc()
+            .answer("identity.cancelJoin", json!({ "cancelled": true }));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), cancelled) = tokio::join!(
+            show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
+            async {
+                first.await.unwrap().unwrap();
+                let (tx, cancelled) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                cancelled.await.unwrap()
+            }
+        );
+        assert_eq!(cancelled, None);
+        assert_eq!(
+            executor.rpc().called("identity.cancelJoin"),
+            vec![json!({ "offerId": "o1" })]
+        );
+    }
+
+    /// A cancel with no ticket seen ends the code: the executor stops reading for tickets and cancels
+    /// a claim whose `link-ticket` is still on its way (`identity.endPrepared`), so the window closes.
+    /// `during_wait`: sent while the window waits for the ticket, else before.
+    async fn a_cancel_with_no_ticket_seen_ends_the_code(during_wait: bool) {
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        executor.rpc().answer(
+            "identity.prepareDevice",
+            json!({ "device": "coasys:device:1:abc", "expires": CLOCK.now() + 300 }),
+        );
+        let (_events_tx, events) = broadcast::channel(8);
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), (cancelled, waited)) = tokio::join!(
+            show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
+            async {
+                first.await.unwrap().unwrap();
+                let waited = during_wait.then(|| {
+                    let (tx, waited) = oneshot::channel();
+                    window
+                        .tx
+                        .send(Request::Step(StepInput::WaitLink, tx))
+                        .unwrap();
+                    waited
+                });
+                let (tx, cancelled) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                let cancelled = cancelled.await.unwrap();
+                let waited = match waited {
+                    Some(waited) => Some(waited.await.unwrap()),
+                    None => None,
+                };
+                (cancelled, waited)
+            }
+        );
+        assert_eq!(cancelled, None);
+        if let Some(waited) = waited {
+            assert!(matches!(waited, Err(CustodyError::NoStep)), "{waited:?}");
+        }
+        assert_eq!(
+            executor.rpc().called("identity.endPrepared"),
+            vec![json!({ "device": "coasys:device:1:abc" })]
+        );
+        assert!(executor.rpc().called("identity.cancelJoin").is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_cancel_before_the_wait_with_no_ticket_seen_ends_the_code() {
+        a_cancel_with_no_ticket_seen_ends_the_code(false).await;
+    }
+
+    #[tokio::test]
+    async fn a_cancel_during_the_wait_with_no_ticket_seen_ends_the_code() {
+        a_cancel_with_no_ticket_seen_ends_the_code(true).await;
+    }
+
+    /// The service around a show-code flow as [`serve`] runs it: the flow, then the idle service
+    /// over the same state reads. A `Start` [`idle`] hands back is answered `started`, standing in
+    /// for the step [`serve`] would run.
+    async fn show_code_served(
+        executor: &ViaExecutor<FakeExecutor>,
+        events: broadcast::Receiver<Value>,
+        vault: &Arc<DesktopVault>,
+        address: &ExecutorAddress,
+        rx: &mut Rx,
+        reply: &mut Reply,
+    ) {
+        let mut reads = StateReads::new(vault, address);
+        show_code_on(executor, events, &mut reads, rx, reply).await;
+        while let Some((_, start)) = idle(&mut reads, rx).await {
+            let _ = start.send(Ok(Screen::Failed {
+                message: "started".into(),
+            }));
+        }
+        reads.finish().await;
+    }
+
+    /// A state read a show-code flow took and left stalled when its claim ended holds no request
+    /// after it: a retried `Start` and a later cancel are answered at once, and the state request
+    /// once its read ends. `by_cancel`: the claim ends with a cancel, else it fails.
+    async fn a_state_read_left_stalled_holds_nothing_after_the_claim(by_cancel: bool) {
+        // On the real clock: the slow read is real I/O.
+        let address = slow_executor(Duration::from_millis(1500));
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        executor.rpc().answer(
+            "identity.prepareDevice",
+            json!({ "device": "coasys:device:1:abc", "expires": CLOCK.now() + 300 }),
+        );
+        let (events_tx, events) = broadcast::channel::<Value>(8);
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (_, mut rx, mut reply, window, first) = opened();
+        let prompt = Duration::from_millis(500);
+        let ((), (ended, started, cancelled, early, public)) = tokio::join!(
+            show_code_served(&executor, events, &vault, &address, &mut rx, &mut reply),
+            async move {
+                first.await.unwrap().unwrap();
+                let (tx, mut public) = oneshot::channel();
+                window.tx.send(Request::Public(tx)).unwrap();
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                let ended = if by_cancel {
+                    let (tx, cancelled) = oneshot::channel();
+                    window.tx.send(Request::Cancel(tx)).unwrap();
+                    tokio::time::timeout(prompt, cancelled)
+                        .await
+                        .expect("the cancel was answered")
+                        .unwrap()
+                } else {
+                    // The executor's events end: the wait for the ticket fails.
+                    drop(events_tx);
+                    let (tx, waited) = oneshot::channel();
+                    window
+                        .tx
+                        .send(Request::Step(StepInput::WaitLink, tx))
+                        .unwrap();
+                    Some(
+                        tokio::time::timeout(prompt, waited)
+                            .await
+                            .expect("the step was answered")
+                            .unwrap()
+                            .unwrap(),
+                    )
+                };
+                let (tx, started) = oneshot::channel();
+                window
+                    .tx
+                    .send(Request::Start(IdentityStep::ShowCode, tx))
+                    .unwrap();
+                let started = tokio::time::timeout(prompt, started)
+                    .await
+                    .expect("a retried start was held by the stalled read")
+                    .unwrap();
+                let (tx, cancelled) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                let cancelled = tokio::time::timeout(prompt, cancelled)
+                    .await
+                    .expect("a later cancel was held by the stalled read")
+                    .unwrap();
+                // The read is still under way: its request is answered when it ends.
+                let early = public.try_recv().is_ok();
+                let public = tokio::time::timeout(Duration::from_secs(5), public).await;
+                drop(window);
+                (ended, started, cancelled, early, public)
+            }
+        );
+        if by_cancel {
+            // The code ended: the window closes.
+            assert_eq!(ended, None);
+        } else {
+            let ended = ended.expect("the claim's end shows a screen");
+            assert!(
+                matches!(&ended, Screen::Failed { message } if message.contains("stopped responding")),
+                "{ended:?}"
+            );
+        }
+        assert!(
+            matches!(&started, Ok(Screen::Failed { message }) if message == "started"),
+            "{started:?}"
+        );
+        assert_eq!(cancelled, None);
+        assert!(!early, "the stalled read answered before it ended");
+        let public = public.expect("the state request was answered once its read ended");
+        assert!(public.is_ok(), "the state request was dropped unanswered");
+    }
+
+    #[tokio::test]
+    async fn a_state_read_left_stalled_by_a_cancelled_claim_holds_no_later_request() {
+        a_state_read_left_stalled_holds_nothing_after_the_claim(true).await;
+    }
+
+    #[tokio::test]
+    async fn a_state_read_left_stalled_by_a_failed_claim_holds_no_later_request() {
+        a_state_read_left_stalled_holds_nothing_after_the_claim(false).await;
+    }
+
+    /// With the service idle, a state read that stalls holds no step input and no cancel.
+    #[tokio::test]
+    async fn an_idle_state_read_that_stalls_holds_no_other_request() {
+        let address = slow_executor(Duration::from_millis(1500));
+        let handle = spawn(memory_vault(crate::store::StoreKind::Keychain), address);
+        let prompt = Duration::from_millis(500);
+        let reading = handle.public_state();
+        tokio::pin!(reading);
+        // Started, so the service has taken it before the requests after it.
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), &mut reading)
+                .await
+                .is_err()
+        );
+        let step = tokio::time::timeout(prompt, handle.step(StepInput::WaitLink))
+            .await
+            .expect("a step input was held by the stalled read");
+        assert_eq!(step, Err(CustodyError::NoStep));
+        let cancelled = tokio::time::timeout(prompt, handle.cancel())
+            .await
+            .expect("a cancel was held by the stalled read");
+        assert_eq!(cancelled, None);
+        let public = tokio::time::timeout(Duration::from_secs(5), reading)
+            .await
+            .expect("the state request was answered once its read ended");
+        assert!(public.is_ok(), "{public:?}");
+    }
+
+    /// Cancels queued together are one cancel: the code is ended once, and each cancel answers what
+    /// that end said. Here the executor refuses it (one without `identity.endPrepared`), so each says
+    /// the cancel was not confirmed, rather than the second closing the window from the idle service.
+    #[tokio::test]
+    async fn queued_cancels_are_one_end_of_the_code_and_answer_alike() {
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        executor.rpc().answer(
+            "identity.prepareDevice",
+            json!({ "device": "coasys:device:1:abc", "expires": CLOCK.now() + 300 }),
+        );
+        executor
+            .rpc()
+            .refuse("identity.endPrepared", 404, "no identity.endPrepared");
+        let (_events_tx, events) = broadcast::channel(8);
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), (a, b)) = tokio::join!(
+            show_code_served(&executor, events, &vault, &address, &mut rx, &mut reply),
+            async move {
+                first.await.unwrap().unwrap();
+                // Both sent before the flow runs again, so both are queued when it takes the first.
+                let (tx, a) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                let (tx, b) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                let answered = (a.await.unwrap(), b.await.unwrap());
+                drop(window);
+                answered
+            }
+        );
+        let unconfirmed = |screen: &Option<Screen>| matches!(screen, Some(Screen::Failed { message }) if message == CANCEL_UNCONFIRMED);
+        assert!(unconfirmed(&a), "{a:?}");
+        assert!(unconfirmed(&b), "{b:?}");
+        assert_eq!(executor.rpc().called("identity.endPrepared").len(), 1);
+        assert!(executor.rpc().called("identity.cancelJoin").is_empty());
+    }
+
+    /// An executor address whose state reads take `hold`: each connection is accepted, held
+    /// unanswered that long, then closed, so the read ends as one with no executor would.
+    fn slow_executor(hold: Duration) -> ExecutorAddress {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = ExecutorAddress {
+            url: format!("http://{}", listener.local_addr().unwrap()),
+            credential: Arc::from("x"),
+        };
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(stream) = stream else { return };
+                std::thread::spawn(move || {
+                    std::thread::sleep(hold);
+                    drop(stream);
+                });
+            }
+        });
+        address
+    }
+
+    /// A state request taken while the window waits for the ticket is answered even when the
+    /// ticket comes in during its read: the read is not dropped with the wait for a cancel.
+    #[tokio::test]
+    async fn a_state_request_during_the_wait_for_a_ticket_is_answered_when_the_ticket_comes() {
+        // On the real clock: the slow read is real I/O.
+        let address = slow_executor(Duration::from_millis(300));
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        executor.rpc().answer(
+            "identity.prepareDevice",
+            json!({ "device": "coasys:device:1:abc", "expires": CLOCK.now() + 300 }),
+        );
+        let (events_tx, events) = broadcast::channel(8);
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (_, mut rx, mut reply, window, first) = opened();
+        let (_, answered) = tokio::join!(
+            tokio::time::timeout(
+                Duration::from_secs(3),
+                show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply)
+            ),
+            tokio::time::timeout(Duration::from_secs(2), async {
+                first.await.unwrap().unwrap();
+                let (tx, waited) = oneshot::channel();
+                window
+                    .tx
+                    .send(Request::Step(StepInput::WaitLink, tx))
+                    .unwrap();
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                let (tx, public) = oneshot::channel();
+                window.tx.send(Request::Public(tx)).unwrap();
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                events_tx
+                    .send(json!({ "type": "link-ticket", "did": "did:scid:x", "offerId": "o1", "matchCode": "AAA BBB" }))
+                    .unwrap();
+                let waited = waited.await.unwrap();
+                let public = public.await;
+                drop(window);
+                (waited, public)
+            })
+        );
+        let (waited, public) = answered.expect("the state request was answered");
+        assert_eq!(waited.unwrap(), device_match(false, false, false));
+        assert!(public.is_ok(), "the state request was dropped unanswered");
+    }
+
+    /// A cancel after an accept went through is not held by a state read that stalls (as a slow
+    /// executor would): the read runs beside the wait for the join. `beside_wait`: the accept
+    /// arrived beside a wait for the join (`follow_claim`), else straight after the code.
+    async fn a_cancel_after_an_accept_is_not_held_by_a_stalled_state_read(beside_wait: bool) {
+        // Accepts connections and never answers the WebSocket handshake; on the real clock, as
+        // the stalled handshake is real I/O.
+        let stalled = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = ExecutorAddress {
+            url: format!("http://{}", stalled.local_addr().unwrap()),
+            credential: Arc::from("x"),
+        };
+        let (executor, events) = claiming_device(Some(true));
+        executor
+            .rpc()
+            .answer("identity.joinStatus", json!({ "state": "claimed" }));
+        executor
+            .rpc()
+            .answer("identity.acceptJoin", json!({ "accepted": true }));
+        executor
+            .rpc()
+            .delay("identity.acceptJoin", Duration::from_millis(200));
+        executor
+            .rpc()
+            .answer("identity.cancelJoin", json!({ "cancelled": true }));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (_, mut rx, mut reply, window, first) = opened();
+        let (_, answered) = tokio::join!(
+            tokio::time::timeout(
+                Duration::from_secs(3),
+                show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply)
+            ),
+            tokio::time::timeout(Duration::from_secs(2), async {
+                first.await.unwrap().unwrap();
+                window.step(StepInput::WaitLink).await;
+                let waited = beside_wait.then(|| {
+                    let (tx, waited) = oneshot::channel();
+                    window
+                        .tx
+                        .send(Request::Step(StepInput::WaitJoin, tx))
+                        .unwrap();
+                    waited
+                });
+                let (tx, accepted) = oneshot::channel();
+                window
+                    .tx
+                    .send(Request::Step(StepInput::Accept, tx))
+                    .unwrap();
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                let (tx, _public) = oneshot::channel();
+                window.tx.send(Request::Public(tx)).unwrap();
+                // The accept is through by now, and the state read it put off has started.
+                tokio::time::sleep(Duration::from_millis(400)).await;
+                let (tx, cancelled) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                let cancelled = cancelled.await.unwrap();
+                let waited = match waited {
+                    Some(waited) => Some(waited.await.unwrap()),
+                    None => None,
+                };
+                (cancelled, accepted.await.unwrap(), waited)
+            })
+        );
+        let (cancelled, accepted, waited) =
+            answered.expect("the cancel was answered while the state read stalled");
+        assert_eq!(cancelled, None);
+        assert!(
+            matches!(accepted, Err(CustodyError::NoStep)),
+            "{accepted:?}"
+        );
+        if let Some(waited) = waited {
+            assert_eq!(waited.unwrap(), device_match(true, true, false));
+        }
+        assert_eq!(
+            executor.rpc().called("identity.acceptJoin"),
+            vec![json!({ "offerId": "o1" })]
+        );
+        assert_eq!(
+            executor.rpc().called("identity.cancelJoin"),
+            vec![json!({ "offerId": "o1" })]
+        );
+        drop(stalled);
+    }
+
+    #[tokio::test]
+    async fn a_cancel_after_an_accept_is_not_held_by_a_stalled_state_read_after_it() {
+        a_cancel_after_an_accept_is_not_held_by_a_stalled_state_read(false).await;
+    }
+
+    #[tokio::test]
+    async fn a_cancel_after_an_accept_beside_a_wait_is_not_held_by_a_stalled_state_read() {
+        a_cancel_after_an_accept_is_not_held_by_a_stalled_state_read(true).await;
+    }
+
+    /// An accept beside a wait for the join that fails answers both at once, though a state read
+    /// it put off stalls.
+    #[tokio::test]
+    async fn a_failed_accept_beside_a_wait_is_answered_while_a_state_read_stalls() {
+        let stalled = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = ExecutorAddress {
+            url: format!("http://{}", stalled.local_addr().unwrap()),
+            credential: Arc::from("x"),
+        };
+        let (executor, events) = claiming_device(Some(true));
+        executor
+            .rpc()
+            .answer("identity.joinStatus", json!({ "state": "claimed" }));
+        executor
+            .rpc()
+            .refuse("identity.acceptJoin", 404, "not-found: no claim");
+        executor
+            .rpc()
+            .delay("identity.acceptJoin", Duration::from_millis(200));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (_, mut rx, mut reply, window, first) = opened();
+        let (_, answered) = tokio::join!(
+            tokio::time::timeout(
+                Duration::from_secs(3),
+                show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply)
+            ),
+            tokio::time::timeout(Duration::from_secs(2), async {
+                first.await.unwrap().unwrap();
+                window.step(StepInput::WaitLink).await;
+                let (tx, waited) = oneshot::channel();
+                window
+                    .tx
+                    .send(Request::Step(StepInput::WaitJoin, tx))
+                    .unwrap();
+                let (tx, accepted) = oneshot::channel();
+                window
+                    .tx
+                    .send(Request::Step(StepInput::Accept, tx))
+                    .unwrap();
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                let (tx, _public) = oneshot::channel();
+                window.tx.send(Request::Public(tx)).unwrap();
+                (waited.await.unwrap(), accepted.await.unwrap())
+            })
+        );
+        let (waited, accepted) =
+            answered.expect("the accept was answered while the state read stalled");
+        let closed = |screen: &Result<Screen, CustodyError>| matches!(screen, Ok(Screen::Failed { message }) if message.contains("link has closed"));
+        assert!(closed(&waited), "{waited:?}");
+        assert!(closed(&accepted), "{accepted:?}");
+        drop(stalled);
+    }
+
+    /// A state request while the window waits for the join does not hold a cancel that follows:
+    /// its read, stalled here, runs beside the wait.
+    #[tokio::test]
+    async fn a_cancel_during_a_wait_for_the_join_is_not_held_by_a_stalled_state_read() {
+        let stalled = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = ExecutorAddress {
+            url: format!("http://{}", stalled.local_addr().unwrap()),
+            credential: Arc::from("x"),
+        };
+        let (executor, events) = claiming_device(Some(false));
+        executor
+            .rpc()
+            .answer("identity.joinStatus", json!({ "state": "claimed" }));
+        executor
+            .rpc()
+            .answer("identity.cancelJoin", json!({ "cancelled": true }));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (_, mut rx, mut reply, window, first) = opened();
+        let (_, answered) = tokio::join!(
+            tokio::time::timeout(
+                Duration::from_secs(3),
+                show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply)
+            ),
+            tokio::time::timeout(Duration::from_secs(2), async {
+                first.await.unwrap().unwrap();
+                window.step(StepInput::WaitLink).await;
+                let (tx, waited) = oneshot::channel();
+                window
+                    .tx
+                    .send(Request::Step(StepInput::WaitJoin, tx))
+                    .unwrap();
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                let (tx, _public) = oneshot::channel();
+                window.tx.send(Request::Public(tx)).unwrap();
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                let (tx, cancelled) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                (cancelled.await.unwrap(), waited.await.unwrap())
+            })
+        );
+        let (cancelled, waited) =
+            answered.expect("the cancel was answered while the state read stalled");
+        assert_eq!(cancelled, None);
+        assert!(matches!(waited, Err(CustodyError::NoStep)), "{waited:?}");
+        assert_eq!(
+            executor.rpc().called("identity.cancelJoin"),
+            vec![json!({ "offerId": "o1" })]
+        );
+        drop(stalled);
+    }
+
+    /// Cancels already queued when the executor's answer to the first is in are the same cancel:
+    /// each shows the join. Left for the idle service, a `None` would close the window over it.
+    /// Repeated, as which of the two is seen first was left to chance.
+    #[tokio::test]
+    async fn cancels_queued_as_the_cancel_ends_show_the_join_too() {
+        for _ in 0..32 {
+            let executor = ViaExecutor::new(FakeExecutor::new());
+            executor.rpc().refuse(
+                "identity.cancelJoin",
+                409,
+                "already-joined: the main agent speaks for this claim's identity",
+            );
+            executor.rpc().answer(
+                "identity.joinStatus",
+                json!({ "state": "spent", "did": "did:scid:x", "keyId": "d2", "seq": 1 }),
+            );
+            let claim = Claim {
+                offer_id: "o1".into(),
+                did: "did:scid:x".into(),
+                code: "AAA BBB".into(),
+                needs_accept: false,
+                deadline: CLOCK.now() + 300,
+                accepted: false,
+                confirmed: false,
+            };
+            let vault = memory_vault(crate::store::StoreKind::Keychain);
+            let (address, mut rx, mut reply, window, mut waited) = opened();
+            let (tx, mut first) = oneshot::channel();
+            let (queued_tx, mut queued) = oneshot::channel();
+            window.tx.send(Request::Cancel(queued_tx)).unwrap();
+            cancel_claim(
+                &executor,
+                "coasys:device:1:abc",
+                Some(&claim),
+                Cancelled {
+                    cancel: Some(tx),
+                    ..Default::default()
+                },
+                &mut StateReads::new(&vault, &address),
+                &mut rx,
+                &mut reply,
+            )
+            .await;
+            let joined = |screen: Option<&Screen>| matches!(screen, Some(Screen::Joined { did, key_id }) if did == "did:scid:x" && key_id == "d2");
+            let first = first.try_recv().expect("the first cancel was answered");
+            let queued = queued.try_recv().expect("the queued cancel was answered");
+            let waited = waited.try_recv().expect("the step was answered");
+            assert!(joined(first.as_ref()), "{first:?}");
+            assert!(joined(queued.as_ref()), "{queued:?}");
+            assert!(joined(waited.as_ref().ok()), "{waited:?}");
+        }
+    }
+
+    /// A cancel that reaches the executor after the claim bound (409 `already-joined`) does not
+    /// undo the join: the step shows this computer joined, not cancelled. The cancel is answered
+    /// only once the executor has: the holder's add lands while `identity.cancelJoin` is on its
+    /// way, and the cancel answers `Joined`, so the window shows it rather than closing.
+    #[tokio::test]
+    async fn a_cancel_that_comes_after_the_join_shows_the_join() {
+        let (executor, events) = claiming_device(Some(true));
+        executor
+            .rpc()
+            .answer("identity.joinStatus", json!({ "state": "claimed" }));
+        executor.rpc().refuse(
+            "identity.cancelJoin",
+            409,
+            "already-joined: the main agent speaks for this claim's identity",
+        );
+        executor
+            .rpc()
+            .delay("identity.cancelJoin", Duration::from_millis(300));
+        executor.rpc().answer_after(
+            "identity.cancelJoin",
+            "identity.joinStatus",
+            json!({ "state": "spent", "did": "did:scid:x", "keyId": "d2", "seq": 1 }),
+        );
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), (cancelled, waited)) = tokio::join!(
+            show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
+            async {
+                first.await.unwrap().unwrap();
+                window.step(StepInput::WaitLink).await;
+                let (tx, waited) = oneshot::channel();
+                window
+                    .tx
+                    .send(Request::Step(StepInput::WaitJoin, tx))
+                    .unwrap();
+                let (tx, mut cancelled) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                // Not answered while the executor has yet to say how the claim ended.
+                let cancelled =
+                    match tokio::time::timeout(Duration::from_millis(100), &mut cancelled).await {
+                        Ok(early) => {
+                            panic!("the cancel was answered before the executor's: {early:?}")
+                        }
+                        Err(_) => cancelled.await.unwrap(),
+                    };
+                (cancelled, waited.await.unwrap())
+            }
+        );
+        let joined = |screen: Option<&Screen>| matches!(screen, Some(Screen::Joined { did, key_id }) if did == "did:scid:x" && key_id == "d2");
+        assert!(joined(cancelled.as_ref()), "{cancelled:?}");
+        assert!(joined(waited.as_ref().ok()), "{waited:?}");
+        assert_eq!(
+            executor.rpc().called("identity.cancelJoin"),
+            vec![json!({ "offerId": "o1" })]
+        );
+    }
+
+    /// A second cancel sent while the first waits on the executor (a double click, two hosts) is
+    /// the same cancel: both show the join. Left for the idle service, the second's `None` would
+    /// close the window before the person saw that this computer joined.
+    #[tokio::test]
+    async fn two_overlapping_cancels_both_show_the_join() {
+        let (executor, events) = claiming_device(Some(true));
+        executor
+            .rpc()
+            .answer("identity.joinStatus", json!({ "state": "claimed" }));
+        executor.rpc().refuse(
+            "identity.cancelJoin",
+            409,
+            "already-joined: the main agent speaks for this claim's identity",
+        );
+        executor
+            .rpc()
+            .delay("identity.cancelJoin", Duration::from_millis(300));
+        executor.rpc().answer_after(
+            "identity.cancelJoin",
+            "identity.joinStatus",
+            json!({ "state": "spent", "did": "did:scid:x", "keyId": "d2", "seq": 1 }),
+        );
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), (first_cancel, second_cancel)) = tokio::join!(
+            async {
+                show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply).await;
+                // The step is over: what is still queued meets the idle service, as `serve` does.
+                while let Ok(request) = rx.try_recv() {
+                    if let Request::Cancel(r) = request {
+                        let _ = r.send(None);
                     }
                 }
+            },
+            async {
+                first.await.unwrap().unwrap();
+                window.step(StepInput::WaitLink).await;
+                let (tx, _waited) = oneshot::channel();
+                window
+                    .tx
+                    .send(Request::Step(StepInput::WaitJoin, tx))
+                    .unwrap();
+                let (tx, first_cancel) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                let (tx, second_cancel) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                (first_cancel.await.unwrap(), second_cancel.await.unwrap())
             }
-        }
-        let _stop = Stop {
-            block: Arc::clone(&block),
-            hold_offers: Arc::clone(&hold_offers),
-            offer_release: Arc::clone(&offer_release),
-            thread: Some(thread),
-        };
-
-        let first = match tokio::time::timeout(Duration::from_secs(20), first_rx).await {
-            Ok(Ok(Ok(screen))) => screen,
-            Ok(Ok(Err(e))) => return Err(format!("the link refused the step: {e:?}")),
-            Ok(Err(_)) => return Err("the link ended before a screen".into()),
-            Err(_) => return Err("no screen within 20s".into()),
-        };
-        let Screen::Offer { expires, .. } = first else {
-            return Err(format!("expected the offer, got {first:?}"));
-        };
-
-        let (step_tx, step_rx) = oneshot::channel();
-        to_service
-            .send(Request::Step(StepInput::WaitClaim, step_tx))
-            .map_err(|_| "the link ended before wait-claim".to_string())?;
-        if !wait_until(Duration::from_secs(10), || {
-            offers_waiting.load(Ordering::SeqCst)
-        }) {
-            return Err("the claim poll never started".into());
-        }
-
-        block.arm();
-        let (pub_tx, _pub_rx) = oneshot::channel();
-        let (pub2_tx, _pub2_rx) = oneshot::channel();
-        to_service
-            .send(Request::Public(pub_tx))
-            .map_err(|_| "the link ended before the state read".to_string())?;
-        to_service
-            .send(Request::Public(pub2_tx))
-            .map_err(|_| "the link ended before the second state read".to_string())?;
-        if !wait_until(Duration::from_secs(10), || block.in_flight() >= 1) {
-            return Err("the state read never reached the keychain".into());
-        }
-        // The second read is queued behind the one prompt, so the keychain sees one call.
-        std::thread::sleep(Duration::from_millis(50));
-        let max = block.max_in_flight();
-        if max != 1 {
-            return Err(format!("keychain calls in flight at once: {max}"));
-        }
-
-        let bound = Duration::from_secs(1);
-        match mode {
-            WhileBlocked::Cancel => {
-                let (cancel_tx, cancel_rx) = oneshot::channel();
-                to_service
-                    .send(Request::Cancel(cancel_tx))
-                    .map_err(|_| "the link ended before cancel".to_string())?;
-                match tokio::time::timeout(bound, cancel_rx).await {
-                    Ok(Ok(())) => Ok(()),
-                    Ok(Err(_)) => Err("cancel was dropped".into()),
-                    Err(_) => Err(
-                        "cancel did not answer within 1s while the keychain read was blocked"
-                            .into(),
-                    ),
-                }
-            }
-            WhileBlocked::Deadline => {
-                clock.0.store(expires, Ordering::SeqCst);
-                hold_offers.store(false, Ordering::SeqCst);
-                offer_release.notify_waiters();
-                match tokio::time::timeout(bound, step_rx).await {
-                    Ok(Ok(Ok(Screen::Failed { message }))) if message.contains("expired") => Ok(()),
-                    Ok(Ok(other)) => Err(format!("the deadline answered {other:?}")),
-                    Ok(Err(_)) => Err("the claim wait was dropped".into()),
-                    Err(_) => Err(
-                        "the claim deadline did not answer within 1s while the keychain read was blocked"
-                            .into(),
-                    ),
-                }
-            }
-        }?;
-        _stop.finish()?;
-        Ok(())
+        );
+        let joined = |screen: Option<&Screen>| matches!(screen, Some(Screen::Joined { did, key_id }) if did == "did:scid:x" && key_id == "d2");
+        assert!(joined(first_cancel.as_ref()), "{first_cancel:?}");
+        assert!(joined(second_cancel.as_ref()), "{second_cancel:?}");
+        // One cancel reached the executor.
+        assert_eq!(
+            executor.rpc().called("identity.cancelJoin"),
+            vec![json!({ "offerId": "o1" })]
+        );
     }
 
-    /// A vault call that never returns (an unlock prompt nobody answers) must not hold the custody
-    /// task: Cancel and the offer's expiry still answer during the claim wait, and a second state
-    /// read does not enter the keychain beside the first.
+    /// A join lookup that does not answer leaves the cancel inside the same [`CANCEL_WAIT`]: the
+    /// claim had joined, said in words, and custody is free for the next request.
     #[tokio::test]
-    async fn a_blocking_keychain_read_during_a_link_lets_cancel_and_the_deadline_fire() {
-        blocking_keychain_while_linked(WhileBlocked::Cancel)
-            .await
+    async fn a_late_cancel_whose_join_lookup_stalls_answers_within_the_wait() {
+        tokio::time::pause();
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        executor.rpc().refuse(
+            "identity.cancelJoin",
+            409,
+            "already-joined: the main agent speaks for this claim's identity",
+        );
+        executor
+            .rpc()
+            .delay("identity.cancelJoin", CANCEL_WAIT - Duration::from_secs(1));
+        executor.rpc().answer(
+            "identity.joinStatus",
+            json!({ "state": "spent", "did": "did:scid:x", "keyId": "d2", "seq": 1 }),
+        );
+        executor
+            .rpc()
+            .delay("identity.joinStatus", Duration::from_secs(3600));
+        let asked = tokio::time::Instant::now();
+        let screen = cancel_join(&executor, "o1", tokio::time::Instant::now() + CANCEL_WAIT).await;
+        assert!(
+            matches!(&screen, Some(Screen::Failed { message }) if message == ALREADY_JOINED),
+            "{screen:?}"
+        );
+        // The timer's millisecond tick aside, the lookup had only what the cancel left of the wait.
+        let took = asked.elapsed();
+        assert!(took < CANCEL_WAIT + Duration::from_millis(10), "{took:?}");
+        assert_eq!(
+            executor.rpc().called("identity.joinStatus"),
+            vec![json!({ "offerId": "o1" })]
+        );
+    }
+
+    /// A late cancel whose join status does not name the key still says the join completed.
+    #[tokio::test]
+    async fn a_late_cancel_without_the_joined_key_says_the_join_completed() {
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        executor.rpc().refuse(
+            "identity.cancelJoin",
+            409,
+            "already-joined: the main agent speaks for this claim's identity",
+        );
+        let screen = cancel_join(&executor, "o1", tokio::time::Instant::now() + CANCEL_WAIT).await;
+        assert!(
+            matches!(&screen, Some(Screen::Failed { message }) if message == ALREADY_JOINED),
+            "{screen:?}"
+        );
+        // A claim already cancelled is as good as this cancel.
+        executor.rpc().refuse(
+            "identity.cancelJoin",
+            409,
+            "cancelled: the claim of this offer is cancelled",
+        );
+        assert!(
+            cancel_join(&executor, "o1", tokio::time::Instant::now() + CANCEL_WAIT)
+                .await
+                .is_none()
+        );
+    }
+
+    /// A cancel the executor refuses, or does not answer, leaves the claim standing: the step says
+    /// the cancel was not confirmed, and the window stays.
+    #[tokio::test]
+    async fn a_cancel_the_executor_does_not_confirm_says_so() {
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        executor
+            .rpc()
+            .refuse("identity.cancelJoin", 503, "the executor is busy");
+        assert_eq!(
+            cancel_join(&executor, "o1", tokio::time::Instant::now() + CANCEL_WAIT).await,
+            Some(cancel_unconfirmed())
+        );
+
+        tokio::time::pause();
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        executor
+            .rpc()
+            .answer("identity.cancelJoin", json!({ "cancelled": true }));
+        executor
+            .rpc()
+            .delay("identity.cancelJoin", CANCEL_WAIT + Duration::from_secs(1));
+        assert_eq!(
+            cancel_join(&executor, "o1", tokio::time::Instant::now() + CANCEL_WAIT).await,
+            Some(cancel_unconfirmed())
+        );
+    }
+
+    /// A cancel with a claim seen, whose end of the code cancelled that claim: the window closes, and
+    /// no `identity.cancelJoin` follows.
+    #[tokio::test]
+    async fn a_cancel_whose_end_of_the_code_cancelled_the_claim_closes_the_window() {
+        let (executor, events) = claiming_device(Some(true));
+        executor.rpc().answer(
+            "identity.endPrepared",
+            json!({ "state": "ended", "cancelled": ["o1"] }),
+        );
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), (matched, cancelled)) = tokio::join!(
+            show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
+            async {
+                first.await.unwrap().unwrap();
+                let matched = window.step(StepInput::WaitLink).await;
+                let (tx, cancelled) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                (matched, cancelled.await.unwrap())
+            }
+        );
+        assert_eq!(matched, device_match(true, false, false));
+        assert_eq!(cancelled, None);
+        assert_eq!(
+            executor.rpc().called("identity.endPrepared"),
+            vec![json!({ "device": "coasys:device:1:abc" })]
+        );
+        assert!(executor.rpc().called("identity.cancelJoin").is_empty());
+    }
+
+    /// A cancel whose code had a claim bind already, its `link-ticket` not seen here: the executor
+    /// answers `already-joined`, and the step shows the join, as a late `identity.cancelJoin` does;
+    /// in words when the join's key is not known.
+    #[tokio::test]
+    async fn a_cancel_whose_code_already_joined_shows_the_join() {
+        for knows_key in [true, false] {
+            let executor = ViaExecutor::new(FakeExecutor::new());
+            executor.rpc().answer(
+                "identity.prepareDevice",
+                json!({ "device": "coasys:device:1:abc", "expires": CLOCK.now() + 300 }),
+            );
+            executor.rpc().answer(
+                "identity.endPrepared",
+                json!({ "state": "already-joined", "offerId": "o1", "did": "did:scid:x" }),
+            );
+            if knows_key {
+                executor.rpc().answer(
+                    "identity.joinStatus",
+                    json!({ "state": "spent", "did": "did:scid:x", "keyId": "d2", "seq": 1 }),
+                );
+            }
+            let (_events_tx, events) = broadcast::channel(8);
+            let vault = memory_vault(crate::store::StoreKind::Keychain);
+            let (address, mut rx, mut reply, window, first) = opened();
+            let ((), cancelled) = tokio::join!(
+                show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
+                async {
+                    first.await.unwrap().unwrap();
+                    let (tx, cancelled) = oneshot::channel();
+                    window.tx.send(Request::Cancel(tx)).unwrap();
+                    cancelled.await.unwrap()
+                }
+            );
+            if knows_key {
+                assert!(
+                    matches!(&cancelled, Some(Screen::Joined { did, key_id }) if did == "did:scid:x" && key_id == "d2"),
+                    "{cancelled:?}"
+                );
+            } else {
+                assert!(
+                    matches!(&cancelled, Some(Screen::Failed { message }) if message == ALREADY_JOINED),
+                    "{cancelled:?}"
+                );
+            }
+            assert_eq!(
+                executor.rpc().called("identity.joinStatus"),
+                vec![json!({ "offerId": "o1" })]
+            );
+            assert!(executor.rpc().called("identity.cancelJoin").is_empty());
+        }
+    }
+
+    /// An executor that refuses the end of the code (one without `identity.endPrepared`, or one
+    /// restarted since it made the code) still has the claim seen here cancelled by its offer.
+    #[tokio::test]
+    async fn a_refused_end_of_the_code_cancels_the_claim_seen_here() {
+        let (executor, events) = claiming_device(Some(true));
+        executor
+            .rpc()
+            .refuse("identity.endPrepared", 404, "no identity.endPrepared");
+        executor
+            .rpc()
+            .answer("identity.cancelJoin", json!({ "cancelled": true }));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), cancelled) = tokio::join!(
+            show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
+            async {
+                first.await.unwrap().unwrap();
+                window.step(StepInput::WaitLink).await;
+                let (tx, cancelled) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                cancelled.await.unwrap()
+            }
+        );
+        assert_eq!(cancelled, None);
+        assert_eq!(
+            executor.rpc().called("identity.cancelJoin"),
+            vec![json!({ "offerId": "o1" })]
+        );
+    }
+
+    /// An end of the code the executor does not answer within [`CANCEL_WAIT`] is not confirmed: the
+    /// step says so, and custody is free again inside the wait.
+    #[tokio::test]
+    async fn an_end_of_the_code_the_executor_does_not_answer_says_the_cancel_is_unconfirmed() {
+        tokio::time::pause();
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        executor.rpc().answer(
+            "identity.prepareDevice",
+            json!({ "device": "coasys:device:1:abc", "expires": CLOCK.now() + 300 }),
+        );
+        executor
+            .rpc()
+            .delay("identity.endPrepared", CANCEL_WAIT + Duration::from_secs(1));
+        let (_events_tx, events) = broadcast::channel(8);
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), (cancelled, took)) = tokio::join!(
+            show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
+            async {
+                first.await.unwrap().unwrap();
+                let asked = tokio::time::Instant::now();
+                let (tx, cancelled) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                (cancelled.await.unwrap(), asked.elapsed())
+            }
+        );
+        assert_eq!(cancelled, Some(cancel_unconfirmed()));
+        assert!(took < CANCEL_WAIT + Duration::from_millis(10), "{took:?}");
+    }
+
+    /// An end of the code that did not list the claim seen here (it was cancelled before, or the
+    /// answer is odd) leaves that claim to `identity.cancelJoin`; an answer this custody does not
+    /// read does too.
+    #[tokio::test]
+    async fn an_end_that_does_not_list_the_claim_seen_here_cancels_it_by_its_offer() {
+        for ended in [
+            json!({ "state": "ended", "cancelled": ["o2"] }),
+            json!({ "state": "something-else" }),
+        ] {
+            let (executor, events) = claiming_device(Some(true));
+            executor.rpc().answer("identity.endPrepared", ended);
+            executor
+                .rpc()
+                .answer("identity.cancelJoin", json!({ "cancelled": true }));
+            let vault = memory_vault(crate::store::StoreKind::Keychain);
+            let (address, mut rx, mut reply, window, first) = opened();
+            let ((), cancelled) = tokio::join!(
+                show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
+                async {
+                    first.await.unwrap().unwrap();
+                    window.step(StepInput::WaitLink).await;
+                    let (tx, cancelled) = oneshot::channel();
+                    window.tx.send(Request::Cancel(tx)).unwrap();
+                    cancelled.await.unwrap()
+                }
+            );
+            assert_eq!(cancelled, None);
+            assert_eq!(
+                executor.rpc().called("identity.cancelJoin"),
+                vec![json!({ "offerId": "o1" })]
+            );
+        }
+    }
+
+    /// A cancel the executor does not confirm, through the flow: answered with the screen that
+    /// says so, as is the wait it ended.
+    #[tokio::test]
+    async fn a_cancelled_wait_whose_cancel_is_unconfirmed_keeps_the_window() {
+        let (executor, events) = claiming_device(Some(true));
+        executor
+            .rpc()
+            .answer("identity.joinStatus", json!({ "state": "claimed" }));
+        executor
+            .rpc()
+            .refuse("identity.cancelJoin", 503, "the executor is busy");
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), (cancelled, waited)) = tokio::join!(
+            show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
+            async {
+                first.await.unwrap().unwrap();
+                window.step(StepInput::WaitLink).await;
+                let (tx, waited) = oneshot::channel();
+                window
+                    .tx
+                    .send(Request::Step(StepInput::WaitJoin, tx))
+                    .unwrap();
+                let (tx, cancelled) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                (cancelled.await.unwrap(), waited.await.unwrap())
+            }
+        );
+        assert_eq!(cancelled, Some(cancel_unconfirmed()));
+        assert_eq!(waited, Ok(cancel_unconfirmed()));
+    }
+
+    /// An accept the executor refuses because the claim was cancelled here ends the step, saying so.
+    #[tokio::test]
+    async fn an_accept_of_a_cancelled_claim_says_it_was_cancelled() {
+        let (executor, events) = claiming_device(Some(true));
+        executor
+            .rpc()
+            .answer("identity.joinStatus", json!({ "state": "claimed" }));
+        executor.rpc().refuse(
+            "identity.acceptJoin",
+            409,
+            "cancelled: the claim of this offer is cancelled",
+        );
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), (waiting, accepted)) = tokio::join!(
+            show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
+            async {
+                first.await.unwrap().unwrap();
+                window.step(StepInput::WaitLink).await;
+                tokio::join!(
+                    window.step(StepInput::WaitJoin),
+                    window.step(StepInput::Accept)
+                )
+            }
+        );
+        for screen in [&waiting, &accepted] {
+            assert_eq!(*screen, cancelled_here(), "{screen:?}");
+        }
+    }
+
+    /// A claim whose status turns `cancelled` while the device follows it ends the step, saying so.
+    #[tokio::test]
+    async fn a_claim_cancelled_while_followed_says_it_was_cancelled() {
+        let (executor, events) = claiming_device(Some(true));
+        executor.rpc().answer(
+            "identity.joinStatus",
+            json!({ "state": "cancelled", "did": "did:scid:x" }),
+        );
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), last) = tokio::join!(
+            show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
+            async {
+                first.await.unwrap().unwrap();
+                window.step(StepInput::WaitLink).await;
+                window.step(StepInput::WaitJoin).await
+            }
+        );
+        assert!(
+            matches!(&last, Screen::Failed { message } if message == "This link was cancelled. Show a new code to try again."),
+            "{last:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_computer_that_speaks_for_an_identity_shows_no_code() {
+        let executor = linked_executor();
+        let (_events_tx, events) = broadcast::channel(1);
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, _window, first) = opened();
+        show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply).await;
+        let screen = first.await.unwrap().unwrap();
+        assert!(
+            matches!(&screen, Screen::Failed { message } if message.contains("already has an identity")),
+            "{screen:?}"
+        );
+        assert!(executor.rpc().called("identity.prepareDevice").is_empty());
+    }
+
+    #[tokio::test]
+    async fn with_no_master_key_waiting_nothing_is_taken() {
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (executor, scid) = joined_executor(&vault, None);
+        executor
+            .rpc()
+            .rpc()
+            .answer("identity.inboxSealed", json!([]));
+        let (address, mut rx, mut reply, _window, first) = opened();
+        take_master_on(&executor, &vault, &address, &mut rx, &mut reply).await;
+        let screen = first.await.unwrap().unwrap();
+        assert!(
+            matches!(&screen, Screen::Failed { message } if message == NO_MASTER_WAITING),
+            "{screen:?}"
+        );
+        assert!(!vault.holds(&scid).unwrap());
+    }
+
+    #[tokio::test]
+    async fn a_master_key_taken_into_a_sealed_store_gets_a_passphrase_first() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = open_vault(dir.path());
+        let (executor, scid) = joined_executor(&vault, None);
+        assert!(vault.needs_passphrase());
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), screens) = tokio::join!(
+            take_master_on(&executor, &vault, &address, &mut rx, &mut reply),
+            async move {
+                let first = first.await.unwrap().unwrap();
+                // Any other first screen ends the step, and a step sent after it would wait forever.
+                if !matches!(first, Screen::SetPassphrase { error: None }) {
+                    return vec![first];
+                }
+                // A passphrase `seal::check_new` refuses asks again, before any take.
+                let weak = window
+                    .step(StepInput::Passphrase {
+                        passphrase: "short".into(),
+                        confirm: Some("short".into()),
+                    })
+                    .await;
+                let taken = window
+                    .step(StepInput::Passphrase {
+                        passphrase: PASSPHRASE.into(),
+                        confirm: Some(PASSPHRASE.into()),
+                    })
+                    .await;
+                vec![first, weak, taken]
+            }
+        );
+        assert!(matches!(screens[0], Screen::SetPassphrase { error: None }));
+        assert!(
+            matches!(screens[1], Screen::SetPassphrase { error: Some(_) }),
+            "{screens:?}"
+        );
+        assert!(
+            matches!(&screens[2], Screen::MasterTaken { did, .. } if *did == did_of(&scid)),
+            "{screens:?}"
+        );
+        // Taken once the passphrase is set, and kept under it.
+        assert_eq!(held_sealed(&vault, &scid).unwrap(), Some(true));
+        assert_eq!(
+            executor.rpc().rpc().called("identity.inboxAck"),
+            vec![json!({ "id": "m1" })]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_linked_device_without_the_master_key_asks_for_it() {
+        let executor = linked_executor();
+        executor
+            .rpc()
+            .answer("identity.postRequest", json!({ "id": "r1" }));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let screen = ask_master_on(&executor, &vault).await;
+        // The asking screen shows this device's key and the request's code, as the card does.
+        let key = Signer::key(&executor.rpc().device);
+        let Screen::Asked {
+            key_id,
+            fingerprint,
+            code,
+        } = &screen
+        else {
+            panic!("{screen:?}");
+        };
+        assert_eq!(key_id, "d1");
+        assert_eq!(*fingerprint, crate::keylog::fingerprint(key.as_str()));
+        assert_eq!(
+            *code,
+            ad4m_identity_core::link::match_code(LINKED_SCID, "r1", key.as_str())
+        );
+        assert_eq!(
+            executor.rpc().called("identity.postRequest"),
+            vec![json!({ "body": { "kind": "send-master" } })]
+        );
+
+        // Not linked yet: nothing to ask, nothing posted.
+        let unlinked = ViaExecutor::new(FakeExecutor::new());
+        let screen = ask_master_on(&unlinked, &vault).await;
+        assert!(matches!(screen, Screen::Failed { .. }), "{screen:?}");
+        assert!(unlinked.rpc().called("identity.postRequest").is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_request_no_longer_waiting_is_said_so() {
+        let executor = linked_executor();
+        executor.rpc().answer("identity.requests", json!([]));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, _window, first) = opened();
+        answer_on(
+            &executor,
+            &vault,
+            &address,
+            &mut rx,
+            &mut reply,
+            "r9".into(),
+        )
+        .await;
+        let screen = first.await.unwrap().unwrap();
+        assert!(
+            matches!(&screen, Screen::Failed { message } if message.contains("no longer open")),
+            "{screen:?}"
+        );
+    }
+
+    /// The card names who asks from the key log, whatever the record says: with no record entry
+    /// (no name, no kind; a renamed one is no different) the poster still shows its own key id,
+    /// fingerprint and the request's code. Whether it may get the master key is its claim's, in
+    /// the log, never the record's kind: the same key that joined saying no is refused.
+    #[tokio::test]
+    async fn a_request_card_shows_the_key_logs_device_whatever_the_record_says() {
+        for may_keep in [true, false] {
+            let (events, d2) = crate::keylog::tests::log_with_d2(may_keep);
+            let scid = events[0].scid.clone();
+            let executor = ViaExecutor::new(FakeExecutor::new());
+            *executor.rpc().held.borrow_mut() = Some(scid.clone());
+            let events: Vec<Value> = events
+                .iter()
+                .map(|e| serde_json::to_value(e).unwrap())
+                .collect();
+            executor.rpc().answer(
+                "identity.log",
+                json!({ "did": did_of(&scid), "events": events, "head": null, "fork": null }),
+            );
+            executor.rpc().answer(
+                "identity.requests",
+                json!([{
+                    "id": "r1", "body": { "kind": "send-master" },
+                    "by": "d2", "created": 0, "expires": 99,
+                    "signed": { "req": {
+                        "did": did_of(&scid), "store": "did:key:zStore", "keyId": "d2",
+                        "kelSeq": 1, "kelHash": "h", "method": "POST", "path": "/requests",
+                        "bodyHash": "b", "nonce": "n", "expires": 99,
+                    }, "sig": "s" },
+                }]),
+            );
+            let vault = memory_vault(crate::store::StoreKind::Keychain);
+            let (address, mut rx, mut reply, window, first) = opened();
+            // No answer comes: the step ends after its first screen.
+            drop(window);
+            answer_on(
+                &executor,
+                &vault,
+                &address,
+                &mut rx,
+                &mut reply,
+                "r1".into(),
+            )
+            .await;
+            let screen = first.await.unwrap().unwrap();
+            let key = Signer::key(&d2);
+            if may_keep {
+                let Screen::Request {
+                    key_id,
+                    fingerprint,
+                    code,
+                    device,
+                    ..
+                } = &screen
+                else {
+                    panic!("{screen:?}");
+                };
+                assert_eq!(key_id, "d2");
+                assert_eq!(*fingerprint, crate::keylog::fingerprint(key.as_str()));
+                assert_eq!(
+                    *code,
+                    ad4m_identity_core::link::match_code(&scid, "r1", key.as_str())
+                );
+                assert_eq!(device, "Device d2");
+            } else {
+                assert!(
+                    matches!(&screen, Screen::Failed { message }
+                        if message.contains("can't have the master key")),
+                    "{screen:?}"
+                );
+            }
+        }
+    }
+
+    /// An RNG that draws `self.0` for every byte, so a test knows the record key
+    /// `seal_record` drew (its first 32 bytes).
+    struct Fixed(u8);
+
+    impl rand_core::RngCore for Fixed {
+        fn next_u32(&mut self) -> u32 {
+            u32::from_le_bytes([self.0; 4])
+        }
+        fn next_u64(&mut self) -> u64 {
+            u64::from_le_bytes([self.0; 8])
+        }
+        fn fill_bytes(&mut self, dest: &mut [u8]) {
+            dest.fill(self.0);
+        }
+        fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand_core::Error> {
+            dest.fill(self.0);
+            Ok(())
+        }
+    }
+
+    impl rand_core::CryptoRng for Fixed {}
+
+    /// `identity.log`'s answer for the identity `events` make, its head signed by the store key
+    /// `[9u8; 32]`: the reader trusts it for the record's receipt as for the head.
+    fn log_answer(events: &[Event]) -> Value {
+        let scid = &events[0].scid;
+        let json_events: Vec<Value> = events
+            .iter()
+            .map(|e| serde_json::to_value(e).unwrap())
+            .collect();
+        let seq = ad4m_identity_core::fold(events).unwrap().head().seq;
+        let store = KeySigner::new(&[9u8; 32], 0);
+        json!({
+            "did": did_of(scid), "events": json_events, "fork": null,
+            "head": {
+                "scid": scid, "seq": seq, "hash": "h", "time": 0,
+                "store": format!("did:key:{}", Signer::key(&store)), "sig": "s",
+            },
+        })
+    }
+
+    /// An executor that is device `d1` of the identity `events` make, answering its log and
+    /// `record` sealed to the log's readers, as the store would.
+    fn executor_with(
+        events: &[Event],
+        record: &ad4m_identity_core::record::PrivateRecord,
+    ) -> (ViaExecutor<FakeExecutor>, String) {
+        let scid = events[0].scid.clone();
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        *executor.rpc().held.borrow_mut() = Some(scid.clone());
+        let chain = ad4m_identity_core::fold(events).unwrap();
+        let store = KeySigner::new(&[9u8; 32], 0);
+        let seq = chain.head().seq;
+        executor.rpc().answer("identity.log", log_answer(events));
+        // `d1`, the executor's device key in `log_with_d2`, signs the envelope.
+        let d1 = KeySigner::new(&[2u8; 32], 0);
+        let sealed =
+            ad4m_identity_core::record::seal_record(&chain, 1, record, None, &d1, &mut Fixed(7))
+                .unwrap();
+        let receipt =
+            ad4m_identity_core::record::sign_receipt(&scid, &sealed, seq, &store).unwrap();
+        executor.rpc().answer(
+            "identity.record",
+            json!({ "record": sealed, "receipt": receipt }),
+        );
+        executor.rpc().answer(
+            "identity.unwrapRecordKey",
+            json!({ "key": bs58::encode([7u8; 32]).into_string() }),
+        );
+        (executor, did_of(&scid))
+    }
+
+    /// A record entry that names a device and says it keeps no master key.
+    fn named(name: &str) -> DeviceEntry {
+        DeviceEntry {
+            name: name.into(),
+            kind: DeviceKind::DesktopApp,
+            place: None,
+            address: None,
+            runs_executor: true,
+            holds_master: Holds::No,
+            operator: None,
+        }
+    }
+
+    /// A record that lies about `d3`: it calls it "Printer", a device without the master key.
+    fn lying_record() -> ad4m_identity_core::record::PrivateRecord {
+        let mut record = ad4m_identity_core::record::PrivateRecord::default();
+        record.devices.insert("d2".into(), named("Laptop"));
+        record.devices.insert("d3".into(), named("Printer"));
+        record
+    }
+
+    /// `d2`'s `confirm-revoke` request for `key_ids`, as the request box lists it.
+    fn revoke_request(did: &str, key_ids: &[&str]) -> Value {
+        json!([{
+            "id": "r1", "body": { "kind": "confirm-revoke", "keyIds": key_ids, "rotate": false },
+            "by": "d2", "created": 0, "expires": 99,
+            "signed": { "req": {
+                "did": did, "store": "did:key:zStore", "keyId": "d2",
+                "kelSeq": 2, "kelHash": "h", "method": "POST", "path": "/requests",
+                "bodyHash": "b", "nonce": "n", "expires": 99,
+            }, "sig": "s" },
+        }])
+    }
+
+    /// The first screen of answering request `r1` on `executor`.
+    async fn first_answer_screen(executor: &ViaExecutor<FakeExecutor>) -> Screen {
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        drop(window);
+        answer_on(executor, &vault, &address, &mut rx, &mut reply, "r1".into()).await;
+        first.await.unwrap().unwrap()
+    }
+
+    /// A revoke request's card names each key it would revoke as the key log lists it — key id and
+    /// fingerprint — with the record's name only beside it, so a record that renamed the device
+    /// cannot hide which key goes. Whether each may still hold a valid master key is the log's
+    /// too: the record saying `holdsMaster: false` does not hide a claim that said it may keep it.
+    #[tokio::test]
+    async fn a_revoke_request_card_shows_each_target_from_the_key_log() {
+        for d3_may_keep in [true, false] {
+            let (mut events, _) = crate::keylog::tests::log_with_d2(true);
+            let d3 = crate::keylog::tests::add_d3(&mut events, d3_may_keep);
+            let (executor, did) = executor_with(&events, &lying_record());
+            executor
+                .rpc()
+                .answer("identity.requests", revoke_request(&did, &["d3", "d1"]));
+            let screen = first_answer_screen(&executor).await;
+            let Screen::Request {
+                kind,
+                key_id,
+                device,
+                targets,
+                ..
+            } = &screen
+            else {
+                panic!("{screen:?}");
+            };
+            assert_eq!((*kind, key_id.as_str()), ("confirm-revoke", "d2"));
+            assert_eq!(device, "Laptop");
+            let d1_sign = Signer::key(&KeySigner::new(&[2u8; 32], 0));
+            assert_eq!(
+                *targets,
+                vec![
+                    RevokeTarget {
+                        key_id: "d3".into(),
+                        fingerprint: crate::keylog::fingerprint(Signer::key(&d3).as_str()),
+                        record_name: Some("Printer".into()),
+                        may_hold_master: d3_may_keep,
+                    },
+                    // The incept's standing key may keep it; the record does not name it.
+                    RevokeTarget {
+                        key_id: "d1".into(),
+                        fingerprint: crate::keylog::fingerprint(d1_sign.as_str()),
+                        record_name: None,
+                        may_hold_master: true,
+                    },
+                ]
+            );
+            let wire = serde_json::to_value(&screen).unwrap();
+            assert_eq!(wire["targets"][0]["keyId"], "d3");
+            assert_eq!(wire["targets"][0]["recordName"], "Printer");
+            assert_eq!(wire["targets"][0]["mayHoldMaster"], d3_may_keep);
+        }
+    }
+
+    /// A revoke request for a key the log does not list is refused rather than drawn by a name.
+    #[tokio::test]
+    async fn a_revoke_request_for_a_key_outside_the_log_is_refused() {
+        let (events, _) = crate::keylog::tests::log_with_d2(true);
+        let (executor, did) = executor_with(&events, &lying_record());
+        executor
+            .rpc()
+            .answer("identity.requests", revoke_request(&did, &["d3"]));
+        let screen = first_answer_screen(&executor).await;
+        assert!(
+            matches!(&screen, Screen::Failed { message } if message.contains("d3")
+                && message.contains("isn't in your key log")),
+            "{screen:?}"
+        );
+    }
+
+    /// Revoking a device from this computer warns that it may still hold a valid master key when
+    /// the log let it keep one, whatever the record says; a device whose claim said no is not
+    /// warned about, even where the record claims it keeps one.
+    #[tokio::test]
+    async fn the_revoke_screen_takes_the_master_key_warning_from_the_key_log() {
+        for (d3_may_keep, record_says) in [
+            (true, Holds::No),
+            (false, Holds::Yes),
+            (true, Holds::Yes),
+            (false, Holds::No),
+        ] {
+            let (mut events, _) = crate::keylog::tests::log_with_d2(true);
+            crate::keylog::tests::add_d3(&mut events, d3_may_keep);
+            let mut record = lying_record();
+            record.devices.get_mut("d3").unwrap().holds_master = record_says;
+            let (executor, _) = executor_with(&events, &record);
+            let vault = memory_vault(crate::store::StoreKind::Keychain);
+            let (address, mut rx, mut reply, window, first) = opened();
+            drop(window);
+            revoke_on(
+                &executor,
+                &vault,
+                &address,
+                &mut rx,
+                &mut reply,
+                "d3".into(),
+            )
+            .await;
+            let screen = first.await.unwrap().unwrap();
+            assert!(
+                matches!(&screen, Screen::RevokeConfirm { key_id, may_hold_master, .. }
+                    if key_id == "d3" && *may_hold_master == d3_may_keep),
+                "{d3_may_keep} {record_says:?}: {screen:?}"
+            );
+        }
+    }
+
+    /// The revoke confirmation takes from the key log whether the device may still hold a valid
+    /// master key; with no log to read, it warns.
+    #[tokio::test]
+    async fn a_revoke_confirmation_knows_a_device_that_may_keep_the_master_key() {
+        for may_keep in [true, false] {
+            let (events, _) = crate::keylog::tests::log_with_d2(may_keep);
+            let scid = events[0].scid.clone();
+            let executor = ViaExecutor::new(FakeExecutor::new());
+            let events: Vec<Value> = events
+                .iter()
+                .map(|e| serde_json::to_value(e).unwrap())
+                .collect();
+            executor.rpc().answer(
+                "identity.log",
+                json!({ "did": did_of(&scid), "events": events, "head": null, "fork": null }),
+            );
+            assert_eq!(
+                may_hold_master(&executor, &did_of(&scid), "d2").await,
+                may_keep
+            );
+        }
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        assert!(may_hold_master(&executor, "did:scid:coasys:1:Qm", "d2").await);
+        let confirm = serde_json::to_value(Screen::RevokeConfirm {
+            key_id: "d2".into(),
+            may_hold_master: true,
+            passphrase: false,
+            error: None,
+        })
+        .unwrap();
+        assert_eq!(confirm["mayHoldMaster"], true);
+    }
+
+    /// An unlink opens on its own confirm screen, and this computer cannot unlink its own key.
+    #[tokio::test]
+    async fn an_unlink_confirms_another_device_and_refuses_this_computers_own_key() {
+        let (events, _) = crate::keylog::tests::log_with_d2(true);
+        let (executor, _) = executor_with(&events, &lying_record());
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        for (key, own) in [("d2", false), ("d1", true)] {
+            let (address, mut rx, mut reply, window, first) = opened();
+            drop(window);
+            unlink_on(&executor, &vault, &address, &mut rx, &mut reply, key.into()).await;
+            let screen = first.await.unwrap().unwrap();
+            if own {
+                assert_eq!(
+                    screen,
+                    Screen::Failed {
+                        message: "This computer cannot unlink its own key. Unlink it from another device."
+                            .into()
+                    }
+                );
+            } else {
+                assert!(
+                    matches!(&screen, Screen::UnlinkConfirm { key_id, error: None, .. } if key_id == key),
+                    "{screen:?}"
+                );
+            }
+        }
+    }
+
+    /// A revoke unlocked with the passphrase pushes again a master key whose delivery failed: the
+    /// main window's refreshes cannot, without the passphrase, so this unlock is the retry's.
+    #[tokio::test]
+    async fn a_revoke_under_the_passphrase_retries_a_master_key_push() {
+        let (mut events, _) = crate::keylog::tests::log_with_d2(true);
+        crate::keylog::tests::add_d3(&mut events, false);
+        let scid = events[0].scid.clone();
+        let (executor, _) = executor_with(&events, &lying_record());
+        let dir = tempfile::tempdir().unwrap();
+        let vault = open_vault(dir.path());
+        let master = words::master_key(&words::seed(&words::from_entropy(&[41u8; 16])), 0).unwrap();
+        vault
+            .unlocking(pass())
+            .store_master(&scid, 0, Secret::new(master.to_bytes()))
             .unwrap();
-        blocking_keychain_while_linked(WhileBlocked::Deadline)
-            .await
+        // The push to `d2` failed earlier: it waits on the retry list.
+        vault
+            .unlocking(None)
+            .keep_push(&ad4m_identity_client::PendingPush {
+                scid: scid.clone(),
+                key_id: "d2".into(),
+            })
             .unwrap();
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), revoked) = tokio::join!(
+            revoke_on(
+                &executor,
+                &vault,
+                &address,
+                &mut rx,
+                &mut reply,
+                "d3".into()
+            ),
+            async {
+                let confirm = first.await.unwrap().unwrap();
+                assert!(
+                    matches!(
+                        &confirm,
+                        Screen::RevokeConfirm {
+                            passphrase: true,
+                            ..
+                        }
+                    ),
+                    "{confirm:?}"
+                );
+                window
+                    .step(StepInput::Revoke {
+                        passphrase: Some(PASSPHRASE.into()),
+                        since: None,
+                    })
+                    .await
+            }
+        );
+        assert!(
+            matches!(&revoked, Screen::Revoked { key_id, .. } if key_id == "d3"),
+            "{revoked:?}"
+        );
+        let put = executor.rpc().called("identity.inboxPut");
+        assert_eq!(put.len(), 1, "the push to d2 was not tried again");
+        assert_eq!(put[0]["address"]["keyId"], "d2");
+    }
+
+    /// A device without the master key names only itself; naming another device is refused.
+    #[tokio::test]
+    async fn a_device_without_the_master_key_renames_only_itself() {
+        let executor = linked_executor();
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        drop(window);
+        rename_on(
+            &executor,
+            &vault,
+            &address,
+            &mut rx,
+            &mut reply,
+            "d2".into(),
+        )
+        .await;
+        let screen = first.await.unwrap().unwrap();
+        assert!(
+            matches!(&screen, Screen::Failed { message } if message.contains("Only a device with the master key")),
+            "{screen:?}"
+        );
+
+        // Its own key (`d1`): not refused for that.
+        let (address, mut rx, mut reply, window, first) = opened();
+        drop(window);
+        rename_on(
+            &executor,
+            &vault,
+            &address,
+            &mut rx,
+            &mut reply,
+            "d1".into(),
+        )
+        .await;
+        let screen = first.await.unwrap().unwrap();
+        assert!(
+            !matches!(&screen, Screen::Failed { message } if message.contains("Only a device with the master key")),
+            "{screen:?}"
+        );
+    }
+
+    #[test]
+    fn a_device_code_is_checked_before_any_unlock() {
+        let device = DeviceString {
+            sign: Signer::key(&KeySigner::new(&[7u8; 32], 0)),
+            enc: ad4m_identity_core::encode_x25519_multikey(&[8u8; 32]),
+            r: bs58::encode([1u8; ad4m_identity_core::link::DEVICE_R_LEN]).into_string(),
+            exp: 1_000,
+            hint: None,
+            store: "https://store.example/".into(),
+        };
+        let code = device.encode();
+        // The same store with or without its trailing slash, and the code pasted with spaces.
+        let checked = check_code(&format!("  {code}\n"), "https://store.example", 999).unwrap();
+        assert_eq!(checked.sign, device.sign);
+        assert!(check_code(&code, "https://store.example", 1_000)
+            .unwrap_err()
+            .contains("expired"));
+        assert!(check_code(&code, "https://other.example", 999)
+            .unwrap_err()
+            .contains("different identity store"));
+        assert!(
+            check_code("coasys:offer:1:zzz", "https://store.example", 999)
+                .unwrap_err()
+                .contains("isn't a device code")
+        );
+    }
+
+    #[tokio::test]
+    async fn the_public_state_lists_requests_and_a_waiting_master_key() {
+        let requests = json!([{
+            "id": "r1",
+            "body": { "kind": "confirm-revoke", "keyIds": ["d3"], "rotate": false },
+            "by": "d2", "created": 0, "expires": 99, "signed": {},
+        }]);
+        // A sealed store: the waiting key is shown, never taken without the passphrase.
+        let dir = tempfile::tempdir().unwrap();
+        let vault = open_vault(dir.path());
+        let (executor, scid) = joined_executor(&vault, None);
+        executor.rpc().rpc().answer("identity.requests", requests);
+        let public = public_state_on(Some(&executor), &vault).await;
+        assert!(public.master_waiting);
+        assert!(!public.enc_mismatch);
+        assert!(!vault.holds(&scid).unwrap());
+        assert!(executor.rpc().rpc().called("identity.inboxAck").is_empty());
+        assert_eq!(public.requests.len(), 1);
+        let request = &public.requests[0];
+        assert_eq!(
+            (
+                request.id.as_str(),
+                request.kind.as_str(),
+                request.by.as_str(),
+                request.expires
+            ),
+            ("r1", "confirm-revoke", "d2", 99)
+        );
+        assert_eq!(request.key_ids, vec!["d3".to_string()]);
+        // The record cannot be read here: no devices, rather than a failed state.
+        assert!(public.devices.is_empty());
+    }
+
+    #[tokio::test]
+    async fn where_the_os_unlocks_a_new_item_the_state_takes_a_master_key_sealed_to_this_computer()
+    {
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (executor, scid) = joined_executor(&vault, None);
+        let public = public_state_on(Some(&executor), &vault).await;
+        assert_eq!(public.holds_master, Some(HoldsMaster { index: 0 }));
+        assert_eq!(held_sealed(&vault, &scid).unwrap(), Some(false));
+        assert!(!public.master_waiting);
+        assert!(!public.enc_mismatch);
+        // Opened here: the executor was asked only for the sealed text, and to forget it.
+        let fake = executor.rpc().rpc();
+        assert!(fake.called("identity.takeMaster").is_empty());
+        assert!(fake.called("identity.inbox").is_empty());
+        assert!(!fake.called("identity.inboxSealed").is_empty());
+        assert_eq!(
+            fake.called("identity.inboxAck"),
+            vec![json!({ "id": "m1" })]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_log_listing_an_enc_key_this_computer_lost_says_to_revoke_and_link_again() {
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let lost = ad4m_identity_core::encode_x25519_multikey(&[5u8; 32]);
+        let (executor, scid) = joined_executor(&vault, Some(lost));
+        let public = public_state_on(Some(&executor), &vault).await;
+        assert!(public.enc_mismatch);
+        // The key sealed to the lost enc key does not open here, so it is not shown as waiting.
+        assert!(!public.master_waiting);
+        assert_eq!(public.holds_master, None);
+
+        // Taking it, or asking for it again, says what to do instead.
+        let (address, mut rx, mut reply, _window, first) = opened();
+        take_master_on(&executor, &vault, &address, &mut rx, &mut reply).await;
+        let screen = first.await.unwrap().unwrap();
+        assert!(
+            matches!(&screen, Screen::Failed { message } if message == ENC_MISMATCH),
+            "{screen:?}"
+        );
+        let screen = ask_master_on(&executor, &vault).await;
+        assert!(
+            matches!(&screen, Screen::Failed { message } if message == ENC_MISMATCH),
+            "{screen:?}"
+        );
+        assert!(executor
+            .rpc()
+            .rpc()
+            .called("identity.postRequest")
+            .is_empty());
+        assert!(!vault.holds(&scid).unwrap());
+    }
+
+    #[test]
+    fn the_new_steps_and_inputs_cross_ipc_in_their_wire_form() {
+        for (text, step) in [
+            (r#"{"kind":"scan-device"}"#, IdentityStep::ScanDevice),
+            (r#"{"kind":"show-code"}"#, IdentityStep::ShowCode),
+            (r#"{"kind":"take-master"}"#, IdentityStep::TakeMaster),
+            (r#"{"kind":"ask-master"}"#, IdentityStep::AskMaster),
+            (
+                r#"{"kind":"answer-request","id":"r1"}"#,
+                IdentityStep::AnswerRequest { id: "r1".into() },
+            ),
+            (
+                r#"{"kind":"rename","keyId":"d2"}"#,
+                IdentityStep::Rename {
+                    key_id: "d2".into(),
+                },
+            ),
+        ] {
+            assert_eq!(serde_json::from_str::<IdentityStep>(text).unwrap(), step);
+        }
+        // A bare confirm (a node offer) keeps nothing and names nothing.
+        let input: StepInput = serde_json::from_str(r#"{"kind":"confirm"}"#).unwrap();
+        assert!(matches!(
+            input,
+            StepInput::Confirm {
+                name: None,
+                keep_master: false,
+                this_name: None
+            }
+        ));
+        let input: StepInput = serde_json::from_str(
+            r#"{"kind":"confirm","name":"Desk","keepMaster":true,"thisName":"Laptop"}"#,
+        )
+        .unwrap();
+        assert!(matches!(
+            input,
+            StepInput::Confirm { keep_master: true, ref name, ref this_name }
+                if name.as_deref() == Some("Desk") && this_name.as_deref() == Some("Laptop")
+        ));
+        for (text, debug) in [
+            (r#"{"kind":"code","code":"coasys:device:1:x"}"#, "code"),
+            (r#"{"kind":"wait-link"}"#, "wait-link"),
+            (r#"{"kind":"wait-join"}"#, "wait-join"),
+            (r#"{"kind":"accept"}"#, "accept"),
+            (r#"{"kind":"answer","passphrase":"secret words"}"#, "answer"),
+            (r#"{"kind":"name","name":"Desk"}"#, "name"),
+        ] {
+            let input: StepInput = serde_json::from_str(text).unwrap();
+            assert_eq!(format!("{input:?}"), debug);
+        }
+        let screen = serde_json::to_value(Screen::Match {
+            code: "R7K Q2M".into(),
+            hint: None,
+            can_keep: true,
+            own_name: true,
+        })
+        .unwrap();
+        assert_eq!(
+            (&screen["screen"], &screen["canKeep"], &screen["ownName"]),
+            (&json!("match"), &json!(true), &json!(true))
+        );
+        let screen = serde_json::to_value(Screen::Request {
+            id: "r1".into(),
+            kind: "send-master",
+            key_id: "d2".into(),
+            fingerprint: "ABCD EFGH".into(),
+            code: "R7K Q2M".into(),
+            device: "Phone".into(),
+            targets: vec![],
+            passphrase: true,
+            error: None,
+        })
+        .unwrap();
+        assert_eq!(screen["screen"], "request");
+        assert_eq!(screen["kind"], "send-master");
+        assert_eq!(
+            (&screen["keyId"], &screen["fingerprint"], &screen["code"]),
+            (&json!("d2"), &json!("ABCD EFGH"), &json!("R7K Q2M"))
+        );
+        let screen = serde_json::to_value(Screen::DeviceCode {
+            code: "c".into(),
+            qr_svg: "<svg/>".into(),
+            expires: 5,
+        })
+        .unwrap();
+        assert_eq!(
+            (&screen["screen"], &screen["qrSvg"]),
+            (&json!("device-code"), &json!("<svg/>"))
+        );
+        let screen = serde_json::to_value(Screen::DeviceMatch {
+            code: "R7K Q2M".into(),
+            did: "did:scid:x".into(),
+            needs_accept: true,
+            accepted: false,
+            confirmed: true,
+        })
+        .unwrap();
+        assert_eq!(
+            screen,
+            json!({
+                "screen": "device-match", "code": "R7K Q2M", "did": "did:scid:x",
+                "needsAccept": true, "accepted": false, "confirmed": true,
+            })
+        );
     }
 }

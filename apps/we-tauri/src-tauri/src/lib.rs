@@ -37,6 +37,20 @@ fn identity_store_setting(runtime: Option<String>, built: Option<&str>) -> Optio
         .or_else(|| built.map(str::to_string).filter(|s| !s.trim().is_empty()))
 }
 
+/// `config` serving the custody channel with its own credential, as the electron host starts the
+/// executor (`--custody-channel`, the credential on its stdin). The custody service beside the
+/// executor reaches it with that credential, never with the admin credential the window holds, and
+/// the executor refuses the two equal. Without the channel the executor treats this desktop as one
+/// without custody: a first run's link is refused `no-operator`, and a master key sent here is not
+/// kept for the custody service to take.
+fn with_custody_channel(config: Ad4mConfig, custody_credential: &str) -> Ad4mConfig {
+    Ad4mConfig {
+        custody_channel: Some(true),
+        custody_credential: Some(Secret::new(custody_credential)),
+        ..config
+    }
+}
+
 /// This app's own configuration directory.
 ///
 /// No longer where accounts or the registry live — both moved into the data path's container, so
@@ -183,6 +197,8 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
     // Generate a credential token
     let req_credential = Uuid::new_v4().to_string();
+    // The custody service's own credential, fresh at every start (`with_custody_channel`).
+    let custody_credential = Uuid::new_v4().to_string();
 
     let home = dirs::home_dir().expect("Failed to get home directory");
     let config_dir = config_dir();
@@ -265,7 +281,7 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
     // The custody service: the person's master key, behind the OS unlock, in this process but never
     // in the executor's code (it is its own crate, `crates/custody`, and reaches the executor over RPC with
-    // the admin credential only). The sealed file is the fallback for Linux without a Secret Service,
+    // the custody credential only, never the admin credential the window holds). The sealed file is the fallback for Linux without a Secret Service,
     // and for a macOS build without the keychain entitlement.
     // The same folder keeps the incept of an identity made here until its publish is confirmed.
     let custody_dir = we_custody::host::custody_dir(&home);
@@ -276,7 +292,7 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         ),
         we_custody::ExecutorAddress {
             url: format!("http://127.0.0.1:{executor_port}"),
-            admin_credential: std::sync::Arc::from(req_credential.as_str()),
+            credential: std::sync::Arc::from(custody_credential.as_str()),
         },
     );
 
@@ -305,25 +321,28 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let config = Ad4mConfig {
-        // A `Secret`: the executor can compare it and never print or serialise it.
-        admin_credential: Some(Secret::new(req_credential.clone())),
-        app_data_path: Some(app_data_path.to_str().unwrap().to_string()),
-        // `port` is the executor's API port — its WebSocket RPC at `/api/v1/ws` and
-        // `GET /health` — the same one the electron host passes as `--port`. It was
-        // `gql_port` in an older Ad4mConfig, from when that API was GraphQL.
-        port: Some(executor_port),
-        run_dapp_server: Some(false), // Disabled - we serve the app ourselves
-        connect_holochain: Some(true),
-        // Off unless asked for: MCP opens a port that serves this agent's data to anything
-        // local that speaks the protocol. Read here because the executor takes its
-        // configuration once, at startup.
-        enable_mcp: Some(executor_settings.mcp_enabled),
-        mcp_port: Some(executor_settings.mcp_port),
-        identity_store_url: identity_store_url.clone(),
-        identity_store_keys: identity_store_keys.clone(),
-        ..Default::default()
-    };
+    let config = with_custody_channel(
+        Ad4mConfig {
+            // A `Secret`: the executor can compare it and never print or serialise it.
+            admin_credential: Some(Secret::new(req_credential.clone())),
+            app_data_path: Some(app_data_path.to_str().unwrap().to_string()),
+            // `port` is the executor's API port — its WebSocket RPC at `/api/v1/ws` and
+            // `GET /health` — the same one the electron host passes as `--port`. It was
+            // `gql_port` in an older Ad4mConfig, from when that API was GraphQL.
+            port: Some(executor_port),
+            run_dapp_server: Some(false), // Disabled - we serve the app ourselves
+            connect_holochain: Some(true),
+            // Off unless asked for: MCP opens a port that serves this agent's data to anything
+            // local that speaks the protocol. Read here because the executor takes its
+            // configuration once, at startup.
+            enable_mcp: Some(executor_settings.mcp_enabled),
+            mcp_port: Some(executor_settings.mcp_port),
+            identity_store_url: identity_store_url.clone(),
+            identity_store_keys: identity_store_keys.clone(),
+            ..Default::default()
+        },
+        &custody_credential,
+    );
 
     // Start the executor in the background
     tauri::async_runtime::spawn(async move {
@@ -374,7 +393,7 @@ fn move_former_webview_data(identifier: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::identity_store_setting;
+    use super::{identity_store_setting, with_custody_channel, Ad4mConfig, Secret};
 
     #[test]
     fn the_run_time_store_setting_overrides_the_built_one_and_empty_is_none() {
@@ -390,6 +409,32 @@ mod tests {
         );
         assert_eq!(identity_store_setting(None, Some("")), None);
         assert_eq!(identity_store_setting(None, None), None);
+    }
+
+    /// The executor serves the custody channel, with a credential of its own that the executor's
+    /// start accepts: one that is the admin credential, or none, it refuses.
+    #[test]
+    fn the_executor_serves_the_custody_channel_with_its_own_credential() {
+        let config = with_custody_channel(
+            Ad4mConfig {
+                admin_credential: Some(Secret::new("admin")),
+                ..Default::default()
+            },
+            "custody",
+        );
+        assert_eq!(config.custody_channel, Some(true));
+        assert_eq!(
+            rust_executor::config::refuse_custody_channel_without_its_credential(
+                true,
+                &config.custody_credential,
+                &config.admin_credential,
+            ),
+            Ok(())
+        );
+        // The admin credential is kept, not replaced.
+        assert!(config
+            .admin_credential
+            .is_some_and(|admin| admin.expose_for_compare("admin")));
     }
 
     /// `run` rests on this: a plugin's setup runs inside `build`, and the app's setup — `start`,

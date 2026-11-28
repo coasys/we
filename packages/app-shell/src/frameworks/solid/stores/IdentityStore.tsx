@@ -60,6 +60,8 @@ export interface IdentityStore {
   keyId: Accessor<string>;
   /** The log names this computer's key revoked. */
   thisDeviceRevoked: Accessor<boolean>;
+  /** The log names this computer's key unlinked, here or from another device: it no longer speaks for the person. */
+  thisDeviceUnlinked: Accessor<boolean>;
   /** The key log, newest first, as Settings → Security → Key log draws it. */
   keyLog: Accessor<KeyLogRow[]>;
   keyLogLoaded: Accessor<boolean>;
@@ -208,6 +210,20 @@ export function IdentityStoreProvider(props: ParentProps) {
     if (ready() && port()) void refresh();
   });
 
+  /*
+    And when the person comes back to the app: what another device did meanwhile (asked for the master
+    key, sent it here, named a device) reaches this computer only by reading again. Not while a
+    change runs, whose own end reads everything.
+  */
+  createEffect(() => {
+    if (!ready() || !port() || typeof window === 'undefined') return;
+    const again = () => {
+      if (!busy()) void refresh();
+    };
+    window.addEventListener('focus', again);
+    onCleanup(() => window.removeEventListener('focus', again));
+  });
+
   createEffect(() => {
     const identity = port();
     if (!identity?.onFork) return;
@@ -259,6 +275,7 @@ export function IdentityStoreProvider(props: ParentProps) {
     did,
     keyId,
     thisDeviceRevoked: () => status()?.revoked != null,
+    thisDeviceUnlinked: () => status()?.unlinked != null,
     keyLog: createMemo(() => keyLogRows(events(), keyId() || null)),
     keyLogLoaded,
     forked: () => fork() !== null,

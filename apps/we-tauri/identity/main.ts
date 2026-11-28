@@ -8,6 +8,6 @@ import { runIdentityWindow, type Screen, type StepInput } from '@we/identity-win
 runIdentityWindow({
   start: () => invoke<Screen>('identity_flow_start'),
   step: (input: StepInput) => invoke<Screen>('identity_flow_step', { input }),
-  cancel: () => invoke<void>('identity_flow_cancel'),
+  cancel: () => invoke<Screen | null>('identity_flow_cancel'),
   finish: () => invoke<void>('identity_flow_finish'),
 });

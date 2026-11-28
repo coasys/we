@@ -15,9 +15,13 @@ import {
   addDeviceButton,
   deviceList,
   deviceListFootnote,
+  encMismatchWarning,
   identityProblem,
   keyLogSummary,
   makeIdentityCard,
+  masterKeyCards,
+  requestList,
+  unlinkThisComputerConfirm,
 } from './IdentitySettingsPages.ts';
 import { profileEditor } from './Profile.schema.ts';
 import { mcpServer } from './RuntimeSettings.schema.ts';
@@ -325,14 +329,17 @@ export const devicesPage: SchemaNode = {
   children: [
     heading('Devices', 'This computer and the devices you link to it.'),
     identityProblem,
+    encMismatchWarning,
     thisDeviceRow,
+    requestList,
+    ...masterKeyCards,
     comingSoon({
       available: can('devices'),
       icon: 'devices',
       title: 'Your devices',
-      description: 'Remove a device you lost or no longer use.',
-      preview: [actions('Remove a device')],
-      children: [deviceList, deviceListFootnote],
+      description: 'Unlink a device you no longer use, or revoke one that was lost or stolen.',
+      preview: [actions('Unlink device')],
+      children: [deviceList, deviceListFootnote, unlinkThisComputerConfirm],
     }),
     comingSoon({
       // Linking needs the master key here: `canManage` is the backend's `linkDevice` and this
@@ -340,7 +347,8 @@ export const devicesPage: SchemaNode = {
       available: { $: 'deviceStore.canManage' },
       icon: 'qr-code',
       title: 'Link a device',
-      description: 'Send a link to the new device, then check that the code matches on both.',
+      description:
+        'Enter the code the new device shows, or send a link to a host. Then check that the code matches on both.',
       preview: [actions('Link a device')],
       children: [{ type: 'Row', children: [addDeviceButton] }],
     }),

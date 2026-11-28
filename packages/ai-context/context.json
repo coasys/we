@@ -6436,7 +6436,21 @@
       "state": {
         "devices": {
           "type": "array",
-          "properties": ["keyId", "label", "subtitle", "icon", "thisDevice", "revoked", "status", "canRevoke"]
+          "properties": [
+            "keyId",
+            "label",
+            "subtitle",
+            "icon",
+            "thisDevice",
+            "unlinked",
+            "revoked",
+            "status",
+            "canUnlink",
+            "canRevoke",
+            "name",
+            "holdsMaster",
+            "master"
+          ]
         },
         "devicesLoaded": {
           "type": "boolean"
@@ -6447,13 +6461,51 @@
         "canManage": {
           "type": "boolean"
         },
+        "canShowCode": {
+          "type": "boolean"
+        },
+        "canAskMaster": {
+          "type": "boolean"
+        },
+        "masterWaiting": {
+          "type": "boolean"
+        },
+        "encMismatch": {
+          "type": "boolean"
+        },
+        "requests": {
+          "type": "array",
+          "properties": ["id", "kind", "title", "detail"]
+        },
         "error": {
           "type": "string"
+        },
+        "confirmingUnlink": {
+          "type": "boolean"
+        },
+        "unlinkLeavesNoMaster": {
+          "type": "boolean"
+        },
+        "unlinking": {
+          "type": "boolean"
         }
       },
-      "actions": ["refresh", "addDevice", "revoke"],
-      "ambient": ["refresh"],
-      "needsArgs": ["revoke"]
+      "actions": [
+        "refresh",
+        "addDevice",
+        "scanDevice",
+        "showCode",
+        "takeMaster",
+        "askMaster",
+        "answerRequest",
+        "rename",
+        "unlink",
+        "cancelUnlink",
+        "unlinkThisComputer",
+        "revoke"
+      ],
+      "ambient": ["refresh", "cancelUnlink"],
+      "needsArgs": ["answerRequest", "rename", "unlink", "revoke"]
     },
     {
       "name": "editorStore",
@@ -6633,6 +6685,9 @@
           "type": "string"
         },
         "thisDeviceRevoked": {
+          "type": "boolean"
+        },
+        "thisDeviceUnlinked": {
           "type": "boolean"
         },
         "keyLog": {

@@ -107,10 +107,51 @@ export interface IdentityPort {
    * own confirmation. Rejects only when the change could not be started at all.
    */
   change?(change: IdentityChange): Promise<IdentityChangeOutcome>;
+  /**
+   * This computer's device key leaves the identity, signed by the key itself: no master key is
+   * needed, so no custody window opens. The key is dead here from then on and the agent is signed
+   * out. Resolves when it is done; rejects with an `Error` whose message is a plain sentence a
+   * person can read (no identity, not listed, already unlinked, not allowed). A backend that cannot
+   * do this rejects the same way. When the answer was lost or the backend cannot say whether it
+   * happened, it rejects with an `UnlinkUncertainError`: the unlink may have been done.
+   */
+  unlinkSelf(): Promise<void>;
 }
 
-/** A change to the identity, signed by the master key. */
-export type IdentityChange = { kind: 'create' } | { kind: 'add-device' } | { kind: 'revoke'; keyId: string };
+/**
+ * A change to the identity, or a step toward one, run where the master key is kept.
+ *
+ * - `create`: make the identity.
+ * - `add-device`: give a server an offer link.
+ * - `scan-device`: add a device by the code it shows.
+ * - `show-code`: on a computer of no identity yet, show its code for a device of the identity to add.
+ * - `take-master`: keep the master key another device sent here.
+ * - `ask-master`: ask a device that keeps the master key to send it here.
+ * - `answer-request`: answer what another device asked (send the master key, revoke devices).
+ * - `rename`: name a device, in the private record only its devices read.
+ * - `unlink`: retire a device key: it signs nothing new, and what it signed before stays valid.
+ * - `revoke`: revoke a device that was lost or stolen; the time it stops being trusted from is asked
+ *   where the master key is kept.
+ */
+export type IdentityChange =
+  | { kind: 'create' }
+  | { kind: 'add-device' }
+  | { kind: 'scan-device' }
+  | { kind: 'show-code' }
+  | { kind: 'take-master' }
+  | { kind: 'ask-master' }
+  | { kind: 'answer-request'; id: string }
+  | { kind: 'rename'; keyId: string }
+  | { kind: 'unlink'; keyId: string }
+  | { kind: 'revoke'; keyId: string };
+
+/** `IdentityPort.unlinkSelf` could not tell whether the unlink happened: ask the status again. */
+export class UnlinkUncertainError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UnlinkUncertainError';
+  }
+}
 
 /** How a change ended: made, abandoned by the person, or refused along the way. */
 export type IdentityChangeOutcome = 'done' | 'cancelled' | 'failed';
@@ -125,6 +166,51 @@ export interface IdentityCustodyView {
   unlock: 'os' | 'passphrase' | null;
   /** Why no change can be made here, in words a person reads; `null` when one can. */
   blocked: string | null;
+  /**
+   * The devices the identity's private record names, which only its devices can read. Empty before
+   * the first one is named, and where the record cannot be read now.
+   */
+  devices: DeviceNameView[];
+  /**
+   * The revoked or unlinked keys that may still hold a valid master key, as the key log says: it let
+   * them keep the master key, and none has replaced it since. A revoke or an unlink leaves a copy of
+   * the master key valid, and the private record drops an ended key's entry, so only the log keeps
+   * this.
+   */
+  endedHolders: string[];
+  /** What other devices asked and is waiting for an answer from a device that keeps the master key. */
+  requests: DeviceRequestView[];
+  /** A master key another device sent waits for this computer to take it. */
+  masterWaiting: boolean;
+  /**
+   * The key log lets this computer keep the master key but lists an encryption key for it that this
+   * computer no longer has. Nothing sent to it opens any more — no master key, no device list (so
+   * `devices` is empty) — until it is revoked from a device that holds the master key and linked
+   * again.
+   */
+  encMismatch: boolean;
+}
+
+/** A device as the private record names it. */
+export interface DeviceNameView {
+  keyId: string;
+  name: string;
+  /** `desktop-app`, `server`, … as the record says. */
+  kind: string;
+  /** Whether it keeps the master key: yes, no, or sent and not yet taken. */
+  holdsMaster: 'yes' | 'no' | 'offered';
+}
+
+/** A request of another device, waiting for an answer. */
+export interface DeviceRequestView {
+  id: string;
+  kind: 'send-master' | 'confirm-revoke';
+  /** The key id of the device that asked. */
+  by: string;
+  /** For `confirm-revoke`: the keys it asks to revoke. */
+  keyIds: string[];
+  /** Unix seconds. */
+  expires: number;
 }
 
 /** Two different events at one place in a log, as the backend recorded them. */
@@ -154,6 +240,11 @@ export interface IdentityStatusView {
   keyId: string | null;
   /** The seq of the event that revoked this device, if one did. */
   revoked: number | null;
+  /**
+   * The seq of the event that unlinked this device, if one did. A key the log shows unlinked no
+   * longer speaks for the person: the executor signs the agent out of it.
+   */
+  unlinked: number | null;
   head: KeyLogHead | null;
   fork: KeyLogFork | null;
   /**
@@ -181,12 +272,14 @@ export interface KeyLogDevice {
 /** One event of a key log, in the words a screen needs. */
 export interface KeyLogEvent {
   seq: number;
-  /** `incept`, `add`, `revoke`, `rotate`, or whatever a later format adds. */
+  /** `incept`, `add`, `unlink`, `revoke`, `rotate`, or whatever a later format adds. */
   op: string;
   /** The event's hash in the log, the next event's `prev`, where the backend reports one. */
   hash: string | null;
   /** The device keys this event adds. */
   added: KeyLogDevice[];
+  /** The device key ids this event unlinks. */
+  unlinked: string[];
   /** The device key ids this event revokes. */
   revoked: string[];
 }
@@ -207,6 +300,8 @@ export interface DeviceKeyView {
   thisDevice: boolean;
   /** The seq of the event that added it. */
   addedSeq: number;
+  /** The seq of the event that unlinked it, or `null` while it is not. */
+  unlinkedSeq: number | null;
   /** The seq of the event that revoked it, or `null` while it is valid. */
   revokedSeq: number | null;
 }

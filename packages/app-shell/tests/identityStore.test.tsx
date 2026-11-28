@@ -11,17 +11,30 @@ import type {
   IdentityPort,
   KeyLogView,
 } from '@we/backend-shared';
-import { NO_IDENTITY_CAPABILITIES } from '@we/backend-shared';
+import { NO_IDENTITY_CAPABILITIES, UnlinkUncertainError } from '@we/backend-shared';
 import { createSignal } from 'solid-js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const [ports, setPorts] = createSignal<{ identity?: IdentityPort } | null>(null);
 const [bootState, setBootState] = createSignal('ready');
+const DID = 'did:scid:coasys:1:QmScid';
+const RETIRED_DID = 'did:key:z6MkRetired';
+const NEW_DID = 'did:key:z6MkRekeyed';
+/** What `agent.me` answers: the executor's re-key changes it. */
+const agent = { did: RETIRED_DID };
+const [me, setMe] = createSignal<{ did: string }>({ did: RETIRED_DID });
+/** What the session's `refreshMe` throws, when the test has reading the agent again fail. */
+let refreshMeFails: Error | null = null;
 
 vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
   useSessionStore: () => ({
     backendPorts: ports,
     bootState,
+    me,
+    refreshMe: async () => {
+      if (refreshMeFails) throw refreshMeFails;
+      setMe({ did: agent.did });
+    },
     // As the session reads them from the port: linking a device needs a way to sign changes.
     identityCapabilities: () => ({
       ...NO_IDENTITY_CAPABILITIES,
@@ -40,7 +53,6 @@ import {
   useIdentityStore,
 } from '../src/frameworks/solid/stores/IdentityStore';
 
-const DID = 'did:scid:coasys:1:QmScid';
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 const status = (did: string | null) => ({
@@ -48,6 +60,7 @@ const status = (did: string | null) => ({
   deviceKey: 'z6MkOne',
   keyId: did ? 'd1' : null,
   revoked: null,
+  unlinked: null,
   head: null,
   fork: null,
   storeBehind: null,
@@ -58,6 +71,7 @@ const incept: KeyLogView['events'][number] = {
   op: 'incept',
   hash: 'QmHash0',
   added: [{ id: 'd1', sign: 'z6MkOne' }],
+  unlinked: [],
   revoked: [],
 };
 const add: KeyLogView['events'][number] = {
@@ -65,15 +79,24 @@ const add: KeyLogView['events'][number] = {
   op: 'add',
   hash: 'QmHash1',
   added: [{ id: 'd2', sign: 'z6MkTwo' }],
+  unlinked: [],
   revoked: [],
 };
 const devices: DeviceKeyView[] = [
-  { keyId: 'd2', sign: 'z6MkTwo', thisDevice: false, addedSeq: 1, revokedSeq: null },
-  { keyId: 'd1', sign: 'z6MkOne', thisDevice: true, addedSeq: 0, revokedSeq: null },
+  { keyId: 'd2', sign: 'z6MkTwo', thisDevice: false, addedSeq: 1, unlinkedSeq: null, revokedSeq: null },
+  { keyId: 'd1', sign: 'z6MkOne', thisDevice: true, addedSeq: 0, unlinkedSeq: null, revokedSeq: null },
 ];
 
 /** A backend whose identity is whatever the test says, and which counts what it was asked. */
-function backend(state: { did: string | null; events: KeyLogView['events']; devices: DeviceKeyView[] }) {
+function backend(state: {
+  did: string | null;
+  events: KeyLogView['events'];
+  devices: DeviceKeyView[];
+  /** What `unlinkSelf` rejects with, when the test has the executor refuse. */
+  refuse?: Error;
+  /** `unlinkSelf` answers once this settles, when the test holds it in flight. */
+  gate?: Promise<void>;
+}) {
   const calls: string[] = [];
   const port: IdentityPort = {
     capabilities: () => ({ ...NO_IDENTITY_CAPABILITIES, keyLog: true, devices: true }),
@@ -89,11 +112,30 @@ function backend(state: { did: string | null; events: KeyLogView['events']; devi
       calls.push('devices');
       return state.devices;
     },
+    async unlinkSelf() {
+      calls.push('unlinkSelf');
+      await state.gate;
+      if (state.refuse) throw state.refuse;
+      // The executor re-keys the agent: this computer speaks for no identity from then on, and
+      // `agent.me` answers the new DID.
+      state.did = null;
+      agent.did = NEW_DID;
+    },
   };
   return { port, calls, state };
 }
 
-const NO_CUSTODY: IdentityCustodyView = { did: null, holdsMaster: false, unlock: 'passphrase', blocked: null };
+const NO_CUSTODY: IdentityCustodyView = {
+  did: null,
+  holdsMaster: false,
+  unlock: 'passphrase',
+  blocked: null,
+  devices: [],
+  endedHolders: [],
+  requests: [],
+  masterWaiting: false,
+  encMismatch: false,
+};
 
 /** The port able to sign changes: `custody` and `change` answered by the test. */
 function signing(
@@ -142,7 +184,10 @@ function mount(): { identity: IdentityStore; devices: DeviceStore } {
 
 beforeEach(() => {
   setPorts(null);
+  agent.did = RETIRED_DID;
+  setMe({ did: RETIRED_DID });
   setBootState('ready');
+  refreshMeFails = null;
   localStorage.clear();
 });
 
@@ -294,6 +339,7 @@ describe('identityStore', () => {
     expect(deviceStore.devices()).toHaveLength(2);
 
     const broken: IdentityPort = {
+      unlinkSelf: async () => {},
       capabilities: () => NO_IDENTITY_CAPABILITIES,
       status: async () => {
         throw new Error('no answer');
@@ -312,6 +358,7 @@ describe('identityStore', () => {
   it('drops a reply from a backend the session has already left', async () => {
     let answer!: (value: ReturnType<typeof status>) => void;
     const slow: IdentityPort = {
+      unlinkSelf: async () => {},
       capabilities: () => NO_IDENTITY_CAPABILITIES,
       status: () => new Promise((resolve) => (answer = resolve)),
     };
@@ -410,7 +457,7 @@ describe('deviceStore', () => {
         if (change.kind === 'revoke') {
           b.state.events = [
             ...b.state.events,
-            { seq: 2, op: 'revoke', hash: 'QmHash2', added: [], revoked: [change.keyId] },
+            { seq: 2, op: 'revoke', hash: 'QmHash2', added: [], unlinked: [], revoked: [change.keyId] },
           ];
           b.state.devices = b.state.devices.map((d) => (d.keyId === change.keyId ? { ...d, revokedSeq: 2 } : d));
         }
@@ -427,10 +474,245 @@ describe('deviceStore', () => {
     expect(c.changes).toEqual([{ kind: 'revoke', keyId: 'd2' }]);
     expect(deviceStore.devices().find((d) => d.keyId === 'd2')).toMatchObject({
       revoked: true,
-      status: 'Removed at #2',
+      status: 'Revoked',
     });
     expect(deviceStore.validCount()).toBe(1);
     expect(identity.keyLog()[0].title).toBe('Revoked d2');
+  });
+
+  it('unlink asks for that key and the device reads Unlinked', async () => {
+    const b = backend({ did: DID, events: [incept, add], devices });
+    const c = custody(
+      b.port,
+      (change) => {
+        if (change.kind === 'unlink') {
+          b.state.events = [
+            ...b.state.events,
+            { seq: 2, op: 'unlink', hash: 'QmHash2', added: [], unlinked: [change.keyId], revoked: [] },
+          ];
+          b.state.devices = b.state.devices.map((d) => (d.keyId === change.keyId ? { ...d, unlinkedSeq: 2 } : d));
+        }
+      },
+      true,
+    );
+    setPorts({ identity: c.identity });
+    const { identity, devices: deviceStore } = mount();
+    await flush();
+    await flush();
+    expect(await deviceStore.unlink('d2')).toBe('done');
+    await flush();
+    await flush();
+    expect(c.changes).toEqual([{ kind: 'unlink', keyId: 'd2' }]);
+    expect(deviceStore.devices().find((d) => d.keyId === 'd2')).toMatchObject({
+      unlinked: true,
+      revoked: false,
+      status: 'Unlinked',
+    });
+    expect(deviceStore.validCount()).toBe(1);
+    expect(identity.keyLog()[0].title).toBe('Unlinked d2');
+  });
+
+  describe('unlinking this computer', () => {
+    const named = (d2Master: 'yes' | 'no' | 'offered') => [
+      { keyId: 'd1', name: '', kind: 'desktop-app', holdsMaster: 'yes' as const },
+      { keyId: 'd2', name: '', kind: 'server', holdsMaster: d2Master },
+    ];
+    /** This computer's own port: no master key needed, `unlinkSelf` answered by the backend. */
+    function setup(holds: boolean, d2Master: 'yes' | 'no' | 'offered' = 'no') {
+      const b = backend({ did: DID, events: [incept, add], devices });
+      const c = custody(b.port, () => {}, holds);
+      const view = c.identity.custody!;
+      c.identity.custody = async () => ({ ...(await view()), holdsMaster: holds, devices: named(d2Master) });
+      setPorts({ identity: c.identity });
+      return { b, c, ...mount() };
+    }
+
+    it('confirms in the app first: no custody window, no call, until the person agrees', async () => {
+      const { b, c, devices: deviceStore } = setup(false);
+      await flush();
+      await flush();
+      expect(deviceStore.canManage()).toBe(false);
+      expect(deviceStore.devices().map((d) => [d.keyId, d.thisDevice, d.canUnlink])).toEqual([
+        ['d1', true, true],
+        ['d2', false, true],
+      ]);
+      expect(deviceStore.confirmingUnlink()).toBe(false);
+      expect(await deviceStore.unlink('d1')).toBe('cancelled');
+      expect(deviceStore.confirmingUnlink()).toBe(true);
+      expect(c.changes).toEqual([]);
+      expect(b.calls).not.toContain('unlinkSelf');
+      deviceStore.cancelUnlink();
+      expect(deviceStore.confirmingUnlink()).toBe(false);
+      expect(b.calls).not.toContain('unlinkSelf');
+    });
+
+    it('calls the port on confirm, with no custody window, then reads the status again, which shows no identity here', async () => {
+      const { b, c, identity, devices: deviceStore } = setup(false);
+      await flush();
+      await flush();
+      await deviceStore.unlink('d1');
+      const reads = b.calls.filter((call) => call === 'status').length;
+      expect(await deviceStore.unlinkThisComputer()).toBe('done');
+      await flush();
+      expect(b.calls.filter((call) => call === 'unlinkSelf')).toHaveLength(1);
+      expect(c.changes).toEqual([]);
+      expect(deviceStore.confirmingUnlink()).toBe(false);
+      expect(b.calls.filter((call) => call === 'status').length).toBeGreaterThan(reads);
+      expect(identity.did()).toBe('');
+      expect(identity.keyId()).toBe('');
+      expect(deviceStore.devices()).toEqual([]);
+      expect(deviceStore.error()).toBe('');
+    });
+
+    it("reads the session's own agent again, so the shell holds the new DID and not the retired one", async () => {
+      const { devices: deviceStore } = setup(false);
+      await flush();
+      await flush();
+      expect(me().did).toBe(RETIRED_DID);
+      await deviceStore.unlink('d1');
+      expect(await deviceStore.unlinkThisComputer()).toBe('done');
+      expect(me().did).toBe(NEW_DID);
+    });
+
+    it('warns that no master key is left when this computer keeps it and no other active device does', async () => {
+      const { devices: deviceStore } = setup(true, 'no');
+      await flush();
+      await flush();
+      expect(deviceStore.unlinkLeavesNoMaster()).toBe(true);
+    });
+
+    it.each([
+      ['another device keeps it', true, 'yes'],
+      ['another device is being sent it', true, 'offered'],
+      ['this computer does not keep it', false, 'no'],
+    ] as const)('does not warn about the master key when %s', async (_why, holds, d2) => {
+      const { devices: deviceStore } = setup(holds, d2);
+      await flush();
+      await flush();
+      expect(deviceStore.unlinkLeavesNoMaster()).toBe(false);
+    });
+
+    it('does not count a device that is unlinked or revoked as keeping the master key', async () => {
+      const { b, devices: deviceStore } = setup(true, 'yes');
+      b.state.devices = b.state.devices.map((d) => (d.keyId === 'd2' ? { ...d, unlinkedSeq: 2 } : d));
+      await deviceStore.refresh();
+      await flush();
+      expect(deviceStore.unlinkLeavesNoMaster()).toBe(true);
+    });
+
+    it('says why the executor refused, in the error slot, and stays linked', async () => {
+      const { b, identity, devices: deviceStore } = setup(false);
+      b.state.refuse = new Error('This computer is already unlinked.');
+      await flush();
+      await flush();
+      await deviceStore.unlink('d1');
+      expect(await deviceStore.unlinkThisComputer()).toBe('failed');
+      expect(deviceStore.error()).toBe('This computer is already unlinked.');
+      expect(deviceStore.confirmingUnlink()).toBe(false);
+      expect(identity.did()).toBe(DID);
+      expect(me().did).toBe(RETIRED_DID);
+    });
+
+    it('says an unlink with no definite answer may have happened, reads the status again, and can be tried again', async () => {
+      const { b, identity, devices: deviceStore } = setup(false);
+      b.state.refuse = new UnlinkUncertainError('This computer may already be unlinked. Check again, or try again.');
+      await flush();
+      await flush();
+      await deviceStore.unlink('d1');
+      const reads = b.calls.filter((call) => call === 'status').length;
+      expect(await deviceStore.unlinkThisComputer()).toBe('uncertain');
+      expect(deviceStore.error()).toBe('This computer may already be unlinked. Check again, or try again.');
+      expect(b.calls.filter((call) => call === 'status').length).toBeGreaterThan(reads);
+      expect(deviceStore.unlinking()).toBe(false);
+      // The status still lists this computer: the row offers the unlink again.
+      expect(identity.did()).toBe(DID);
+      expect(deviceStore.devices().find((d) => d.thisDevice)?.canUnlink).toBe(true);
+      await deviceStore.unlink('d1');
+      expect(deviceStore.confirmingUnlink()).toBe(true);
+      b.state.refuse = undefined;
+      expect(await deviceStore.unlinkThisComputer()).toBe('done');
+      expect(b.calls.filter((call) => call === 'unlinkSelf')).toHaveLength(2);
+    });
+
+    it('frees the device buttons when reading again after the unlink throws', async () => {
+      const { devices: deviceStore } = setup(false);
+      await flush();
+      await flush();
+      await deviceStore.unlink('d1');
+      refreshMeFails = new Error('the agent could not be read');
+      await expect(deviceStore.unlinkThisComputer()).rejects.toThrow('the agent could not be read');
+      expect(deviceStore.unlinking()).toBe(false);
+      expect(deviceStore.confirmingUnlink()).toBe(false);
+    });
+
+    describe('while the unlink is in flight', () => {
+      function inFlight() {
+        const s = setup(false);
+        let release!: () => void;
+        s.b.state.gate = new Promise<void>((resolve) => (release = resolve));
+        return { ...s, release };
+      }
+
+      it('sends one call for a repeated confirm, and keeps the confirm up until it settles', async () => {
+        const { b, devices: deviceStore, release } = inFlight();
+        await flush();
+        await flush();
+        await deviceStore.unlink('d1');
+        const first = deviceStore.unlinkThisComputer();
+        expect(deviceStore.unlinking()).toBe(true);
+        expect(deviceStore.confirmingUnlink()).toBe(true);
+        expect(await deviceStore.unlinkThisComputer()).toBe('cancelled');
+        await flush();
+        expect(b.calls.filter((call) => call === 'unlinkSelf')).toHaveLength(1);
+        release();
+        expect(await first).toBe('done');
+        expect(deviceStore.unlinking()).toBe(false);
+        expect(deviceStore.confirmingUnlink()).toBe(false);
+        expect(b.calls.filter((call) => call === 'unlinkSelf')).toHaveLength(1);
+      });
+
+      it('cannot be raised again, and cancelling after the submit does nothing', async () => {
+        const { b, devices: deviceStore, release } = inFlight();
+        await flush();
+        await flush();
+        await deviceStore.unlink('d1');
+        const first = deviceStore.unlinkThisComputer();
+        deviceStore.cancelUnlink();
+        expect(deviceStore.confirmingUnlink()).toBe(true);
+        expect(await deviceStore.unlink('d1')).toBe('cancelled');
+        expect(deviceStore.confirmingUnlink()).toBe(true);
+        release();
+        await first;
+        expect(b.calls.filter((call) => call === 'unlinkSelf')).toHaveLength(1);
+      });
+    });
+  });
+
+  it('reads this computer unlinked from the status, as it reads it revoked, and offers no master key request then', async () => {
+    const b = backend({ did: DID, events: [incept, add], devices });
+    const linked = b.port.status!;
+    b.port.status = async () => ({ ...(await linked()), unlinked: 2 });
+    setPorts({ identity: custody(b.port, () => {}, false).identity });
+    const { identity, devices: deviceStore } = mount();
+    await flush();
+    await flush();
+    expect(identity.thisDeviceUnlinked()).toBe(true);
+    expect(identity.thisDeviceRevoked()).toBe(false);
+    expect(deviceStore.canAskMaster()).toBe(false);
+  });
+
+  it('unlinking another device leaves this computer linked', async () => {
+    const b = backend({ did: DID, events: [incept, add], devices });
+    const c = custody(b.port, () => {}, true);
+    setPorts({ identity: c.identity });
+    const { identity, devices: deviceStore } = mount();
+    await flush();
+    await flush();
+    expect(await deviceStore.unlink('d2')).toBe('done');
+    await flush();
+    await flush();
+    expect(identity.did()).toBe(DID);
+    expect(identity.keyId()).toBe('d1');
   });
 
   it('add asks for add-device', async () => {
@@ -440,5 +722,146 @@ describe('deviceStore', () => {
     await flush();
     await deviceStore.addDevice();
     expect(c.changes).toEqual([{ kind: 'add-device' }]);
+  });
+
+  it('names each device from the private record, says who keeps the master key, and lists requests', async () => {
+    const b = backend({ did: DID, events: [incept, add], devices });
+    const state: IdentityCustodyView = {
+      ...NO_CUSTODY,
+      did: DID,
+      holdsMaster: true,
+      unlock: 'os',
+      devices: [
+        { keyId: 'd1', name: 'Desktop', kind: 'desktop-app', holdsMaster: 'yes' },
+        { keyId: 'd2', name: 'Laptop', kind: 'desktop-app', holdsMaster: 'offered' },
+      ],
+      requests: [{ id: 'r1', kind: 'send-master', by: 'd2', keyIds: [], expires: 99 }],
+    };
+    const changes: IdentityChange[] = [];
+    setPorts({
+      identity: signing(b.port, {
+        custody: async () => state,
+        async change(change) {
+          changes.push(change);
+          return 'done';
+        },
+      }),
+    });
+    const { devices: deviceStore } = mount();
+    await flush();
+    await flush();
+    expect(deviceStore.devices().map((d) => [d.label, d.master])).toEqual([
+      ['Desktop', 'Has master key'],
+      ['Laptop', 'Master key sent'],
+    ]);
+    expect(deviceStore.requests()).toEqual([
+      {
+        id: 'r1',
+        kind: 'send-master',
+        title: 'Laptop asks for the master key',
+        detail: 'It could then add and remove devices.',
+      },
+    ]);
+    expect(deviceStore.canAskMaster()).toBe(false);
+
+    await deviceStore.answerRequest('r1');
+    await deviceStore.rename('d2');
+    await deviceStore.scanDevice();
+    expect(changes).toEqual([
+      { kind: 'answer-request', id: 'r1' },
+      { kind: 'rename', keyId: 'd2' },
+      { kind: 'scan-device' },
+    ]);
+  });
+
+  it('on a linked device without the master key: no requests, ask for the key, and take it once sent', async () => {
+    const b = backend({ did: DID, events: [incept, add], devices });
+    let state: IdentityCustodyView = {
+      ...NO_CUSTODY,
+      did: null,
+      unlock: 'os',
+      // Requests are the holder's to answer; a device without the key does not list them.
+      requests: [{ id: 'r1', kind: 'send-master', by: 'd2', keyIds: [], expires: 99 }],
+    };
+    const changes: IdentityChange[] = [];
+    setPorts({
+      identity: signing(b.port, {
+        custody: async () => state,
+        async change(change) {
+          changes.push(change);
+          if (change.kind === 'ask-master') state = { ...state, masterWaiting: true };
+          if (change.kind === 'take-master') state = { ...state, did: DID, holdsMaster: true, masterWaiting: false };
+          return 'done';
+        },
+      }),
+    });
+    const { devices: deviceStore } = mount();
+    await flush();
+    await flush();
+    expect(deviceStore.canManage()).toBe(false);
+    expect(deviceStore.requests()).toEqual([]);
+    expect(deviceStore.canShowCode()).toBe(false);
+    expect(deviceStore.canAskMaster()).toBe(true);
+
+    await deviceStore.askMaster();
+    expect(deviceStore.masterWaiting()).toBe(true);
+    expect(deviceStore.canAskMaster()).toBe(false);
+    await deviceStore.takeMaster();
+    expect(changes).toEqual([{ kind: 'ask-master' }, { kind: 'take-master' }]);
+    expect(deviceStore.masterWaiting()).toBe(false);
+    expect(deviceStore.canManage()).toBe(true);
+    expect(deviceStore.requests().map((r) => r.id)).toEqual(['r1']);
+  });
+
+  it('on a computer that lost its enc key: says so, offers no master key step, and claims no names', async () => {
+    const b = backend({ did: DID, events: [incept, add], devices });
+    const state: IdentityCustodyView = {
+      ...NO_CUSTODY,
+      did: DID,
+      unlock: 'os',
+      // Neither can open here; a stale record or a waiting master key must not be offered as if it could.
+      devices: [{ keyId: 'd2', name: 'Laptop', kind: 'desktop-app', holdsMaster: 'yes' }],
+      masterWaiting: true,
+      encMismatch: true,
+    };
+    setPorts({
+      identity: signing(b.port, { custody: async () => state, change: async () => 'done' }),
+    });
+    const { devices: deviceStore } = mount();
+    await flush();
+    await flush();
+    expect(deviceStore.encMismatch()).toBe(true);
+    expect(deviceStore.masterWaiting()).toBe(false);
+    expect(deviceStore.canAskMaster()).toBe(false);
+    expect(deviceStore.devices().map((d) => [d.label, d.master])).toEqual([
+      ['This computer', ''],
+      ['Device d2', ''],
+    ]);
+  });
+
+  it('offers "Show code" on a computer of no identity, and reads the identity once it joined', async () => {
+    const b = backend({ did: null, events: [], devices: [] });
+    const changes: IdentityChange[] = [];
+    setPorts({
+      identity: signing(b.port, {
+        custody: async () => ({ ...NO_CUSTODY, unlock: 'os' }),
+        async change(change) {
+          changes.push(change);
+          b.state.did = DID;
+          b.state.events = [incept, add];
+          b.state.devices = devices;
+          return 'done';
+        },
+      }),
+    });
+    const { identity, devices: deviceStore } = mount();
+    await flush();
+    await flush();
+    expect(deviceStore.canShowCode()).toBe(true);
+    expect(await deviceStore.showCode()).toBe('done');
+    await flush();
+    expect(changes).toEqual([{ kind: 'show-code' }]);
+    expect(identity.did()).toBe(DID);
+    expect(deviceStore.canShowCode()).toBe(false);
   });
 });

@@ -1,7 +1,8 @@
 //! The custody service end to end (make an identity, add a second device, revoke it): a real
-//! identity-store, executor A as this computer's (with an admin credential), executor B as a second
-//! one named as operated by the identity, and the custody service driving them the way the identity
-//! window does — screen by screen.
+//! identity-store, executor A as this computer's (`--custody-channel`, the custody service on the
+//! custody credential, as the desktop apps run it), executor B as a second one named as operated
+//! by the identity, and the custody service driving them the way the identity window does — screen
+//! by screen. The incept lists this computer's custody enc key, not the executor's.
 //!
 //! Skipped unless `CUSTODY_LIVE=1`. The executor is the one every WE live test runs:
 //! `scripts/ad4m-executor.mjs --path` chooses it (`AD4M_EXECUTOR`, else the seed's
@@ -23,11 +24,21 @@
 //!
 //! The executors run in `<ad4m>/tests/js` with its shared language directories, as ad4m's own
 //! identity suite runs them (`tests/js/tests/identity.test.ts`), and without Holochain.
+//!
+//! A second case starts a desktop executor the way the desktop apps do: `--custody-channel`, the
+//! custody credential as the first line of its stdin, and no `--operator`. Its first link, made
+//! through its own custody service ("Show code" entered on the holder), records the operator
+//! when it joins: while bound, an offer of another identity is refused `already-linked`, and once
+//! its key is revoked, `first-link`. Linked to keep the master key, it is listed with its custody
+//! enc key, and its custody service opens the master key the holder sealed to it, which the
+//! executor only passes on (`identity.inboxSealed`).
+//!
+//! The cases run one at a time: each starts its own store and executors.
 
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -36,9 +47,10 @@ use ad4m_client::ws_rpc::WsRpcClient;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use we_custody::seal::{self, Kdf};
-use we_custody::store::{item_name, FileStore, SecretStore};
+use we_custody::store::{enc_item_name, item_name, FileStore, SecretStore};
 use we_custody::{
-    spawn, DesktopVault, ExecutorAddress, IdentityStep, PendingIncepts, Screen, StepInput,
+    spawn, CustodyHandle, DesktopVault, ExecutorAddress, IdentityStep, PendingIncepts, Screen,
+    StepInput,
 };
 
 const PASSPHRASE: &str = "a long passphrase for the test";
@@ -90,15 +102,33 @@ struct Proc {
     child: Child,
     lines: mpsc::Receiver<String>,
     seen: Vec<String>,
+    /// Held open while the process runs, when it was given a first line.
+    _stdin: Option<ChildStdin>,
 }
 
 impl Proc {
-    fn spawn(mut command: Command, label: &'static str) -> Proc {
-        let mut child = command
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .expect(label);
+    fn spawn(command: Command, label: &'static str) -> Proc {
+        Proc::spawn_with_line(command, label, None)
+    }
+
+    /// Spawns, and when `first_line` is given writes it and a newline to the process's stdin,
+    /// which then stays open — as the desktop apps hand an executor its custody credential.
+    fn spawn_with_line(
+        mut command: Command,
+        label: &'static str,
+        first_line: Option<&str>,
+    ) -> Proc {
+        command.stdout(Stdio::piped()).stderr(Stdio::piped());
+        if first_line.is_some() {
+            command.stdin(Stdio::piped());
+        }
+        let mut child = command.spawn().expect(label);
+        let stdin = first_line.map(|line| {
+            let mut stdin = child.stdin.take().unwrap();
+            stdin.write_all(format!("{line}\n").as_bytes()).unwrap();
+            stdin.flush().unwrap();
+            stdin
+        });
         let (tx, lines) = mpsc::channel();
         for stream in [
             Box::new(child.stdout.take().unwrap()) as Box<dyn std::io::Read + Send>,
@@ -118,6 +148,7 @@ impl Proc {
             child,
             lines,
             seen: Vec::new(),
+            _stdin: stdin,
         }
     }
 
@@ -191,13 +222,28 @@ impl Node {
     }
 
     async fn call(&self, method: &str, params: Value) -> Value {
-        let client = WsRpcClient::connect(&self.url(), &self.token)
+        self.try_call(method, params)
             .await
-            .unwrap();
+            .unwrap_or_else(|e| panic!("{method}: {e}"))
+    }
+
+    /// The call's answer, or its error as the executor said it.
+    async fn try_call(&self, method: &str, params: Value) -> Result<Value, String> {
+        self.try_call_as(&self.token, method, params).await
+    }
+
+    /// [`Node::try_call`] on `credential`: the custody credential, say.
+    async fn try_call_as(
+        &self,
+        credential: &str,
+        method: &str,
+        params: Value,
+    ) -> Result<Value, String> {
+        let client = WsRpcClient::connect(&self.url(), credential).await.unwrap();
         client
             .call::<Value>(method, params)
             .await
-            .unwrap_or_else(|e| panic!("{method}: {e}"))
+            .map_err(|e| e.to_string())
     }
 }
 
@@ -208,6 +254,9 @@ struct World {
     seed: PathBuf,
     store_url: String,
     store_key: String,
+    /// Stopped before the folder it writes to is removed (fields drop in order).
+    _store: Proc,
+    _tmp: tempfile::TempDir,
 }
 
 impl World {
@@ -216,11 +265,14 @@ impl World {
     }
 
     /// `init` (with `--operator` for B), shared stores as ad4m's suite sets them, `run`, then an agent.
+    /// With `custody`, the executor runs as a desktop app runs it: `--custody-channel` and
+    /// `--watch-stdin`, the custody credential the first line of its stdin, which stays open.
     async fn start_node(
         &self,
         name: &str,
         operator: Option<&str>,
         credential: Option<&str>,
+        custody: Option<&str>,
     ) -> Node {
         let js = self.repo.join("tests/js");
         let data = self.dir.join(name);
@@ -274,7 +326,10 @@ impl World {
                 run.arg("--insecure-no-admin-credential");
             }
         }
-        let mut proc = Proc::spawn(run, "executor");
+        if custody.is_some() {
+            run.args(["--custody-channel", "true", "--watch-stdin", "true"]);
+        }
+        let mut proc = Proc::spawn_with_line(run, "executor", custody);
         let ready = [
             format!("API server starting on http://127.0.0.1:{port}/api/v1"),
             format!("listening on http://127.0.0.1:{port}"),
@@ -302,15 +357,20 @@ impl Shown {
     }
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn make_link_and_revoke_through_the_custody_service() {
+/// Held by each case while it runs: each starts a store and executors of its own.
+static ONE_AT_A_TIME: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// The temp folder, the seed and a running identity store, or `None` when the live cases are not
+/// asked for. The guard keeps the other case waiting until this one ends.
+async fn set_up() -> Option<(tokio::sync::MutexGuard<'static, ()>, World)> {
     if std::env::var("CUSTODY_LIVE").as_deref() != Ok("1") {
         eprintln!("skipped: set CUSTODY_LIVE=1 (see the header of tests/live.rs)");
-        return;
+        return None;
     }
     if !cfg!(feature = "cheap-kdf") {
         panic!("run with --features cheap-kdf");
     }
+    let one = ONE_AT_A_TIME.lock().await;
     let repo = ad4m_repo();
     let executor = ad4m_executor();
     let js = repo.join("tests/js");
@@ -320,7 +380,8 @@ async fn make_link_and_revoke_through_the_custody_service() {
             .trim()
             .to_string();
 
-    let dir = tempfile::tempdir().unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().to_path_buf();
     // The seed ad4m's identity suite last wrote, when there is one: `prepare-test-local` publishes
     // the languages it names. Otherwise the checked-in seed with the agent language swapped in, as
     // that suite's `writeIdentitySeed` does.
@@ -332,7 +393,7 @@ async fn make_link_and_revoke_through_the_custody_service() {
     };
     let mut seed: Value = serde_json::from_str(&std::fs::read_to_string(source).unwrap()).unwrap();
     seed["agentLanguage"] = json!(agent_language);
-    let seed_path = dir.path().join("seed.json");
+    let seed_path = dir.join("seed.json");
     std::fs::write(&seed_path, seed.to_string()).unwrap();
 
     // The identity store, on a temp database, with a cheap proof of work.
@@ -340,38 +401,129 @@ async fn make_link_and_revoke_through_the_custody_service() {
     let mut store = Command::new(repo.join("target/debug/identity-store"));
     store
         .arg("serve")
-        .env("IDENTITY_STORE_DB", dir.path().join("store.sqlite"))
-        .env("IDENTITY_STORE_KEY", dir.path().join("store-key"))
+        .env("IDENTITY_STORE_DB", dir.join("store.sqlite"))
+        .env("IDENTITY_STORE_KEY", dir.join("store-key"))
         .env("IDENTITY_STORE_LISTEN", format!("127.0.0.1:{store_port}"))
         .env("POW_BITS", "8");
     let mut store = Proc::spawn(store, "identity-store");
     let ready = store.wait_for(30, |l| l.starts_with("identity-store listening on "));
     let parts: Vec<&str> = ready.split_whitespace().collect();
-    let world = World {
-        repo: repo.clone(),
-        executor,
-        dir: dir.path().to_path_buf(),
-        seed: seed_path,
-        store_url: parts[3].to_string(),
-        store_key: parts[5].to_string(),
-    };
+    let (store_url, store_key) = (parts[3].to_string(), parts[5].to_string());
+    Some((
+        one,
+        World {
+            repo,
+            executor,
+            dir,
+            seed: seed_path,
+            store_url,
+            store_key,
+            _store: store,
+            _tmp: tmp,
+        },
+    ))
+}
 
-    let credential = "custody-live-admin-credential";
-    let a = world.start_node("a", None, Some(credential)).await;
-
-    let vault_dir = dir.path().join("custody");
+/// A custody service over the executor at `url`, its vault (sealed files, a cheap KDF) in `dir`.
+fn custody_on(url: String, credential: &str, dir: &Path) -> CustodyHandle {
     let vault = DesktopVault::with_kdf(
-        Box::new(FileStore::new(&vault_dir)),
-        PendingIncepts::file(&vault_dir),
+        Box::new(FileStore::new(dir)),
+        PendingIncepts::file(dir),
         CHEAP,
     );
-    let custody = spawn(
+    spawn(
         vault,
         ExecutorAddress {
-            url: a.url(),
-            admin_credential: Arc::from(credential),
+            url,
+            credential: Arc::from(credential),
         },
+    )
+}
+
+/// The custody enc key the custody service over `dir` keeps for `node`'s device key, and the one
+/// `did`'s log lists for `key_id`, as multikeys.
+async fn kept_and_listed_enc(node: &Node, dir: &Path, did: &str, key_id: &str) -> (String, String) {
+    let status = node.call("identity.status", json!({})).await;
+    let device_key = status["deviceKey"].as_str().unwrap();
+    let bytes: [u8; 32] = FileStore::new(dir)
+        .get(&enc_item_name(device_key).unwrap())
+        .unwrap()
+        .expect("the custody enc key item")
+        .try_into()
+        .unwrap();
+    let kept =
+        ad4m_identity_core::x25519_multikey_of(&ad4m_identity_core::X25519Secret::from(bytes));
+    let log = node
+        .call(
+            "identity.log",
+            json!({ "did": did, "from": 0, "fresh": true }),
+        )
+        .await;
+    let events: Vec<ad4m_identity_core::Event> = log["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| ad4m_identity_core::Event::from_json(e).unwrap())
+        .collect();
+    let listed = we_custody::keylog::device(&events, key_id)
+        .expect("the log lists the device")
+        .enc;
+    (kept.as_str().to_string(), listed)
+}
+
+/// "Make my identity here", answered right the first time: the identity's DID.
+async fn make_identity(custody: &CustodyHandle) -> String {
+    let Screen::ShowWords { words } = custody.start(IdentityStep::Create).await.unwrap() else {
+        panic!("create did not start on the words")
+    };
+    let Screen::ConfirmWords { positions, .. } =
+        custody.step(StepInput::WordsWritten).await.unwrap()
+    else {
+        panic!("no confirm-words")
+    };
+    let answers = [
+        words[positions[0] - 1].clone(),
+        words[positions[1] - 1].clone(),
+    ];
+    let set = custody.step(StepInput::Words { answers }).await.unwrap();
+    assert!(
+        matches!(set, Screen::SetPassphrase { error: None }),
+        "{set:?}"
     );
+    let ready = custody
+        .step(StepInput::Passphrase {
+            passphrase: PASSPHRASE.into(),
+            confirm: Some(PASSPHRASE.into()),
+        })
+        .await
+        .unwrap();
+    let Screen::IdentityReady { did, .. } = ready else {
+        panic!("not ready: {ready:?}")
+    };
+    did
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn make_link_and_revoke_through_the_custody_service() {
+    let Some((_one, world)) = set_up().await else {
+        return;
+    };
+    let js = world.repo.join("tests/js");
+
+    let (admin, custody_credential) = ("custody-live-admin-credential", "custody-live-custody");
+    let a = world
+        .start_node("a", None, Some(admin), Some(custody_credential))
+        .await;
+
+    let vault_dir = world.dir.join("custody");
+    let custody = custody_on(a.url(), custody_credential, &vault_dir);
     let mut shown = Shown::default();
     // The executors are started with the store and its key (`AD4M_IDENTITY_STORE_URL`/`KEYS`),
     // which win over the seed's: custody learns the store from `identity.status`, and is not
@@ -454,12 +606,16 @@ async fn make_link_and_revoke_through_the_custody_service() {
         .map(|e| e["op"].as_str().unwrap())
         .collect();
     assert_eq!(ops, ["incept"]);
+    // d1 is listed with this computer's custody enc key, so the record key is wrapped to it.
+    let (kept, listed) = kept_and_listed_enc(&a, &vault_dir, &did, "d1").await;
+    assert_eq!(listed, kept);
     let public = custody.public_state().await.unwrap();
     assert_eq!(public.did.as_deref(), Some(did.as_str()));
     assert!(public.holds_master.is_some());
+    assert!(!public.enc_mismatch);
 
     // ─── 2. A second executor, named as operated by the identity, joins it ───
-    let b = world.start_node("b", Some(&did), None).await;
+    let b = world.start_node("b", Some(&did), None, None).await;
     let enter = shown.record(&custody.start(IdentityStep::AddDevice).await.unwrap());
     assert!(matches!(enter, Screen::EnterPassphrase { error: None }));
     let wrong = shown.record(
@@ -487,7 +643,7 @@ async fn make_link_and_revoke_through_the_custody_service() {
     let Screen::Offer { link, qr_svg, .. } = offer else {
         panic!("no offer: {offer:?}")
     };
-    assert!(link.starts_with("https://id.coasys.org/o#coasys:offer:1:"));
+    assert!(link.starts_with("https://coasys.id/o#coasys:offer:1:"));
     assert!(qr_svg.contains("<svg"));
 
     let mut claim_cmd = Command::new(world.executor());
@@ -510,13 +666,37 @@ async fn make_link_and_revoke_through_the_custody_service() {
         .trim()
         .to_string();
     let matched = shown.record(&waiting.await.unwrap().unwrap());
-    let Screen::Match { code, hint } = matched else {
+    let Screen::Match {
+        code,
+        hint,
+        can_keep,
+        own_name,
+    } = matched
+    else {
         panic!("no match: {matched:?}")
     };
     assert_eq!(code, b_code, "both sides show the same code");
     assert_eq!(hint.as_deref(), Some("server b"));
-    let linked = shown.record(&custody.step(StepInput::Confirm).await.unwrap());
-    assert!(matches!(linked, Screen::Linked { seq: 1 }), "{linked:?}");
+    // A node offer: the server may not keep the master key. The first link names this computer.
+    assert!(!can_keep);
+    assert!(own_name);
+    let confirm = StepInput::Confirm {
+        name: None,
+        keep_master: false,
+        this_name: Some("Node A".into()),
+    };
+    let linked = shown.record(&custody.step(confirm).await.unwrap());
+    assert!(
+        matches!(
+            linked,
+            Screen::Linked {
+                seq: 1,
+                master_sent: false,
+                note: None
+            }
+        ),
+        "{linked:?}"
+    );
     claim.wait_for(60, |l| l.starts_with(&format!("Joined {did} as d2")));
     let b_status = b.call("identity.status", json!({})).await;
     assert_eq!(
@@ -524,7 +704,30 @@ async fn make_link_and_revoke_through_the_custody_service() {
         (Some(did.as_str()), Some("d2"))
     );
 
-    // ─── 4. Revoke d2 ───
+    // ─── 4. Unlink d2, then revoke it as lost since a time the store takes ───
+    let confirm = shown.record(
+        &custody
+            .start(IdentityStep::Unlink {
+                key_id: "d2".into(),
+            })
+            .await
+            .unwrap(),
+    );
+    assert!(
+        matches!(&confirm, Screen::UnlinkConfirm { key_id, passphrase: true, .. } if key_id == "d2")
+    );
+    let unlinked = shown.record(
+        &custody
+            .step(StepInput::Unlink {
+                passphrase: Some(PASSPHRASE.into()),
+            })
+            .await
+            .unwrap(),
+    );
+    assert!(
+        matches!(&unlinked, Screen::Unlinked { key_id, seq: 2 } if key_id == "d2"),
+        "{unlinked:?}"
+    );
     let confirm = shown.record(
         &custody
             .start(IdentityStep::Revoke {
@@ -540,6 +743,7 @@ async fn make_link_and_revoke_through_the_custody_service() {
         &custody
             .step(StepInput::Revoke {
                 passphrase: Some("still not the passphrase".into()),
+                since: None,
             })
             .await
             .unwrap(),
@@ -548,16 +752,30 @@ async fn make_link_and_revoke_through_the_custody_service() {
         wrong,
         Screen::RevokeConfirm { error: Some(_), .. }
     ));
-    let revoked = shown.record(
+    let in_the_future = shown.record(
         &custody
             .step(StepInput::Revoke {
                 passphrase: Some(PASSPHRASE.into()),
+                since: Some(u64::MAX / 2),
             })
             .await
             .unwrap(),
     );
     assert!(
-        matches!(&revoked, Screen::Revoked { key_id, seq: 2 } if key_id == "d2"),
+        matches!(&in_the_future, Screen::RevokeConfirm { error: Some(e), .. } if e.contains("future")),
+        "{in_the_future:?}"
+    );
+    let revoked = shown.record(
+        &custody
+            .step(StepInput::Revoke {
+                passphrase: Some(PASSPHRASE.into()),
+                since: Some(now_ms()),
+            })
+            .await
+            .unwrap(),
+    );
+    assert!(
+        matches!(&revoked, Screen::Revoked { key_id, seq: 3 } if key_id == "d2"),
         "{revoked:?}"
     );
     let log = a
@@ -572,7 +790,7 @@ async fn make_link_and_revoke_through_the_custody_service() {
         .iter()
         .map(|e| e["op"].as_str().unwrap())
         .collect();
-    assert_eq!(ops, ["incept", "add", "revoke"]);
+    assert_eq!(ops, ["incept", "add", "unlink", "revoke"]);
     let devices = a.call("identity.devices", json!({})).await;
     let d2 = devices
         .as_array()
@@ -580,10 +798,13 @@ async fn make_link_and_revoke_through_the_custody_service() {
         .iter()
         .find(|d| d["keyId"] == "d2")
         .unwrap();
-    assert_eq!(d2["revokedSeq"], 2);
+    assert_eq!(
+        (&d2["unlinkedSeq"], &d2["revokedSeq"]),
+        (&json!(2), &json!(3))
+    );
     let b_status = b.call("identity.status", json!({})).await;
     assert_eq!(
-        b_status["revoked"], 2,
+        b_status["revoked"], 3,
         "the second executor reports its key revoked"
     );
     // This computer cannot revoke itself.
@@ -634,4 +855,334 @@ async fn make_link_and_revoke_through_the_custody_service() {
     for form in &forms {
         assert!(!public.contains(form.as_str()));
     }
+}
+
+/// A desktop executor — `--custody-channel` with the custody credential on stdin, no `--operator`,
+/// so no operator record — joins the identity of the first holder that links it, through its own
+/// custody service as the desktop apps run it ("Show code" here, "Enter code" on the
+/// holder). Its join records the operator (`FirstRun`; the claim alone records nothing): while
+/// bound an offer of another identity is refused `already-linked`, and after the holder revokes
+/// its key, `first-link` — before anything reaches the store.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_desktop_executor_takes_its_first_link_as_its_operator() {
+    let Some((_one, world)) = set_up().await else {
+        return;
+    };
+
+    // A: a computer keeping the master key of the identity B joins.
+    let (a_admin, a_custody) = ("custody-live-a-admin", "custody-live-a-custody");
+    let a = world
+        .start_node("a", None, Some(a_admin), Some(a_custody))
+        .await;
+    let holder = custody_on(a.url(), a_custody, &world.dir.join("custody-a"));
+    let did = make_identity(&holder).await;
+
+    // C: another person's computer, with an identity of its own and an offer of it.
+    let (c_admin, c_custody) = ("custody-live-c-admin", "custody-live-c-custody");
+    let c = world
+        .start_node("c", None, Some(c_admin), Some(c_custody))
+        .await;
+    let stranger = custody_on(c.url(), c_custody, &world.dir.join("custody-c"));
+    let other_did = make_identity(&stranger).await;
+    assert_ne!(other_did, did);
+    let enter = stranger.start(IdentityStep::AddDevice).await.unwrap();
+    assert!(
+        matches!(enter, Screen::EnterPassphrase { error: None }),
+        "{enter:?}"
+    );
+    let offer = stranger
+        .step(StepInput::Passphrase {
+            passphrase: PASSPHRASE.into(),
+            confirm: None,
+        })
+        .await
+        .unwrap();
+    let Screen::Offer {
+        link: other_offer, ..
+    } = offer
+    else {
+        panic!("no offer: {offer:?}")
+    };
+
+    // B: the desktop executor, and its custody service on the custody credential alone.
+    let (b_admin, b_custody) = ("custody-live-b-admin", "custody-live-b-custody");
+    let b = world
+        .start_node("b", None, Some(b_admin), Some(b_custody))
+        .await;
+    let b_dir = world.dir.join("custody-b");
+    let device = custody_on(b.url(), b_custody, &b_dir);
+    let shown = device.start(IdentityStep::ShowCode).await.unwrap();
+    let Screen::DeviceCode {
+        code: device_code, ..
+    } = shown
+    else {
+        panic!("no device code: {shown:?}")
+    };
+    assert!(device_code.contains("coasys:device:1:"), "{device_code}");
+
+    // The holder scans B's code and sends it the offer; B's executor claims it from its inbox.
+    let enter = holder.start(IdentityStep::ScanDevice).await.unwrap();
+    assert!(
+        matches!(enter, Screen::EnterCode { error: None }),
+        "{enter:?}"
+    );
+    let unlock = holder
+        .step(StepInput::Code { code: device_code })
+        .await
+        .unwrap();
+    assert!(
+        matches!(unlock, Screen::EnterPassphrase { error: None }),
+        "{unlock:?}"
+    );
+    let sent = holder
+        .step(StepInput::Passphrase {
+            passphrase: PASSPHRASE.into(),
+            confirm: None,
+        })
+        .await
+        .unwrap();
+    assert!(matches!(sent, Screen::CodeSent { .. }), "{sent:?}");
+    let (matched, device_matched) = tokio::join!(
+        holder.step(StepInput::WaitClaim),
+        device.step(StepInput::WaitLink)
+    );
+    let matched = matched.unwrap();
+    let Screen::Match { code, can_keep, .. } = matched else {
+        panic!("no match: {matched:?}")
+    };
+    let device_matched = device_matched.unwrap();
+    let Screen::DeviceMatch {
+        code: device_shows,
+        did: joining,
+        needs_accept,
+        ..
+    } = device_matched
+    else {
+        panic!("no device match: {device_matched:?}")
+    };
+    assert_eq!(code, device_shows, "both sides show the same code");
+    assert_eq!(joining, did);
+    // Claimed over the custody channel: a desktop app may keep the master key.
+    assert!(can_keep);
+
+    // The claim records nothing yet: until B joins, a claim that never completes (the wrong code
+    // scanned, the holder said No) leaves B free to claim again. Nothing here claims C's offer
+    // before the join, so B's own join is the only one in flight.
+
+    // The holder confirms and sends B the master key, and B joins the identity — which records it
+    // as B's operator. Where B's executor binds only once the person accepts the identity there (a
+    // first run), B accepts first, and the accept waits for the join.
+    let (linked, joined) = tokio::join!(
+        holder.step(StepInput::Confirm {
+            name: Some("Desktop B".into()),
+            keep_master: true,
+            this_name: Some("Desktop A".into()),
+        }),
+        device.step(if needs_accept {
+            StepInput::Accept
+        } else {
+            StepInput::WaitJoin
+        })
+    );
+    let linked = linked.unwrap();
+    assert!(
+        matches!(
+            linked,
+            Screen::Linked {
+                seq: 1,
+                master_sent: true,
+                ..
+            }
+        ),
+        "{linked:?}"
+    );
+    let joined = joined.unwrap();
+    assert!(
+        matches!(&joined, Screen::Joined { did: d, key_id } if *d == did && key_id == "d2"),
+        "{joined:?}"
+    );
+    let status = b.call("identity.status", json!({})).await;
+    assert_eq!(
+        (status["did"].as_str(), status["keyId"].as_str()),
+        (Some(did.as_str()), Some("d2"))
+    );
+
+    // d2 is listed with B's custody enc key, not its executor's: the master key was sealed to it.
+    let (kept, listed) = kept_and_listed_enc(&b, &b_dir, &did, "d2").await;
+    assert_eq!(listed, kept);
+    assert_ne!(status["deviceEnc"].as_str(), Some(kept.as_str()));
+    // B's store is sealed, so the master key waits for the person to take it.
+    let mut waiting = false;
+    for _ in 0..60 {
+        let public = device.public_state().await.unwrap();
+        assert!(!public.enc_mismatch, "{public:?}");
+        if public.master_waiting {
+            waiting = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+    assert!(waiting, "the master key sealed to B never arrived");
+
+    // The pending seal is the custody service's alone to open. No call answers it opened: there is
+    // no `identity.takeMaster` for the operator or for the custody channel.
+    for (who, credential) in [
+        ("the admin credential", b_admin),
+        ("the custody channel", b_custody),
+    ] {
+        let refused = b
+            .try_call_as(credential, "identity.takeMaster", json!({}))
+            .await
+            .expect_err("the executor answered a master key in plaintext");
+        println!("identity.takeMaster on {who}: {refused}");
+        // An unknown method (404), or refused outright (403): never an error on the way there.
+        assert!(
+            refused.contains("404") || refused.contains("403"),
+            "{who}: {refused}"
+        );
+    }
+    // The operator cannot read it even sealed: only the custody channel can.
+    b.try_call("identity.inboxSealed", json!({}))
+        .await
+        .expect_err("the admin credential read the sealed inbox");
+    let pending: Vec<Value> = serde_json::from_value(
+        b.try_call_as(b_custody, "identity.inboxSealed", json!({}))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let scid = did.rsplit(':').next().unwrap();
+    let message = pending
+        .iter()
+        .find(|m| m["scid"] == scid && m["keyId"] == "d2")
+        .unwrap_or_else(|| panic!("no pending seal for d2: {pending:?}"));
+    let address = ad4m_identity_core::inbox::InboxAddress::Joined {
+        scid: scid.to_string(),
+        key_id: "d2".into(),
+    };
+    // It opens with the custody enc key kept here, to a master key. An HPKE seal opens with the
+    // one key it was sealed to, and the log lists `kept` for d2, not `deviceEnc` (checked above).
+    // That it does not open with the executor's own enc key is not tried here: that key is
+    // derived inside the executor's keystore from its device key, and no call answers it, so
+    // this test has nothing to try it with.
+    let status = b.call("identity.status", json!({})).await;
+    let custody_secret: [u8; 32] = FileStore::new(&b_dir)
+        .get(&enc_item_name(status["deviceKey"].as_str().unwrap()).unwrap())
+        .unwrap()
+        .unwrap()
+        .try_into()
+        .unwrap();
+    let opened = ad4m_identity_core::inbox::open(
+        &ad4m_identity_core::X25519Secret::from(custody_secret),
+        &address,
+        message["sealed"].as_str().unwrap(),
+    )
+    .expect("the custody enc key opens the pending seal");
+    assert!(
+        matches!(
+            opened.body,
+            ad4m_identity_core::inbox::InboxBody::Master { .. }
+        ),
+        "{opened:?}"
+    );
+    let set = device.start(IdentityStep::TakeMaster).await.unwrap();
+    assert!(
+        matches!(set, Screen::SetPassphrase { error: None }),
+        "{set:?}"
+    );
+    let taken = device
+        .step(StepInput::Passphrase {
+            passphrase: PASSPHRASE.into(),
+            confirm: Some(PASSPHRASE.into()),
+        })
+        .await
+        .unwrap();
+    assert!(
+        matches!(&taken, Screen::MasterTaken { did: d, .. } if *d == did),
+        "{taken:?}"
+    );
+    let public = device.public_state().await.unwrap();
+    assert!(public.holds_master.is_some() && !public.master_waiting);
+    let scid = did.rsplit(':').next().unwrap();
+    let sealed = FileStore::new(&b_dir)
+        .get(&item_name(scid))
+        .unwrap()
+        .expect("B's master key item");
+    let b_master = *seal::open(&sealed, scid, PASSPHRASE).unwrap().master;
+    let a_sealed = FileStore::new(world.dir.join("custody-a"))
+        .get(&item_name(scid))
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        b_master,
+        *seal::open(&a_sealed, scid, PASSPHRASE).unwrap().master,
+        "B keeps the holder's master key"
+    );
+
+    // Bound to A's identity, B refuses an offer of another one: its key speaks for an identity.
+    let refused = b
+        .try_call(
+            "identity.claimOffer",
+            json!({ "offer": other_offer, "canKeepMaster": false }),
+        )
+        .await
+        .expect_err("a linked desktop executor claimed an offer of a second identity");
+    assert!(refused.contains("already-linked"), "{refused}");
+    assert_eq!(log_ops(&c, &other_did).await, ["incept"]);
+
+    // Once the holder revokes d2, B's key speaks for no identity, but the operator it recorded
+    // at the join stays: an offer of another identity is now refused `first-link`.
+    let confirm = holder
+        .start(IdentityStep::Revoke {
+            key_id: "d2".into(),
+        })
+        .await
+        .unwrap();
+    assert!(
+        matches!(&confirm, Screen::RevokeConfirm { key_id, .. } if key_id == "d2"),
+        "{confirm:?}"
+    );
+    let revoked = holder
+        .step(StepInput::Revoke {
+            passphrase: Some(PASSPHRASE.into()),
+            since: None,
+        })
+        .await
+        .unwrap();
+    assert!(
+        matches!(&revoked, Screen::Revoked { key_id, seq: 2 } if key_id == "d2"),
+        "{revoked:?}"
+    );
+    let status = b.call("identity.status", json!({})).await;
+    assert_eq!(status["revoked"], 2, "B reports its key revoked: {status}");
+    let refused = b
+        .try_call(
+            "identity.claimOffer",
+            json!({ "offer": other_offer, "canKeepMaster": false }),
+        )
+        .await
+        .expect_err("a desktop executor claimed an offer of an identity not its operator");
+    assert!(refused.contains("first-link"), "{refused}");
+    assert!(
+        refused.contains(&did) && refused.contains(&other_did),
+        "the refusal names the operator and the offer's identity: {refused}"
+    );
+    // C's identity never got B's key.
+    assert_eq!(log_ops(&c, &other_did).await, ["incept"]);
+}
+
+/// The ops of `did`'s log, fresh from the store, as `node` reads it.
+async fn log_ops(node: &Node, did: &str) -> Vec<String> {
+    let log = node
+        .call(
+            "identity.log",
+            json!({ "did": did, "from": 0, "fresh": true }),
+        )
+        .await;
+    log["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["op"].as_str().unwrap().to_string())
+        .collect()
 }
