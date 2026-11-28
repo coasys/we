@@ -11,7 +11,7 @@ The web target (`@we/app-web`) runs WE in a browser tab. It connects through ad4
 1. `parseGuestParams()` reads a guest link from the URL. `hasStoredSession()` checks for a stored ad4m-connect session.
 2. The connector is `createGuestConnector(hostUrl)` for a guest link without a stored session, else `ad4mConnector` ([Backend connector](../platform/backend-connector.md)).
 3. With `ad4mConnector`, the target calls `registerHostChromeReserve('ad4m-connect', {bottom: 54})`, because ad4m-connect draws its settings button in the bottom-right corner of the window.
-4. For a guest link, `writeGuestBootTarget({spaceId, autoJoin})` tells `BootController` which space to open.
+4. For a guest link, `writeGuestBootTarget({spaceId, autoJoin})` tells `BootController` which space to open. `autoJoin` is true only when no session is stored.
 5. It renders `PlatformProvider` with `webPlatform` and `App`.
 
 </details>

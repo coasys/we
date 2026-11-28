@@ -9,7 +9,7 @@ The Tauri target (`@we/app-tauri`) runs WE in a desktop window from one Rust pro
 <details><summary>How it works</summary>
 
 1. `run()` adds the single-instance plugin, so a second start shows the first one's window and runs none of `start`. Then it adds the dialog plugin and the commands.
-2. `start()`: `move_former_webview_data` (Linux), `find_port(12000, 13000)` and a new `Uuid` admin credential, then `AccountRegistry` and `resolve_ad4m_data_path` (`WE_AD4M_DATA_PATH`, else the selected account, else the seed's path; [Accounts](../platform/accounts.md)).
+2. `start()`: `move_former_webview_data` (Linux), `find_port(12000, 13000)` and a new `Uuid` admin credential, then `AccountRegistry` and `resolve_ad4m_data_path` (`WE_AD4M_DATA_PATH`, else `resolve_active_path`; [Accounts](../platform/accounts.md)).
 3. It opens the executor log, runs `rust_executor::init::init` when `mainnet_seed.seed` is missing, and calls `we_custody::spawn` with a `DesktopVault` and the executor's address ([Custody](../identity/custody.md)).
 4. `main_window::create` and `create_tray`. In a release build, `generated::setup_seed_servers` serves the [embedded apps](../platform/embedded-apps.md) with `serve_static_app`.
 5. It spawns `rust_executor::run(Ad4mConfig { port, admin_credential, app_data_path, run_dapp_server: false, connect_holochain: true, … })` on the async runtime. On Linux, `enable_media` lets the webview use the camera, the microphone and WebRTC.

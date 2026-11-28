@@ -2,7 +2,7 @@
 
 The app shell uses a model in two places: the template editor's chat and the shape wizard. The editor first gives a request to an agent that the backend runs. When the backend has no agent for it, the editor runs its own loop on the backend's language model. Each editor chat is stored as ordinary WE records in the person's root dataset.
 
-**Why:** A backend agent writes the stored record, as the editor's own save does, so the editor hands over only a template that has a stored record and is not read-only (`sendViaAgent` in `EditorStore.tsx`). The model asks the backend again when the panel opens, because models are added and changed in Settings while the app runs. A chat is a `CollectionBlock` with `TextBlock` children, so who said what is a fact about the record, and every reader understands a chat as a collection (`shared/editorChats.ts`).
+**Why:** A backend agent writes the stored record, as the editor's own save does, so the editor hands over only a template that has a stored record and is not read-only (`sendViaAgent` in `EditorStore.tsx`). The editor asks the backend again when the panel opens, because models are added and changed in Settings while the app runs. A chat is a `CollectionBlock` with `TextBlock` children, so who said what is a fact about the record, and every reader understands a chat as a collection (`shared/editorChats.ts`).
 
 **Parent:** [AI](README.md)
 
@@ -23,6 +23,6 @@ The app shell uses a model in two places: the template editor's chat and the sha
 - [agentTurns.ts](../../../packages/app-shell/src/shared/agentTurns.ts): `agentTurns`; [editorChats.ts](../../../packages/app-shell/src/shared/editorChats.ts): `CHAT_KIND`.
 - [shapeGeneration.ts](../../../packages/app-shell/src/shared/ai/shapeGeneration.ts): `generateShapeDraft`, `define_model`; [ShapeStore.tsx](../../../packages/app-shell/src/frameworks/solid/stores/ShapeStore.tsx).
 - [agents.ts](../../../packages/backend-system/shared/src/agents.ts): `AgentTurn`, `AgentRunRequest`, `AgentUnavailableError`.
-- The editor and the shape wizard as surfaces: [Interface](../../interface/README.md); the blocks and model records: [Data](../../data/README.md).
+- The editor as a surface: [Editor](../../interface/templates/editor.md); the shape wizard: [Shapes](../../data/spaces/shapes.md); the block and `ModelRun` entities: [Entities](../../data/entities/README.md).
 
 </details>

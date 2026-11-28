@@ -23,6 +23,6 @@ Port 3100 in development.
 - [src/index.tsx](../../../../apps/we-preview/src/index.tsx): parameters, `loadSameOrigin`, `__wePreview`; [src/PreviewBootstrap.tsx](../../../../apps/we-preview/src/PreviewBootstrap.tsx); [src/bare.ts](../../../../apps/we-preview/src/bare.ts): `bareNode`.
 - [src/platform/](../../../../apps/we-preview/src/platform/): `previewPlatform`, `inMemoryConnector`.
 - [scripts/](../../../../apps/we-preview/scripts/): `shoot.mjs` (photograph fixtures), `measure.mjs` (measure a reference screenshot).
-- [packages/templates/fixtures/](../../../../packages/templates/fixtures/): `@we/template-fixtures`; the templates themselves: [Interface](../../../interface/README.md).
+- [packages/templates/fixtures/](../../../../packages/templates/fixtures/): `@we/template-fixtures`; the templates themselves: [Templates](../../../interface/templates/README.md).
 
 </details>

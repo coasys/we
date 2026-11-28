@@ -1,6 +1,6 @@
 # AI context
 
-`@we/ai-context` generates the reference that tells a model what WE is and how to write a template. It finds each package with a `"context"` field in its `package.json`, extracts that package's components, props, tokens, models, modules or plugins, joins them with hand-written fragments, and writes the result for coding agents and for the in-app assistant.
+`@we/ai-context` generates the reference that tells a model what WE is and how to write a template. It finds each package with a `"context"` field in its `package.json`, extracts that package's components, props, tokens, entities, modules or plugins, joins them with hand-written fragments, and writes the result for coding agents and for the in-app assistant.
 
 **Why:** Discovery is spread over the packages and extraction stays in one place. A package joins with one `"context"` field. A command-line tool for each package would need a build in three phases and a reverse dependency on `@we/ai-context`, and a script for each package would be the same code many times (decision record `2026-04-10-ai-context-discovery.md`).
 

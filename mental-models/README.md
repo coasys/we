@@ -2,11 +2,12 @@
 
 WE is the interface layer over AD4M. A **seed** selects the modules, templates and themes of a deployment. The **app shell** renders the live **template**, a JSON schema, against reactive **stores**, and the stores reach an AD4M executor only through the **backend contract**.
 
-**Why:** A template is data and not compiled code, so a person can inspect it, fork it, accept it from an untrusted source and let a model edit it in place. The data stays in AD4M perspectives that the person owns, so a change to the interface never loses the data (`packages/ai-context/src/fragments/architecture.ts`). One app shell renders every template, and each target adds only its platform and its connection to the executor.
+**Why:** A template is data and not compiled code, so a person can inspect it, fork it, accept it from an untrusted source and let an AI model edit it in place ([decision record](../docs/architecture/decisions/2026-03-26-json-schemas-as-the-app-layer.md)). A template is a record apart from the records it shows, so a change to the interface never changes the data. One app shell renders every template, and each target adds only its platform and its connection to the executor.
 
 This folder holds the mental models of this repository: a high-level expression of the code beside it, in a tree of short pages. The pages are kept 1-1 with the code. A pull request that changes a mental model changes its page in the same pull request. How the pages are written: [Conventions](CONVENTIONS.md).
 
 ## Parts
+
 - [Interface](interface/README.md): what a person sees — schemas, templates, the design system and the editor.
 - [Modules](modules/README.md): what extends WE — feature modules, blocks, the graph system and the seed.
 - [Data](data/README.md): what WE stores and how it reaches it — entities, the backend contract, stores and spaces.
@@ -153,7 +154,7 @@ Terms: [Glossary](GLOSSARY.md).
   - [Hosts](hosts/README.md)
     - [Boot](hosts/boot/README.md)
       - [Providers](hosts/boot/providers.md)
-      - [Session](hosts/boot/session.md)
+      - [Session start](hosts/boot/session.md)
       - [First screen](hosts/boot/first-screen.md)
       - [Build freshness](hosts/boot/build-freshness.md)
     - [Platform](hosts/platform/README.md)

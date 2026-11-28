@@ -8,8 +8,8 @@ An **account** is a data directory that holds at most one agent's keys and data.
 
 <details><summary>How it works</summary>
 
-1. At startup the target resolves the data path: the env variable `WE_AD4M_DATA_PATH`, else the selected account, else the seed's default. `pruneAbandoned` first deletes the accounts that this app created and whose setup never finished, except the selected one.
-2. `Account.hasAgent` is true when `<data>/ad4m/agent.json` exists, the executor's own marker. The boot screen uses it to choose between the sign-in step and the setup step.
+1. At startup the target resolves the data path: the env variable `WE_AD4M_DATA_PATH`, else the selected account, else the first account on disk, else the seed's default. `pruneAbandoned` first deletes the accounts that this app created and whose setup never finished, except the selected one.
+2. `Account.hasAgent` is true when `<data>/ad4m/agent.json` exists. The boot screen lists only the other accounts that have an agent.
 3. `create()` makes an empty directory with a provisional name and no agent. After `applySelection()`, the setup screen asks for the name and the password together, as on a first run.
 4. `setDisplay` copies the profile's name and picture to the registry, so the locked sign-in screen can show them.
 5. `remove` refuses the active account, and it deletes only a directory that holds AD4M data.

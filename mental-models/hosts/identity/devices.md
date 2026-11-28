@@ -12,7 +12,7 @@ Two app-shell stores show the identity in the app. `IdentityStore` reads the ide
 2. A change goes through `open(change)` or `makeIdentity()`. The store gets back only the outcome (`done`, `cancelled` or `failed`) in `lastOutcome`, then reads everything again. Words, passphrases and keys never reach it.
 3. First run: on a computer that can sign changes, when the device key speaks for nobody, `needsFirstRun` asks the person to make an identity. `startWithoutIdentity()` remembers the other choice for that account on this computer.
 4. `DeviceStore` reads `IdentityPort.devices`. `devices` lists valid keys first and this computer at the top. `addDevice()` and `revoke(keyId)` are changes like any other, and the list is read again when one ends.
-5. `keyLogRows(events, thisKeyId)` and `deviceRows(devices)` name this computer's key `THIS_COMPUTER` ("This computer") and each other key by its id in the log. A key log row's `op` is `incept`, `add`, `revoke` or `rotate`. `shortHash` and `shortDid` shorten what the rows show.
+5. `keyLogRows(events, thisKeyId)` and `deviceRows(devices)` name this computer's key `THIS_COMPUTER` ("This computer"). `keyLogRows` names each other key by its id, and `deviceRows` labels it `Device <keyId>`. A key log row's `op` is `incept`, `add`, `revoke` or `rotate`. `shortHash` and `shortDid` shorten what the rows show.
 
 </details>
 
@@ -22,6 +22,6 @@ Two app-shell stores show the identity in the app. `IdentityStore` reads the ide
 - [DeviceStore.tsx](../../../packages/app-shell/src/frameworks/solid/stores/DeviceStore.tsx): `DeviceStore`, `addDevice`, `revoke`.
 - [identityRows.ts](../../../packages/app-shell/src/shared/identityRows.ts): `KeyLogRow`, `DeviceRow`, `keyLogRows`, `deviceRows`.
 - [templateSurface.ts](../../../packages/app-shell/src/shared/registries/templateSurface.ts): the `keys` and `devices` groups.
-- The `IdentityPort` contract and the other stores: [Data](../../data/README.md).
+- The `IdentityPort` contract: [Backend contract](../../data/backend/README.md).
 
 </details>

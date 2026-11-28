@@ -2,7 +2,7 @@
 
 The **custody service** (`we-custody`, in `crates/custody`) keeps the person's master key on a desktop computer and runs the changes to the identity: make the identity, add a device, revoke a device. The Tauri app links it into its main process (`we_custody::spawn`). The Electron app runs it as a sidecar process beside the executor. It reaches the executor only over the executor's RPC with the admin credential.
 
-**Why:** The master key never rests in the executor or in a web view, and both desktop apps use one implementation of the vault and the flows (`README.md`). The crate is its own crate so that nothing in it links the executor, and `tests/boundary.rs` keeps it so. There is no Windows version, and the desktop apps start there without identity.
+**Why:** The service holds every secret of a step, and the main window gets only how the step ended and `CustodyPublic` (`service.rs`). Both desktop apps use this one crate for the vault and the flows. Nothing in the crate links the executor, and `tests/boundary.rs` keeps it so. The crate has no Windows version, and Electron starts no custody service on Windows.
 
 **Parent:** [Identity](README.md)
 

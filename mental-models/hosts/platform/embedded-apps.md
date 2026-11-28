@@ -20,6 +20,6 @@ An **embedded app** is a separate AD4M app that the seed lists under `apps` and 
 - [shared/initializeIntegrations.ts](../../../packages/app-shell/src/shared/initializeIntegrations.ts): the `seed.apps` loop.
 - [services/appBridge.ts](../../../packages/app-shell/src/frameworks/solid/services/appBridge.ts): `startAppBridge`, `AppBridgeDeps`, `isCredentialedOrigin`.
 - [we-electron/scripts/generate-seed-config.cjs](../../../apps/we-electron/scripts/generate-seed-config.cjs) and [we-tauri/scripts/generate-seed-config.cjs](../../../apps/we-tauri/scripts/generate-seed-config.cjs): port maps and seed servers; [we-tauri/src-tauri/src/app_server.rs](../../../apps/we-tauri/src-tauri/src/app_server.rs): `serve_static_app`.
-- The seed and the module contract: [Modules](../../modules/README.md).
+- How the registry gates a module: [Module registry](../../modules/registry/README.md).
 
 </details>

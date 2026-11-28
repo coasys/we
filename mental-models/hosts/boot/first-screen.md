@@ -2,7 +2,7 @@
 
 The **first screen** is one gate for the work that the opening page does not need. At cold boot, `SessionStore` holds the gate. Work such as the space list, presence, interpretation reads and the editor's model status starts only after the gate opens.
 
-**Why:** One executor answers the requests in turn. When the app sent every request at cold boot, the page that the person opened came back behind all of them (`shared/firstScreen.ts`). The gate is not a scheduler and has no queue. Each piece of work reads `open()` in the effect that starts it, or awaits `whenOpen()`, so it reads the current state when it starts.
+**Why:** One executor answers the requests in turn. So a request that the opening page needs waits behind every request that the app sent before it. The gate is not a scheduler and has no queue. Each piece of work reads `open()` in the effect that starts it, or awaits `whenOpen()`, so it reads the current state when it starts.
 
 **Parent:** [Boot](README.md)
 

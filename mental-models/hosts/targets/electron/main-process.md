@@ -11,7 +11,7 @@ The Electron main process owns the app's windows and everything outside the rend
 1. `requestSingleInstanceLock()`: a second launch opens the window of the first one.
 2. `app.whenReady`: `startAppServer()` (express on port 9080 with a single-page-app fallback, plus `setupSeedServers()` for the [embedded apps](../../platform/embedded-apps.md)) unless `VITE_DEV_SERVER_URL` is set. Then the [executor process](executor-process.md), `installApplicationMenu`, `installTray` and `createWindow`.
 3. `createWindow` sets `contextIsolation` and the preload script. `installContentSecurityPolicy` adds the policy from `seed-csp.json`, which `@we/csp` builds at prebuild time. `navigationPolicy.js` decides which origins the window may open.
-4. `preload.js` exposes `window.electron`: `getPort`, `getToken`, accounts, `restartExecutor`, `chooseFile`, `saveFile`, the screen-source calls and `custody {open, publicState}` (not on Windows). Each call is one IPC channel registered with `handleFromWindow`.
+4. `preload.js` exposes `window.electron`: `getPort`, `getToken`, accounts, `restartExecutor`, `chooseFile`, `saveFile`, the screen-source calls and `custody {open, publicState}` (not on Windows). Each call that waits for an answer is one IPC channel registered with `handleFromWindow`.
 5. A screen share uses the OS picker (`useSystemPicker: true`). Where the OS draws no picker, `askRendererForScreenSource` sends the sources to the renderer (`PlatformAdapter.screenSources`).
 6. The Help menu has "Restart in Safe Mode", which loads the app with `?safe`.
 7. `identity-open` opens the [identity window](../../identity/identity-window.md) on the `we-identity://` scheme, in its own session partition, and the window shows only its own page.

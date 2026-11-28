@@ -2,11 +2,12 @@
 
 The Electron target (`@we/app-electron`) runs WE in a desktop window. Its main process starts an AD4M executor as a child process, starts the `we-custody` sidecar beside it, serves the renderer over local HTTP, and answers the window's IPC calls. The renderer is the same app shell as on web, with `electronPlatform` and a local-executor connector.
 
-**Why:** The executor is a child process, so the main process can restart it without closing the window. A restart reloads the renderer against the new executor (`electronPlatform.ts`). The renderer gets the executor's port and admin token only over IPC, and each IPC handler answers only the main window's top frame on the app's origin (`ipcSender.js`).
+**Why:** The executor is a child process, so the main process can restart it without closing the window. A restart reloads the renderer against the new executor (`restartExecutorAndReload` in `main.js`). The renderer gets the executor's port and admin token only over IPC, and each IPC handler answers only the main window's top frame on the app's origin (`ipcSender.js`).
 
 **Parent:** [Targets](../README.md)
 
 ## Parts
+
 - [Executor process](executor-process.md): data path, config, spawn arguments, readiness, exit codes and restarts.
 - [Main process](main-process.md): the window, the preload and IPC, the app server, the menu, the tray and the identity window.
 

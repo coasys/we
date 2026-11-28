@@ -2,7 +2,7 @@
 
 This file defines each term that WE uses in its own way, once, in alphabetical order. Each entry gives the term, its code names in brackets, the definition, one usage example, and the page that owns the term. "not: …" lists words that pages must not use for the term. A word is on a "not:" list only when it never names anything else in the repository. General technical terms and external products keep their usual meaning and have no entry, such as JSON, SolidJS, Lit, web component, custom element, CSS variable, ProseMirror, Yjs, Electron, Tauri, Vite, WebRTC, SFU and MCP. AD4M terms that WE uses in their AD4M meaning have no entry either, such as executor, agent, DID, perspective, neighbourhood, link, AD4M expression, language, Social DNA, SHACL and `Ad4mModel`. An entry states only what is specific to WE.
 
-**Account** (`Account`, `AccountHost`, `AccountStore`, `PlatformAdapter.accounts`, `accounts.js`, `accounts.rs`): A data directory on a desktop computer that holds at most one agent's keys and data. A desktop target starts the executor against the selected account and restarts the executor to switch to another one. Example: "The person picks a different account, and the app restarts the executor against its data directory." [Accounts](hosts/platform/accounts.md)
+**Account** (`Account`, `AccountHost`, `AccountStore`, `PlatformAdapter.accounts`, `accounts.js`, `accounts.rs`): A data directory on a desktop computer that holds at most one agent's keys and data. A desktop target starts the executor against the selected account. To switch, Electron restarts the executor and Tauri restarts the app. Example: "The person picks a different account, and the app restarts the executor against its data directory." [Accounts](hosts/platform/accounts.md)
 
 **Active modules** (`spaceStore.activeModules`): The modules that run in the space on screen for this agent: enabled by the space, installed by the agent and not muted by the agent here, plus the agent-scoped modules that the agent installed. A module's chrome and its rail buttons show only while it is active. Example: "Polls is not in `activeModules` until the community enables it." [Enablement](modules/registry/enablement.md)
 
@@ -12,7 +12,7 @@ This file defines each term that WE uses in its own way, once, in alphabetical o
 
 **Agent-scoped module** (`manifest.scope: 'agent'`): A module that the agent turns on for itself, everywhere, with no decision from a community. It is active also outside a space. Example: "Notes and Pocket are agent-scoped modules." [Enablement](modules/registry/enablement.md)
 
-**AI context** (`@we/ai-context`, `generate.ts`, `schemaContext`): The reference about WE that `@we/ai-context` generates from the packages with a `"context"` field and the hand-written fragments. It goes to `AGENTS.md`, `CLAUDE.md` and the other agent files, and its schema part goes to `schemaContext` for the in-app model. Example: "A new primitive appears in the AI context after `generate-context` runs." [AI context](hosts/ai/ai-context.md)
+**AI context** (`@we/ai-context`, `generate.ts`, `schemaContext`): The reference about WE that `@we/ai-context` generates from the packages with a `"context"` field and the hand-written fragments. It goes to `AGENTS.md`, `CLAUDE.md` and the other agent files, and its schema part goes to `schemaContext` for the in-app assistant. Example: "An added primitive appears in the AI context after `generate-context` runs." [AI context](hosts/ai/ai-context.md)
 
 **Ambient action** (`markAction(fn, doc, { ambient: true })`): A public store action that a template can call when nobody is doing something, for example on render. It changes only what this agent looks at. Example: "`subgroupMessages` is an ambient action, so the Cards view calls it when a subgroup opens." [Store surface](modules/contract/store-surface.md)
 
@@ -34,7 +34,7 @@ This file defines each term that WE uses in its own way, once, in alphabetical o
 
 **Board lane** (a board column with no `slug`, `lanesOnly` on `taskBoard`): A board column that shows only the cards that a person put in it. A drop on it writes one link on this board only. Example: "Move the card to the 'This week' board lane." [Boards](interface/chrome/boards.md) — not: swimlane
 
-**Boot state** (`BootState`, `SessionStore.bootState`): The state of the session while the app shell starts: `initialising`, `login`, `createAgent`, `finishing`, `ready` or `error`. Example: "The boot state goes to `ready` when the session unlocks." [Session](hosts/boot/session.md) — not: boot phase, boot stage
+**Boot state** (`BootState`, `SessionStore.bootState`): The state of the session while the app shell starts: `initialising`, `login`, `createAgent`, `finishing`, `ready` or `error`. Example: "The boot state goes to `ready` when the session unlocks." [Session start](hosts/boot/session.md) — not: boot phase, boot stage
 
 **Bundle** (format `we-bundle`, seed `bundles`, `judgeBundle`): A whole app as one JSON file. It can hold an app template, space templates, views, app pages, themes, record types, workflows, a brand and a sign-in screen. Example: "Install the bundle from a file in Settings." [Bundles](interface/templates/bundles.md) — not: applet
 
@@ -62,7 +62,7 @@ This file defines each term that WE uses in its own way, once, in alphabetical o
 
 **Content region** (`--we-chrome-left`, `-right`, `-top`, `-bottom`): The window minus the app's frame and minus each panel that displaces. The shell publishes its edges as CSS variables. Example: "The space template renders inside the content region." [Chrome](interface/chrome/README.md)
 
-**Credential field** (`CredentialField`, `credential.ts`): The host-drawn password input on the boot screen. It writes the password to `credential.ts`, and the unlock and account-setup calls read it from there, so a template never holds the password. Example: "The boot template places the credential field, and the template sees only that a password is entered." [Session](hosts/boot/session.md)
+**Credential field** (`CredentialField`, `credential.ts`): The host-drawn password input on the boot screen. It writes the password to `credential.ts`, and the unlock and account-setup calls read it from there, so a template never holds the password. Example: "The boot template places the credential field, and the template sees only that a password is entered." [Protected pieces](interface/chrome/protected-pieces.md)
 
 **Custody service** (`we-custody`, `crates/custody`, `DesktopVault`, `we_custody::spawn`, `custodySidecar.js`): The desktop process code that keeps the person's master key and runs the changes to the identity: make the identity, add a device, revoke a device. Tauri links it into its main process, and Electron runs it as a sidecar. Example: "The custody service asks for the passphrase before it signs the revocation." [Custody](hosts/identity/custody.md) — not: custody server
 
@@ -110,9 +110,9 @@ This file defines each term that WE uses in its own way, once, in alphabetical o
 
 **History** (`@we/history`, `createHistory`, `HistoryEntry`, `canvasHistory`): A private stack of this agent's own inverse writes, applied as new forward writes, in one scope. Undo puts a change back; it does not restore a snapshot. Example: "`undoCanvas` replays the last move from the canvas history." [Records](data/stores/records.md)
 
-**Hold** (`Held`, `Holds`, `Optimism.hold`): One value that the screen draws before its write comes back, by key, with the data's value at the first draw after the write as its baseline. Example: "The hold retires when an answer later than the write arrives." [Optimism](data/stores/optimism.md)
+**Hold** (`Held`, `Holds`, `Optimism.hold`): One value that the screen draws before its write comes back, by key, with the data's value at the first draw after the write as its baseline. Not the same as a module's `holds`. Example: "The hold retires when an answer later than the write arrives." [Optimism](data/stores/optimism.md)
 
-**Holds** (`contributes.holds`): A store key. While it is true, the module's chrome stays on screen in a space that has not enabled the module. Example: "The call module's `holds` is `active`, so its chrome stays while the agent opens another space during a call." [Contributions](modules/contract/contributions.md)
+**Holds** (`contributes.holds`): A store key. While it is true, the module's chrome stays on screen in a space that has not enabled the module. Not the same as a hold. Example: "The call module's `holds` is `active`, so its chrome stays while the agent opens another space during a call." [Contributions](modules/contract/contributions.md)
 
 **Host part** (`HOST_PART_IDS`, `HOST_PARTS`, `{ type: '$part' }`): A piece that the host draws and an app template places by id: `host.sidebar`, `host.rail`, `host.signIn.form` and `host.signIn.accounts`. Example: "The app template places the `host.rail` host part." [Chrome](interface/chrome/README.md)
 
@@ -174,7 +174,7 @@ This file defines each term that WE uses in its own way, once, in alphabetical o
 
 **Renderer** (`RenderSchema`, `@we/schema-solid`): The adapter that walks a schema tree, resolves each prop, maps the node operators onto Solid's control flow, and mounts each node. Example: "The renderer mounts `we-button` as a custom element." [Renderer](interface/renderer/README.md)
 
-**Role** (colour roles such as `surface`, `text-muted`, `accent-border`): A design token that says what a colour is for. A theme changes roles, and a scale position cannot express a relation that inverts between light and dark. Example: "Use the `text-muted` role, not a grey from the scale." [Design tokens](interface/design-system/tokens.md)
+**Role** (colour roles such as `surface`, `text-muted`, `accent-border`; type roles `TYPE_ROLES`): A design token that says what a colour or a text style is for. A theme changes roles, and a scale position cannot express a relation that inverts between light and dark. A template's kind is its `meta.role`, and a space's `Role` record is a space role: neither is a role in this sense. Example: "Use the `text-muted` role, not a grey from the scale." [Design tokens](interface/design-system/tokens.md)
 
 **Safe mode** (`safeMode.ts`, `?safe`, `leaveSafeModeInto`): A state of one tab that draws only WE's own templates and themes and changes nothing. It starts from `?safe`, a key chord, or a render that did not finish. Example: "Open the tab in safe mode and choose another app." [Protected pieces](interface/chrome/protected-pieces.md)
 
@@ -194,11 +194,13 @@ This file defines each term that WE uses in its own way, once, in alphabetical o
 
 **Sidebar** (`host.sidebar`, `core:sidebar`, `SIDEBAR_PX`): The 80px chrome strip on the left that holds the spaces, the profile and settings. Example: "Maximise the panel to hide the sidebar." [Chrome](interface/chrome/README.md) — not: left rail
 
-**Sign-in step** (`SignInStep`, `signInStep`, `signInStep.ts`): The one step the boot screen shows, computed from the boot state and the account flags: `switching`, `setUpAi`, `settingUp`, `starting`, `preparing`, `unlock`, `create`, `failed` or `ready`. Example: "The boot screen shows the password form when the sign-in step is `unlock`." [Session](hosts/boot/session.md) — not: login step
+**Sign-in step** (`SignInStep`, `signInStep`, `signInStep.ts`): The one step the boot screen shows, computed from the boot state and the account flags: `switching`, `setUpAi`, `settingUp`, `starting`, `preparing`, `unlock`, `create`, `failed` or `ready`. Example: "The boot screen shows the password form when the sign-in step is `unlock`." [Session start](hosts/boot/session.md) — not: login step
 
 **Slot** (`SlotContribution`, `slotRegistry`): A module's chrome at a named anchor, over the content, that stays when the agent navigates. Example: "The transcription module's call control is a slot at the `call-controls` anchor." [Contributions](modules/contract/contributions.md)
 
 **Space** (`Space`, `SpaceStore`): A community or a context, backed by one dataset, with a `Space` record in that dataset that holds its name, sections, modules and defaults. Example: "Every member reads the same `enabledViews` from the space's `Space` record." [Spaces](data/spaces/README.md)
+
+**Space role** (`Role`, `RoleGrant`, `ADMIN_ROLE` in `spaceRoles.ts`): A named group of members in one space, given by `RoleGrant` records. A policy permission can name it as its actor (`{ role }`). Example: "The creator holds the `admin` space role." [Policy](data/spaces/policy.md)
 
 **Store** (`*Store.tsx`, `StoreProvider`): A Solid context in `@we/app-shell` that holds reactive state and actions for one area, read by templates. Stores mount in a fixed order because each reads the stores above it. Example: "`DatasetStore` reads the ports from `SessionStore`." [Stores](data/stores/README.md)
 
@@ -220,7 +222,7 @@ This file defines each term that WE uses in its own way, once, in alphabetical o
 
 **Theme tier** (system, components, CSS; `--we-theme-<component>[--<variant>]-<key>`): One of the three levels at which a theme speaks. The system tier sets the colour families, roles, type roles, shape and density. The components tier sets one component or one variant apart from its family. The CSS tier holds effects that no setting expresses. Example: "Set the soft button radius at the components theme tier." [Themes](interface/design-system/themes.md) — not: subtheme
 
-**Toolset** (`RecordToolset`, `toolsets`, `templateToolset`, `themeToolset`): A set of agent tools for one kind of record that holds nothing between calls. A host passes each call the record as it is stored now and writes the properties the call returns. Example: "The template toolset gives `template_read`, `template_update` and `template_create`." [Agent tools](hosts/ai/agent-tools.md)
+**Toolset** (`RecordToolset`, `toolsets`, `templateToolset`, `themeToolset`): A set of agent tools for one kind of record that holds nothing between calls. A host passes each call the record as it is stored at the time of the call and writes the properties the call returns. Example: "The template toolset gives `template_read`, `template_update` and `template_create`." [Agent tools](hosts/ai/agent-tools.md)
 
 **Validation context** (`ValidationContext`, `buildValidationContext`): The names that the semantic validation pass checks a template against: the components and their props, the store members, the entities, the expression functions and the host sources. Example: "The editor adds the space's shapes to the validation context." [Validation](interface/schema/validation.md)
 

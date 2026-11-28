@@ -7,8 +7,9 @@ Boot takes the app shell from a blank page to a signed-in session with its first
 **Parent:** [Hosts](../README.md)
 
 ## Parts
+
 - [Providers](providers.md): `PlatformProvider`, `initializeIntegrations`, `App` and the store order.
-- [Session](session.md): the boot states, the sign-in steps, the credential field and `BootController`.
+- [Session start](session.md): the boot states, the sign-in steps and `BootController`.
 - [First screen](first-screen.md): the moment the first page is drawn, and the work that waits for it.
 - [Build freshness](build-freshness.md): how a tab finds out that a newer build is deployed.
 
@@ -27,7 +28,7 @@ App ─ ErrorBoundary ─ StoreProvider ─ TemplateProvider, LiveViewHost, Toas
                  ─► loadDatasets ─► subscribeToChanges ─► markReady ─► navigate
 ```
 
-`TemplateProvider` renders the app, shell and route schemas and the host safety prompts. The renderer and the templates are in [Interface](../../interface/README.md). Safe mode (`shared/safeMode.ts`) is one of the host's protected pieces: see [protected-pieces.md](../../../docs/architecture/protected-pieces.md).
+`TemplateProvider` renders the app, shell and route schemas and the host safety prompts. The renderer and the templates are in [Interface](../../interface/README.md). The credential field, the safety prompts and safe mode are [protected pieces](../../interface/chrome/protected-pieces.md).
 
 </details>
 
@@ -37,6 +38,6 @@ App ─ ErrorBoundary ─ StoreProvider ─ TemplateProvider, LiveViewHost, Toas
 - [providers/](../../../packages/app-shell/src/frameworks/solid/providers/): `PlatformProvider`, `StoreProvider`, `BootController`, `TemplateProvider`.
 - [index.ts](../../../packages/app-shell/src/frameworks/solid/index.ts): what a target imports from `@we/app-shell`, and the design-system styles it loads.
 - [stores/SessionStore.tsx](../../../packages/app-shell/src/frameworks/solid/stores/SessionStore.tsx): `BootState`, `initialise`.
-- The stores themselves: [Data](../../data/README.md).
+- The stores themselves: [Stores](../../data/stores/README.md).
 
 </details>

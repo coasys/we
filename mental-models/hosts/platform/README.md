@@ -1,26 +1,27 @@
 # Platform
 
-A target fills two contracts. The **platform adapter** (`PlatformAdapter`) says where WE runs and what the host can do there. The **backend connector** (`BackendConnector`) says how WE reaches its data. The platform adapter has four optional parts: `accounts`, `executor`, `saveFile` and `screenSources`. The web target omits all four, and the screens that use them detect this and show nothing.
+A target fills two contracts. The **platform adapter** (`PlatformAdapter`) says where WE runs and what the host can do there. The **backend connector** (`BackendConnector`) says how WE reaches its data. The platform adapter has four optional parts: `accounts`, `executor`, `saveFile` and `screenSources`. The web target omits all four, and the code that uses each part detects whether it is there.
 
-**Why:** The two contracts were one interface until they varied independently. `resolveAppUrl` changes per platform, the connection changes per data layer, and a target picks each without the other. With one interface, every host that read `isDesktop` also named the data layer (`PlatformAdapter` in `shared/platform/types.ts`). Electron and Tauri differ only in how a call crosses the process boundary, so `createDesktopPlatform` holds the rest once.
+**Why:** `PlatformAdapter` names no data layer, so code that reads `isDesktop` does not import a backend. Electron and Tauri differ only in how a call crosses the process boundary and in their port map, so `createDesktopPlatform` holds the rest once.
 
 **Parent:** [Hosts](../README.md)
 
 ## Parts
+
 - [Backend connector](backend-connector.md): the one call that connects: ad4m-connect on web, a local executor on desktop, a guest link.
 - [Accounts](accounts.md): local accounts as data directories, and switching between them.
 - [Embedded apps](embedded-apps.md): seed apps in a `we-iframe`, and the app bridge that gives them the executor.
 
 <details><summary>How it works</summary>
 
-| `PlatformAdapter` member | Web | Electron, Tauri |
-|---|---|---|
-| `platform`, `isDesktop` | `'web'`, `false` | `'electron'` or `'tauri'`, `true` |
-| `resolveAppUrl(app, isDev)` | the dev server, else `webUrl` or `dist` | the dev server, else `http://localhost:<portMap[app.id]>` |
-| `accounts: AccountHost` | absent | list, create, select, remove, `applySelection` |
-| `executor: ExecutorHost` | absent | `restart`, `chooseFile`; `getSettings`/`setSettings` on Tauri only |
-| `saveFile` | absent (the browser's save picker or a download) | the host's save dialog (Electron) |
-| `screenSources` | absent (the browser's picker) | a source list where the OS draws no picker (Electron) |
+| `PlatformAdapter` member    | Web                                              | Electron, Tauri                                                    |
+| --------------------------- | ------------------------------------------------ | ------------------------------------------------------------------ |
+| `platform`, `isDesktop`     | `'web'`, `false`                                 | `'electron'` or `'tauri'`, `true`                                  |
+| `resolveAppUrl(app, isDev)` | the dev server, else `webUrl` or `dist`          | the dev server, else `http://localhost:<portMap[app.id]>`          |
+| `accounts: AccountHost`     | absent                                           | list, create, select, remove, `applySelection`                     |
+| `executor: ExecutorHost`    | absent                                           | `restart`, `chooseFile`; `getSettings`/`setSettings` on Tauri only |
+| `saveFile`                  | absent (the browser's save picker or a download) | the host's save dialog (Electron)                                  |
+| `screenSources`             | absent (the browser's picker)                    | a source list where the OS draws no picker (Electron)              |
 
 `ExecutorHost` holds the arguments of a process that has not started yet, so a change ends with `restart()`. On Electron the settings live in the executor's own config file, and the settings page reaches them through `RuntimeAdminPort.executorConfig`.
 

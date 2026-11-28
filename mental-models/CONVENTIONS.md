@@ -31,9 +31,9 @@ A reader must be able to stop at any level and hold a correct, if coarse, pictur
 
 ## Links
 
-- Link pages with relative paths in the tree: `[Session](../boot/session.md)`, `[Boot](../boot/README.md)`.
+- Link pages with relative paths in the tree: `[Session start](../boot/session.md)`, `[Boot](../boot/README.md)`.
 - Link code with relative paths from the page to the file or directory: `[firstScreen.ts](../../../packages/app-shell/src/shared/firstScreen.ts)`. The link then always matches the commit the page sits in. Link only paths that exist.
-- No line anchors (`#L10-L20`): they go out of date. Name the symbol in backticks instead: ``` `createFirstScreen` in [firstScreen.ts](../../../packages/app-shell/src/shared/firstScreen.ts) ```.
+- No line anchors (`#L10-L20`): they go out of date. Name the symbol in backticks instead: `` `createFirstScreen` in [firstScreen.ts](../../../packages/app-shell/src/shared/firstScreen.ts) ``.
 - No links to issues or pull requests, unless the issue describes current behaviour and the reader needs it.
 
 ## One page
@@ -50,6 +50,7 @@ Every page follows this template. What is visible must fit on one screen.
 **Parent:** [<Parent>](../README.md)
 
 ## Parts
+
 - [<Child>](<child>.md): <one line>
 - [<Child with children>](<child>/README.md): <one line>
 - …
@@ -75,6 +76,7 @@ Every page follows this template. What is visible must fit on one screen.
 
 - Plain technical English (ASD-STE100 style): short sentences, active voice, one claim per sentence.
 - One meaning per word. Use the glossary term every time. Say "custody service", never "custody server", for the desktop process that keeps the person's master key.
+- In WE, "model" means an AI model. A stored type is an "entity".
 - No analogies, no metaphors. Name the real components, types and flows.
 - Never repeat a parent's explanation. Link to it.
 - One owner page per concept. Other pages that mention it keep one line and a link to the owner.

@@ -15,13 +15,13 @@ The Electron main process starts the AD4M executor as a child process, waits unt
 5. `startWithPortRetry` tries a taken port again on another port, up to 3 starts, before the window exists.
 6. After an exit, `afterExecutorExit` reads the code (`EXIT`):
 
-| Code | Action |
-|---|---|
-| 0 `STOPPED` | `done` |
-| 75 `RESTART` | `restart` on the same port, at once |
-| 78 `CONFIG_REFUSED` | `refused`: show the refusal |
-| 79 `DATA_FOLDER_BUSY` | `busy`: another executor holds the data folder |
-| 80 `PORT_TAKEN`, or a crash | `restart` on a new port, within `crashBackoff` (1 s to 30 s, at most 6); else `give-up` |
+| Code                        | Action                                                                                                                                      |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0 `STOPPED`                 | `done`                                                                                                                                      |
+| 75 `RESTART`                | `restart` on the same port, at once                                                                                                         |
+| 78 `CONFIG_REFUSED`         | `refused`: show the refusal                                                                                                                 |
+| 79 `DATA_FOLDER_BUSY`       | `busy`: another executor holds the data folder                                                                                              |
+| 80 `PORT_TAKEN`, or a crash | `restart` on a new port: at once for 80, else after the `crashBackoff` delay (1 s to 30 s). After 6 restarts with no run of 60 s, `give-up` |
 
 With `WE_EXTERNAL_AD4M_PORT` and `WE_EXTERNAL_AD4M_TOKEN` set, the app starts no executor and connects to that one.
 
