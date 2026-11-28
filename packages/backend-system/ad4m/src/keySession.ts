@@ -122,11 +122,15 @@ export class KeySessionError extends Error {
   }
 }
 
+/** How far apart the executor tolerates the two clocks (statement `issuedAt` against its own time). */
+const CLOCK_SKEW_SEC = 120;
+
 /** The reasons an executor answers a key login or its statement with (`KeyLoginError::code`). */
 const REASONS = [
   'challenge',
   'audience',
   'no-public-origin',
+  'no-audience',
   'signature',
   'key',
   'not-known',
@@ -170,6 +174,7 @@ export function describeRefusal(reason: string, origin?: string): string {
       return "The host can't check your identity right now. Try again later.";
     case 'audience':
     case 'no-public-origin':
+    case 'no-audience':
       // The server accepts a login only for an origin it is configured as (`--public-origin`); with
       // none configured, only from its own computer.
       return `The host doesn't list ${origin ?? 'this address'} as its address. Whoever runs it can add it with --public-origin.`;
@@ -352,6 +357,8 @@ export async function openKeySession(
   const listeners = new Set<(reason: 'revoked' | 'ended') => void>();
   let timer: unknown = null;
   let finished = false;
+  // The logout and client close started by close(): a second close() waits on the same work.
+  let closing: Promise<void> | null = null;
 
   const end = (reason: 'revoked' | 'ended') => {
     if (finished) return;
@@ -418,7 +425,11 @@ export async function openKeySession(
       if (!signing && isUnauthorized(error)) return probe();
       // Anything else (the server restarting, the network) is tried again while the token lasts: at
       // the usual interval while that fits, then once more halfway to the expiry, until none is left.
-      const left = expiresAt - now();
+      // `expiresAt` is the server's clock and `now()` ours, and the executor accepts clocks up to
+      // CLOCK_SKEW_SEC apart: no statement lets this computer measure the difference, so a token that
+      // looks expired here may have that long left there. Keep trying through the skew; a token the
+      // server really has expired answers 401 once it is reachable, and that ends the session.
+      const left = expiresAt + CLOCK_SKEW_SEC - now();
       if (left > retryAfter) schedule(retryAfter);
       else if (left > 1) schedule(Math.floor(left / 2));
       else end('ended');
@@ -470,9 +481,9 @@ export async function openKeySession(
         if (timer !== null) clearTimer(timer);
         timer = null;
         listeners.clear();
-        await bounded(client.agent.logout().catch(() => false));
-        client.close();
+        closing = bounded(client.agent.logout().catch(() => false)).then(() => client.close());
       }
+      await closing;
       // A probe can still be in flight after the session ended on its own (a refused renewal ends it
       // while the probe logs in): its grant is logged out before the caller goes on.
       await bounded(probing);

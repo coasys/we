@@ -471,16 +471,19 @@ impl AccountRegistry {
                 // No entry means a directory nobody has named yet — the default account on a first
                 // run, or one restored by renaming a backup back before its metadata caught up.
                 let meta = state.accounts.iter().find(|a| a.path == path);
-                let name = meta.map(|m| m.name.clone()).unwrap_or_else(|| {
-                    if path == self.default_path {
-                        self.default_name.clone()
-                    } else {
-                        path.file_name()
-                            .unwrap_or_default()
-                            .to_string_lossy()
-                            .to_string()
-                    }
-                });
+                let name = meta
+                    .map(|m| m.name.clone())
+                    .filter(|n| !n.is_empty())
+                    .unwrap_or_else(|| {
+                        if path == self.default_path {
+                            self.default_name.clone()
+                        } else {
+                            path.file_name()
+                                .unwrap_or_default()
+                                .to_string_lossy()
+                                .to_string()
+                        }
+                    });
                 Account {
                     id: path.to_string_lossy().to_string(),
                     has_agent: has_agent(&path),
@@ -819,6 +822,22 @@ mod tests {
         assert_eq!(accounts[0].id, default_path.to_string_lossy());
         assert_eq!(accounts[0].name, "Main");
         assert!(accounts[0].active);
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn an_entry_with_no_stored_name_lists_under_the_default_name() {
+        let (root, default_path, registry) = temp_registry();
+        let state: RegistryState = serde_json::from_str(&format!(
+            r#"{{"accounts":[{{"path":{}}}]}}"#,
+            serde_json::to_string(&default_path.to_string_lossy()).unwrap()
+        ))
+        .expect("a nameless entry must still parse");
+        assert_eq!(state.accounts[0].name, "");
+        registry.write(&state).unwrap();
+
+        let accounts = registry.list();
+        assert_eq!(accounts[0].name, "Main");
         fs::remove_dir_all(root).ok();
     }
 

@@ -296,21 +296,97 @@ describe('a key session on a server', () => {
     expect(session.token()).toBe('token-2');
     expect(ended).not.toHaveBeenCalled();
 
-    // Down again, late: less than a retry interval of token left. The session stays open for one
-    // more try halfway to the expiry, rather than ending while its token still works.
+    // Down again, late: 50 s of token left by this clock. The other clock may differ by the
+    // tolerated skew (120 s), so the session keeps trying at the usual interval while that fits.
     failing.sessionChallenge = async () => {
       throw new FakeRpcError(503, 'connection failed');
     };
     server.advance(3550);
     await timers.fire();
     expect(ended).not.toHaveBeenCalled();
-    expect([...timers.pending.values()][0].ms).toBe(25 * 1000);
+    expect([...timers.pending.values()][0].ms).toBe(60 * 1000);
 
-    // Still down once the token has run out: now it ends.
-    server.advance(50);
+    // 110 s of the skew left: once more at the interval, then halfway each time (50 s left: 25 s),
+    // until none of the skew is left either, and it ends.
+    server.advance(60);
     await timers.fire();
+    expect([...timers.pending.values()][0].ms).toBe(60 * 1000);
+    server.advance(60);
+    await timers.fire();
+    expect(ended).not.toHaveBeenCalled();
+    expect([...timers.pending.values()][0].ms).toBe(25 * 1000);
+    for (let tries = 0; tries < 10 && timers.pending.size > 0; tries++) {
+      server.advance([...timers.pending.values()][0].ms / 1000);
+      await timers.fire();
+    }
     expect(ended).toHaveBeenCalledWith('ended');
     expect(timers.pending.size).toBe(0);
+  });
+
+  it('keeps retrying while the server’s token lasts when the server’s clock is behind ours', async () => {
+    const server = fakeServer();
+    const timers = fakeTimers();
+    // This computer's clock is 90 s ahead of the server's.
+    const session = await openKeySession(fakeSigner(), ADDRESS, {
+      connect: server.connect,
+      now: () => server.now() + 90,
+      setTimer: timers.setTimer,
+      clearTimer: timers.clearTimer,
+    });
+    const ended = vi.fn();
+    session.onEnded(ended);
+    const agent = (session.client as KeySessionRemote).agent;
+    const real = agent.sessionChallenge;
+    agent.sessionChallenge = async () => {
+      throw new FakeRpcError(503, 'connection failed');
+    };
+
+    // By our clock the token ran out 30 s ago; by the server's it has 60 s left.
+    server.advance(session.expiresAt() - server.now() - 60);
+    await timers.fire();
+    expect(ended).not.toHaveBeenCalled();
+
+    agent.sessionChallenge = real;
+    await timers.fire();
+    expect(session.token()).toBe('token-2');
+    expect(ended).not.toHaveBeenCalled();
+  });
+
+  it('ends a session once even a skewed clock cannot leave it any token', async () => {
+    const server = fakeServer();
+    const timers = fakeTimers();
+    const session = await openKeySession(fakeSigner(), ADDRESS, {
+      connect: server.connect,
+      now: () => server.now() + 90,
+      setTimer: timers.setTimer,
+      clearTimer: timers.clearTimer,
+    });
+    const ended = vi.fn();
+    session.onEnded(ended);
+    (session.client as KeySessionRemote).agent.sessionChallenge = async () => {
+      throw new FakeRpcError(503, 'connection failed');
+    };
+    server.advance(session.expiresAt() - server.now() + 100);
+    await timers.fire();
+    expect(ended).toHaveBeenCalledWith('ended');
+  });
+
+  it('does not let a second close() return before the first one’s logout settles', async () => {
+    const server = fakeServer();
+    const session = await open(server);
+    const agent = (session.client as KeySessionRemote).agent;
+    let release!: () => void;
+    agent.logout = () => new Promise<boolean>((resolve) => (release = () => resolve(true)));
+
+    const first = session.close();
+    let secondDone = false;
+    const second = session.close().then(() => (secondDone = true));
+    await flush();
+    expect(secondDone).toBe(false);
+
+    release();
+    await Promise.all([first, second]);
+    expect(secondDone).toBe(true);
   });
 
   it('renews on the final try before the expiry when the server is back', async () => {
@@ -807,6 +883,13 @@ describe('reading a refusal', () => {
     expect(describeRefusal(reason, 'https://home.example')).toMatch(
       /doesn't list https:\/\/home\.example as its address\. Whoever runs it can add it with --public-origin/,
     );
+  });
+
+  // A network listener with no public origins rejects the challenge itself.
+  it('gives a challenge refused with no audience the same --public-origin guidance', () => {
+    const reason = refusalReason(new FakeRpcError(403, 'no-audience: listener has no public origins'));
+    expect(reason).toBe('no-audience');
+    expect(describeRefusal(reason, 'https://home.example')).toMatch(/can add it with --public-origin/);
   });
 
   it('calls a failure with no word of the executor’s unreachable or refused', () => {
