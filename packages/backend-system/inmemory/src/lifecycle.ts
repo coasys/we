@@ -393,7 +393,7 @@ export interface InMemoryBackendPortsOptions {
    * Peers to report as present, and what they are doing.
    *
    * The ephemeral bus carries one agent — this process — so presence is otherwise always a roster
-   * of one. `presenceStore.onlineHere` is read directly by templates (the channel header in the
+   * of one. `presence.onlineHere` is read directly by templates (the channel header in the
    * Discord-shaped template, for one), and a roster showing only yourself is the same failure as a
    * feed of one author: it renders, and shows nothing about how the design holds up.
    *
@@ -407,7 +407,7 @@ export interface InMemoryBackendPortsOptions {
  * A peer to announce on the ephemeral bus — a {@link PresenceState} without the two fields the
  * heartbeat owns (`agentId` comes from `did`, `updatedAt` is stamped on every beat).
  *
- * `focus` is what decides whether a peer shows up at all: `presenceStore.online` filters on
+ * `focus` is what decides whether a peer shows up at all: `presence.online` filters on
  * `focus.datasetUri` and `onlineHere` further filters on `focus.path`. A seeded peer with no focus
  * is present in the abstract and visible nowhere.
  */

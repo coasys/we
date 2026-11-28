@@ -4,8 +4,9 @@
  * before the write lands, shown first and held over the live read until it does. Part of
  * `SpaceStore` — see `../SpaceStore.ts`.
  *
- * Every job that writes to a space record goes through these: the space's defaults, its modules and
- * sections, what it extracts, its task-state rule.
+ * Every job that writes to a space record goes through these: its modules and sections, what it
+ * extracts, its task-state rule. Its defaults and pictures are written by operations a template
+ * invokes, which the spaces part draws on the held records (`mySpaces`).
  */
 import { Space } from '@we/entities';
 import { type Latest, latest } from '@we/module-shared';
@@ -13,20 +14,18 @@ import { type Latest, latest } from '@we/module-shared';
 import { isSpaceSelf } from '../../spaceSync';
 import type { AppDataset } from '../DatasetStore';
 import type { SpaceContext } from './context';
+import type { SpaceOnScreen } from './onScreen';
 import type { SpaceList } from './spaces';
 
 export interface SpaceWritesDeps extends Pick<SpaceContext, 'toasts' | 'runCore' | 'isCurrent'> {
-  spaces: Pick<SpaceList, 'heldSpace' | 'spaceRow'> & { members: Pick<SpaceList['members'], 'updateSpaceInCache'> };
-  /**
-   * The space on screen, from the navigation part — composed after this one, and reached only when a
-   * write is made: what it shows, and showing fields on it.
-   */
-  onScreen: { current: () => Space | null; show: (ds: AppDataset, fields: Partial<Space>) => void };
+  spaces: Pick<SpaceList, 'heldSpace'> & { members: Pick<SpaceList['members'], 'updateSpaceInCache'> };
+  /** The space on screen: what it shows, and showing fields on it. */
+  onScreen: Pick<SpaceOnScreen, 'currentSpace' | 'showOnScreen'>;
 }
 
 export function createSpaceWrites(deps: SpaceWritesDeps) {
   const { toasts, runCore, isCurrent, spaces, onScreen } = deps;
-  const { heldSpace, spaceRow } = spaces;
+  const { heldSpace } = spaces;
   const { updateSpaceInCache } = spaces.members;
 
   /**
@@ -38,7 +37,7 @@ export function createSpaceWrites(deps: SpaceWritesDeps) {
    */
   function publishSpaceFields(ds: AppDataset, fields: Partial<Space>): void {
     updateSpaceInCache(ds, fields);
-    if (isCurrent(ds)) onScreen.show(ds, fields);
+    if (isCurrent(ds)) onScreen.showOnScreen(ds, fields);
   }
 
   /**
@@ -94,7 +93,7 @@ export function createSpaceWrites(deps: SpaceWritesDeps) {
   }
 
   /*
-    A default save paints its choice before it is stored, and two can be out at once — so what a
+    A held save — the interpretation list — paints its choice before it is stored, and two can be out at once — so what a
     failed save puts back is kept here rather than re-read off the screen, where mid-save it is
     the other save's paint, not anything the record took. `confirmed` is the last value the record
     took: seeded while nothing is pending (the value shown is then the value stored) and moved on
@@ -105,11 +104,11 @@ export function createSpaceWrites(deps: SpaceWritesDeps) {
     next save seeds its baseline from what the cache says then, which the live read may have
     moved on.
   */
-  const defaultSaves = new Map<
+  const heldSaves = new Map<
     string,
     {
       key: string;
-      /** The field's value — an id for a default, a list of entity names for the interpretation list. */
+      /** The field's value: the list of entity names the space is interpreted for. */
       confirmed: unknown;
       value: unknown;
       ops: Latest;
@@ -119,26 +118,25 @@ export function createSpaceWrites(deps: SpaceWritesDeps) {
   >();
 
   /**
-   * The newest choice of each default still being saved, and of the interpretation list, for a live row
-   * to show over. The interpretation list is one of these saves too: a switch merges into the list
-   * already published, and a row from before that write must not put the old list back.
+   * The newest interpretation list still being saved, for a live row to show over: a switch merges
+   * into the list already published, and a row from before that write must not put the old list back.
    */
-  const pendingDefaults = (ds: AppDataset): Partial<Space> => {
+  const pendingSaves = (ds: AppDataset): Partial<Space> => {
     const fields: Partial<Space> = {};
-    for (const field of ['defaultTemplateId', 'defaultThemeId', 'extractionTargets'] as const) {
-      const save = defaultSaves.get(`${ds.id}:${field}`);
+    for (const field of ['extractionTargets'] as const) {
+      const save = heldSaves.get(`${ds.id}:${field}`);
       if (save) (fields as Record<string, unknown>)[field] = save.value;
     }
     return fields;
   };
 
-  const defaultSaveFor = (ds: AppDataset, field: 'defaultTemplateId' | 'defaultThemeId' | 'extractionTargets') => {
+  const heldSaveFor = (ds: AppDataset, field: 'extractionTargets') => {
     const key = `${ds.id}:${field}`;
-    let save = defaultSaves.get(key);
+    let save = heldSaves.get(key);
     if (!save) {
       // The shown fallback asks for ds's own record, not just the dataset: a switch moves the
       // dataset ahead of the record on screen, and the space being left's record is not a baseline.
-      const shown = onScreen.current();
+      const shown = onScreen.currentSpace();
       save = {
         key,
         confirmed: heldSpace(ds)?.[field] ?? (shown && isSpaceSelf(shown, ds) ? shown[field] : undefined),
@@ -147,40 +145,22 @@ export function createSpaceWrites(deps: SpaceWritesDeps) {
         pending: 0,
         tail: Promise.resolve(),
       };
-      defaultSaves.set(key, save);
+      heldSaves.set(key, save);
     }
     return save;
   };
 
   /** Run a default's store write after the ones already asked for the same field, whether they landed or not. */
-  const queueDefaultWrite = (save: { tail: Promise<unknown> }, write: () => Promise<void>): Promise<void> => {
+  const queueHeldWrite = (save: { tail: Promise<unknown> }, write: () => Promise<void>): Promise<void> => {
     const run = save.tail.catch(() => {}).then(write);
     save.tail = run;
     return run;
   };
 
   /** A default save has finished, landed or not: its record goes once nothing is pending for the field. */
-  const endDefaultSave = (save: { key: string; pending: number }): void => {
+  const endHeldSave = (save: { key: string; pending: number }): void => {
     save.pending -= 1;
-    if (!save.pending) defaultSaves.delete(save.key);
-  };
-
-  /*
-    The row a default save writes through, inside the same failure boundary as the write — and read
-    inside the queued write, so two saves whose reads finish out of order still write in the order
-    they were asked. A read that cannot answer, and a space with no record at all, were silent
-    successes: the paint already up stayed, with nothing saved and nothing said. Reported the way
-    the write reports, so the caller's failure path takes the publish back.
-  */
-  const spaceRowForSave = async (ds: AppDataset): Promise<Space> => {
-    try {
-      const space = await spaceRow(ds);
-      if (!space) throw new Error(`SpaceStore: no space record for ${ds.id}`);
-      return space;
-    } catch (error) {
-      reportSpaceSave('the space record', error);
-      throw error;
-    }
+    if (!save.pending) heldSaves.delete(save.key);
   };
 
   return {
@@ -188,11 +168,10 @@ export function createSpaceWrites(deps: SpaceWritesDeps) {
     reportSpaceSave,
     writeSpaceFields,
     writeSpaceSetting,
-    pendingDefaults,
-    defaultSaveFor,
-    queueDefaultWrite,
-    endDefaultSave,
-    spaceRowForSave,
+    pendingSaves,
+    heldSaveFor,
+    queueHeldWrite,
+    endHeldSave,
   };
 }
 

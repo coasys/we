@@ -15,7 +15,8 @@ import { moduleRegistry } from '../src/shared/registries/moduleRegistry';
 import { createSpaceModules, type SpaceModules } from '../src/shared/stores/space/modules';
 import { createSpaceList, type SpaceList } from '../src/shared/stores/space/spaces';
 import { createSpaceWrites } from '../src/shared/stores/space/writes';
-import { flush, reactivityPorts, type SpaceHarness, spaceHarness } from './support/spaceParts';
+import { reactivityPorts } from './support/engines';
+import { flush, type SpaceHarness, spaceHarness } from './support/spaceParts';
 
 const host = { backend: 'inmemory', framework: 'solid' };
 const mod = (id: string, overrides: Partial<ModuleDefinition> = {}): ModuleDefinition => ({
@@ -80,16 +81,11 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
           routeStore: { segments: () => [], navigate: () => {} },
           templateStore: { appTemplate: () => null, preloadSpaceTemplates: () => Promise.resolve() } as never,
           shapeStore: { addRecordTypes: () => Promise.resolve([]) } as never,
-          newSpace: {
-            enableView: () => Promise.resolve(),
-            writeAdminGrant: () => Promise.resolve(),
-            writeStartingPolicy: () => Promise.resolve(),
-          },
         });
         const writes = createSpaceWrites({
           ...h.ctx,
           spaces,
-          onScreen: { current: onScreen, show: () => {} },
+          onScreen: { currentSpace: onScreen, showOnScreen: () => {} },
         });
         modules = createSpaceModules({
           ...h.ctx,
@@ -99,7 +95,6 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
             defaultTemplateId: () => '',
             currentTemplate: { type: 'Column' },
           } as never,
-          appStore: { provideInstalledModules: () => {} },
           shellStore: {
             provideModuleGate: () => {},
             dockGeometry: () => ({}),
@@ -107,7 +102,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
             toggleModulePanel: () => {},
           } as never,
           spaces,
-          navigation: { members: { currentSpace: onScreen } },
+          onScreen: { currentSpace: onScreen },
           writes,
         });
       }),

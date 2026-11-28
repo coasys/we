@@ -53,7 +53,7 @@ import type {
 import { coalesceByKey } from '@we/module-shared';
 import type { ReactivityPort } from '@we/reactivity';
 
-import { clockRegistry } from '../clocks';
+import { appClocks } from '../clocks';
 import type { FirstScreen } from '../firstScreen';
 import { addLiveMarks, addLivePointerListener } from '../liveView';
 
@@ -681,7 +681,7 @@ export function createModuleStoreDeps(
     // The app's own registry, the one `clockStore` and the globe read, so a name is one clock to all
     // of them. Nothing to bind late: a clock needs no store and no backend.
     clocks: {
-      clock: (id) => clockRegistry.get(id),
+      clock: (id) => appClocks().get(id),
     },
   };
 

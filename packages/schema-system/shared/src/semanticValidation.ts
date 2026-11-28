@@ -12,6 +12,7 @@ import {
   ExpressionSyntaxError,
   isCallTime,
   isExpressionToken,
+  movedMessage,
   parseExpression,
   referencedPaths,
 } from '@we/expressions';
@@ -22,7 +23,7 @@ import { expandDefinitions, REF_TYPE, type RefProps, unresolvedRef } from './def
 import { defineFormFunctions } from './formFunctions';
 import { HOST_PART_IDS, isHostPartId } from './hostPartIds';
 import { isRelativePath } from './navigationPaths';
-import { describeHostOnly, hostOnlyUses } from './profiles';
+import { catalogsNamedBy, describeHostOnly, hostOnlyUses, PROFILE_NAMESPACES } from './profiles';
 import { parseRecordViewKey } from './recordViews';
 import { isTemplateElement } from './templateElements';
 import { TEMPLATE_SCHEMA_VERSION, templateVersionProblem } from './templateFormat';
@@ -66,6 +67,12 @@ export type ValidationContext = {
   storeNames: Set<string>;
   storeMembers: Map<string, Set<string>>;
   storeMemberMeta: Map<string, Map<string, StateMemberMeta>>;
+  /**
+   * Profile members by the store path that holds them in this host — `routeStore.params` →
+   * `navigation.params`. Not reachable that way: a profile member is written under its profile's
+   * namespace only, and a template naming the store path is told what to write.
+   */
+  movedMembers: Map<string, string>;
   entityNames: Set<string>;
   dsPropToLayer: Map<string, string>;
   /** Functions the host lends to expressions, from the generated context's `sources`. */
@@ -428,8 +435,11 @@ export function buildValidationContext(data: ContextData): ValidationContext {
   const storeNames = new Set<string>();
   const storeMembers = new Map<string, Set<string>>();
   const storeMemberMeta = new Map<string, Map<string, StateMemberMeta>>();
+  const movedMembers = new Map<string, string>();
   for (const store of data.storeEntries) {
     storeNames.add(store.name);
+    for (const [member, home] of Object.entries(store.homes ?? {}))
+      movedMembers.set(`${home}.${member}`, `${store.name}.${member}`);
     const members = new Set<string>();
     const metaMap = new Map<string, StateMemberMeta>();
     for (const [key, meta] of Object.entries(store.state)) {
@@ -539,6 +549,7 @@ export function buildValidationContext(data: ContextData): ValidationContext {
     storeNames,
     storeMembers,
     storeMemberMeta,
+    movedMembers,
     entityNames,
     dsPropToLayer,
     hostFunctions,
@@ -1070,6 +1081,7 @@ function checkExpressionToken(
   const issues = checkExpression(ast, {
     storeNames: ctx.storeNames,
     storeMembers: ctx.storeMembers,
+    movedMembers: ctx.movedMembers,
     // A whole template with no `$localState` has an empty scope, not an unknowable one.
     locals: state.localScope ?? (state.isFragment ? null : new Set()),
     contextNames: state.contextScope,
@@ -2069,7 +2081,7 @@ function checkTokenValue(
     checkInvokeRef(obj.$invoke, `${path}.$invoke`, ctx, errors);
     if (Array.isArray(obj.args)) checkInvokeArgs(obj.args, `${path}.args`, errors);
     if (obj.$invoke.startsWith('ops.')) checkOperationArgs(obj.$invoke, obj.args, path, ctx, errors);
-    if (obj.$invoke === 'routeStore.navigate' && Array.isArray(obj.args)) {
+    if (obj.$invoke === 'navigation.navigate' && Array.isArray(obj.args)) {
       checkIdInPath(obj.args[0], `${path}.args[0]`, errors);
       checkRelativeTarget(obj.args[0], `${path}.args[0]`, state, errors);
     }
@@ -2347,7 +2359,7 @@ function checkRelativeTarget(value: unknown, path: string, state: WalkState, err
  * `//` and splits the rest, the route expecting one segment never matches, and the page opens on its
  * fallback with nothing said anywhere. Five templates shipped exactly this, and so did the record
  * page twice before it. An id goes in the query instead, written by `navigate`:
- * `navigate('./board', { query: { id: board.id } })`, read back as `routeStore.params.id`.
+ * `navigate('./board', { query: { id: board.id } })`, read back as `navigation.params.id`.
  *
  * What counts: a path built by a backtick string or `+`, with a read ending in `id` or `Id`
  * (`post.id`, `local.cardId`) before any `?`. A value after the `?` is a query value already, and a
@@ -2374,7 +2386,7 @@ function checkIdInPath(value: unknown, path: string, errors: ValidationError[]):
         message:
           'A record id is put into the path of this address. An id is a URI, so the browser splits it across ' +
           "segments and the route never matches. Pass it as a query value instead — navigate('./board', " +
-          '{ query: { id: board.id } }) — and read it back as routeStore.params.id',
+          '{ query: { id: board.id } }) — and read it back as navigation.params.id',
         severity: 'warning',
       });
       return;
@@ -2451,6 +2463,12 @@ function checkInvokeRef(ref: string, path: string, ctx: ValidationContext, error
         severity: 'error',
       });
     }
+    return;
+  }
+
+  const moved = ctx.movedMembers.get(ref);
+  if (moved) {
+    errors.push({ path, message: `$invoke "${ref}": ${movedMessage(ref, moved)}`, severity: 'error' });
     return;
   }
 
@@ -2933,15 +2951,24 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
   if (meta?.stores || meta?.components?.length) {
     const newStoreNames = new Set(context.storeNames);
     const newStoreMembers = new Map(context.storeMembers);
+    // A store the schema declares for itself is its own, whatever the host keeps under that name.
+    const newMoved = new Map(context.movedMembers);
+    const ownStore = (name: string) => {
+      for (const path of newMoved.keys()) if (path.startsWith(`${name}.`)) newMoved.delete(path);
+    };
 
     if (meta.stores) {
       if (Array.isArray(meta.stores)) {
         // string[] — just add names
-        for (const name of meta.stores) newStoreNames.add(name);
+        for (const name of meta.stores) {
+          newStoreNames.add(name);
+          ownStore(name);
+        }
       } else {
         // Record — add names and merge members
         for (const [name, decl] of Object.entries(meta.stores)) {
           newStoreNames.add(name);
+          ownStore(name);
           // `true` means "store exists, accept all members" — remove any global restrictions.
           // Object with actions/state merges those as additional known members.
           if (decl === true) {
@@ -2961,6 +2988,7 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
       ...context,
       storeNames: newStoreNames,
       storeMembers: newStoreMembers,
+      movedMembers: newMoved,
       ...(meta.components?.length && {
         componentNames: new Set([...context.componentNames, ...meta.components]),
       }),
@@ -3012,6 +3040,8 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
     });
   }
 
+  checkRequires(schema, hostMembers, errors);
+
   const panels = (
     schema as {
       meta?: { panels?: { id?: unknown; node?: unknown; open?: unknown; module?: unknown; dock?: unknown }[] };
@@ -3060,7 +3090,7 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
 
       if (!panel.node || typeof panel.node !== 'object') return;
       // `panel` is bound inside: which panel this is, and the inputs it was opened with — see
-      // `shellStore.openPanel`, which opens a declared panel as many times as it is asked.
+      // `viewState.openPanel`, which opens a declared panel as many times as it is asked.
       walkNode(
         panel.node,
         `meta.panels[${index}].node`,
@@ -3104,6 +3134,70 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
     valid: errors.filter((e) => e.severity === 'error').length === 0,
     errors,
   };
+}
+
+/**
+ * A template's `meta.requires` against what it names.
+ *
+ * Absent, nothing is checked: the template is written for WE's host, and a host-only use is advice.
+ * Present, the declaration is a promise a host relies on before drawing anything, so:
+ *
+ * - every module the template names (`modules.<id>`, a part of its, a panel placing it) must be in
+ *   `modules`, or a host that lacks it would find out only by drawing absences;
+ * - with `profiles` written, the template declares itself portable: every profile whose namespace it
+ *   names must be listed, a listed id must be a profile, and every WE-host-only use is a warning
+ *   rather than advice, since a portable template that leans on WE's stores is not one.
+ *
+ * `modules` alone keeps its earlier meaning — a WE template saying which modules it leans on — so a
+ * template that lists modules and no profiles is not judged as portable.
+ */
+function checkRequires(
+  schema: unknown,
+  hostMembers: ReadonlyMap<string, ReadonlySet<string>>,
+  errors: ValidationError[],
+): void {
+  const requires = (schema as { meta?: { requires?: unknown } } | null)?.meta?.requires;
+  if (!requires || typeof requires !== 'object') return;
+  const { profiles: listedProfiles, modules: listedModules } = requires as { profiles?: unknown; modules?: unknown };
+  const strings = (value: unknown) =>
+    new Set(Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : []);
+  const modules = strings(listedModules);
+  const named = catalogsNamedBy(schema);
+
+  for (const [id, via] of named.modules)
+    if (!modules.has(id))
+      errors.push({
+        path: 'meta.requires.modules',
+        message: `Names the "${id}" module (${via}), which meta.requires.modules does not list. A host reads the list before drawing; add "${id}" to it.`,
+        severity: 'error',
+      });
+
+  if (listedProfiles === undefined) return;
+  const profiles = strings(listedProfiles);
+  const known = new Set([...PROFILE_NAMESPACES.values()].map((profile) => profile.id));
+  [...profiles].forEach((id) => {
+    if (!known.has(id))
+      errors.push({
+        path: 'meta.requires.profiles',
+        message: `"${id}" is not a capability profile. The profiles are: ${[...known].join(', ')}.`,
+        severity: 'error',
+      });
+  });
+  for (const [id, via] of named.profiles)
+    if (!profiles.has(id))
+      errors.push({
+        path: 'meta.requires.profiles',
+        message: `Names ${via}, a member of the "${id}" profile, which meta.requires.profiles does not list. Add "${id}" to it.`,
+        severity: 'error',
+      });
+
+  const uses = hostOnlyUses(schema, hostMembers);
+  if (uses.length)
+    errors.push({
+      path: 'meta.requires',
+      message: `Declares what it requires (meta.requires.profiles), so it is meant to run on any host providing those, but it uses members only WE has. ${describeHostOnly(uses)}`,
+      severity: 'warning',
+    });
 }
 
 export function validateSchema(schema: unknown, context: ValidationContext): ValidationResult {

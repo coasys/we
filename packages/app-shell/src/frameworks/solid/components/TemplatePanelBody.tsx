@@ -13,7 +13,7 @@
  * up when it renders.
  *
  * The node reads which panel it is, and the inputs it was opened with, as `panel` — `{ id, inputs }`,
- * the inputs empty for the declared panel itself and whatever `shellStore.openPanel` was given for an
+ * the inputs empty for the declared panel itself and whatever `viewState.openPanel` was given for an
  * instance of it (`instance`). See `panelInstances.ts`.
  */
 import { isAppPanel } from '@shared/panelScope';

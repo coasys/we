@@ -5,17 +5,22 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { buildParts, reactivityPorts } from './support/shellPorts';
+import { createTestPlatform, type TestPlatform } from '../src/shared/platform/testPlatform';
+import { reactivityPorts } from './support/engines';
+import { buildParts } from './support/shellPorts';
 
 describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   const disposers: (() => void)[] = [];
+  let platform: TestPlatform;
   const build = () => {
     const reactivity = makePort();
-    const parts = buildParts(reactivity);
+    const parts = buildParts(reactivity, platform);
     disposers.push(parts.dispose);
     return { ...parts.views, reactivity };
   };
-  beforeEach(() => window.history.replaceState({}, '', '/space/test'));
+  beforeEach(() => {
+    platform = createTestPlatform({ url: '/space/test' });
+  });
   afterEach(() => {
     disposers.splice(0).forEach((dispose) => dispose());
     vi.useRealTimers();
@@ -23,7 +28,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
 
   it('opens the landing page at the root, and nothing over an address somebody asked for', () => {
     expect(build().members.activeShellView()).toBe(null);
-    window.history.replaceState({}, '', '/');
+    platform = createTestPlatform({ url: '/' });
     expect(build().members.activeShellView()).toBe('landing-page');
   });
 
@@ -51,15 +56,13 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     expect(members.spaceSettingsFocus()).toBe('state-1');
     expect(members.spaceSettingsEdge()).toBe('right');
 
-    const row = document.createElement('div');
-    row.id = 'vocab-state-1';
-    const scrolled = vi.fn();
-    row.scrollIntoView = scrolled;
     vi.advanceTimersByTime(250);
-    document.body.appendChild(row);
+    expect(platform.asked.revealed).toEqual([]);
+    platform.setDrawnId('vocab-state-1', true);
     vi.advanceTimersByTime(100);
-    expect(scrolled).toHaveBeenCalledTimes(1);
-    row.remove();
+    expect(platform.asked.revealed).toEqual([{ id: 'vocab-state-1', block: 'center' }]);
+    vi.advanceTimersByTime(1000);
+    expect(platform.asked.revealed).toHaveLength(1);
   });
 
   it('forgets the record when the panel is toggled or closed', () => {

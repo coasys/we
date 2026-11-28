@@ -8,6 +8,81 @@ const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 // Mirror tsconfig's path aliases for source files imported through the test graph.
 const alias = { '@shared': r('./src/shared'), '@solid': r('./src/frameworks/solid') };
 
+/*
+  Store tests: each store under both reactivity ports, with the platform port's test implementation
+  standing in for the window. No DOM, so a store reaching for a browser global fails here rather
+  than passing on jsdom's. The browser build of solid-js all the same (the node build's effects never
+  run again), inlined so Node's own resolution does not hand back the server build.
+*/
+const STORE_TESTS = [
+  'tests/accountStore.test.ts',
+  'tests/appStore.test.ts',
+  'tests/canvasHistory.test.ts',
+  'tests/chatStoreOpen.test.ts',
+  'tests/clockStore.test.ts',
+  'tests/datasetIdentity.test.ts',
+  'tests/datasetStore.test.ts',
+  'tests/distinctSignal.test.ts',
+  'tests/dockStowAndReveal.test.ts',
+  'tests/editTarget.test.ts',
+  'tests/editorStore.test.ts',
+  'tests/followLive.test.ts',
+  'tests/identityStore.test.ts',
+  'tests/interpretationStore.test.ts',
+  'tests/keyedSignals.test.ts',
+  'tests/libraryFlow.test.ts',
+  'tests/liveTemplate.test.ts',
+  'tests/operationsPerComposition.test.ts',
+  'tests/profileIndex.test.ts',
+  'tests/profileStore.test.ts',
+  'tests/recordCanvas.test.ts',
+  'tests/recordConnections.test.ts',
+  'tests/recordDrops.test.ts',
+  'tests/recordForms.test.ts',
+  'tests/recordKinds.test.ts',
+  'tests/recordStoreComposition.test.ts',
+  'tests/recordTree.test.ts',
+  'tests/routeStore.test.ts',
+  'tests/sessionStore.test.ts',
+  'tests/shapeStore.test.ts',
+  'tests/shellArrangement.test.ts',
+  'tests/shellDockDrag.test.ts',
+  'tests/shellDocks.test.ts',
+  'tests/shellPathMemory.test.ts',
+  'tests/shellPrompts.test.ts',
+  'tests/shellStoreComposition.test.ts',
+  'tests/shellTemplatePanels.test.ts',
+  'tests/shellViews.test.ts',
+  'tests/spaceCallExports.test.ts',
+  'tests/spaceContent.test.ts',
+  'tests/spaceDetails.test.ts',
+  'tests/spaceExtraction.test.ts',
+  'tests/spaceInvolvements.test.ts',
+  'tests/spaceList.test.ts',
+  'tests/spaceModules.test.ts',
+  'tests/spaceNavigation.test.ts',
+  'tests/spaceRecordWait.test.ts',
+  'tests/spaceRolesPart.test.ts',
+  'tests/spaceStoreComposition.test.ts',
+  'tests/spaceTaskStates.test.ts',
+  'tests/spaceTemplateChoosing.test.ts',
+  'tests/spaceUnread.test.ts',
+  'tests/spaceWrites.test.ts',
+  'tests/templateDrafts.test.ts',
+  'tests/templateStoreSpaceSwitch.test.ts',
+  'tests/treeRelation.test.ts',
+  'tests/treeUndo.test.ts',
+  'tests/vueReactivity.test.ts',
+  'tests/workflowStore.test.ts',
+];
+
+/*
+  The stores in a React tree, through a test-only binding (`tests/react/useStore.ts`): what a second
+  host's binding costs. jsdom for react-dom, the browser build of solid-js for the Solid engine, and
+  no Solid transform — the files are plain TypeScript.
+*/
+const REACT_TESTS = ['tests/react/**/*.test.ts'];
+
 // Tests that mount real Solid components/providers — they need jsdom, browser resolve
 // conditions, and the solid transform. Everything else stays in the plain node project.
 const SOLID_TESTS = [
@@ -16,76 +91,22 @@ const SOLID_TESTS = [
   // Mounts a part's frame and changes its subject under it: real Solid effects and cleanups.
   'tests/partWhileShown.test.tsx',
   'tests/executorFreeBoot.test.tsx',
-  // The real template store, its sibling stores doubled: which space a late read may still answer for.
-  'tests/templateStoreSpaceSwitch.test.ts',
+  /*
+    Store tests that still need a DOM. Each store is on the platform port; what these reach is not:
+    runtime, presence, bundle and template stores import modules outside shared/stores (safe mode,
+    the boot snapshot, the device's app) that read storage themselves; the theme store's CSS goes
+    through the sanitiser, which parses it with the browser's own CSS parser. The overlay router's test is about the window's history
+    being left alone, so the window is its subject.
+  */
   'tests/runtimeStore.test.ts',
-  'tests/accountStore.test.ts',
-  'tests/identityStore.test.ts',
-  'tests/profileStore.test.ts',
-  // The interpretation store under a held gate, under both ports: what it tells modules.
-  'tests/interpretationStore.test.ts',
-  // Counts effect re-runs under both ports. The node project resolves solid-js to its SSR build,
-  // where an effect never runs again — so every count would be 1 and the test would pass whether
-  // or not the cache is fine-grained, which is the one thing it exists to tell apart.
-  'tests/profileIndex.test.ts',
-  // A plain store test under both ports: jsdom for window.history, and the browser build of solid-js
-  // so the Solid port's effects re-run at all.
-  'tests/routeStore.test.ts',
-  // The same, for following a live query: a page arriving must wake the port's effects.
-  'tests/followLive.test.ts',
-  // And for a lookup of one signal per key: a write must wake the port's effects for its own key.
-  'tests/keyedSignals.test.ts',
-  // And for the store helpers and stores converted after it, each run under both ports.
-  'tests/spaceTemplateChoosing.test.ts',
-  'tests/appStore.test.ts',
-  'tests/editTarget.test.ts',
-  'tests/clockStore.test.ts',
-  'tests/shellRouteStore.test.ts',
   'tests/presenceStore.test.ts',
-  'tests/sessionStore.test.ts',
-  'tests/datasetStore.test.ts',
   'tests/bundleStore.test.ts',
-  'tests/libraryFlow.test.ts',
   'tests/themeStore.test.ts',
-  'tests/liveTemplate.test.ts',
   'tests/templateStore.test.ts',
-  'tests/shapeStore.test.ts',
-  'tests/distinctSignal.test.ts',
+  'tests/shellRouteStore.test.ts',
   'tests/shellRouterRoot.test.tsx',
-  'tests/shellPathMemory.test.ts',
+  // Hands the settings opener a real click, which only a DOM can make.
   'tests/spaceSettingsTab.test.ts',
-  // The shell store's parts, each under both ports.
-  'tests/shellViews.test.ts',
-  'tests/shellPrompts.test.ts',
-  'tests/shellArrangement.test.ts',
-  'tests/shellDocks.test.ts',
-  'tests/shellDockDrag.test.ts',
-  'tests/shellTemplatePanels.test.ts',
-  'tests/templateDrafts.test.ts',
-  'tests/editorStore.test.ts',
-  // The record store's canvas, tree and connection writes, each under both ports.
-  'tests/canvasHistory.test.ts',
-  'tests/treeUndo.test.ts',
-  'tests/treeRelation.test.ts',
-  'tests/recordKinds.test.ts',
-  'tests/recordConnections.test.ts',
-  'tests/recordCanvas.test.ts',
-  'tests/recordTree.test.ts',
-  'tests/recordForms.test.ts',
-  'tests/recordDrops.test.ts',
-  // The space store's parts, each under both ports.
-  'tests/spaceList.test.ts',
-  'tests/spaceNavigation.test.ts',
-  'tests/spaceWrites.test.ts',
-  'tests/spaceModules.test.ts',
-  'tests/spaceExtraction.test.ts',
-  'tests/spaceRolesPart.test.ts',
-  'tests/spaceTaskStates.test.ts',
-  'tests/spaceInvolvements.test.ts',
-  'tests/spaceUnread.test.ts',
-  'tests/spaceContent.test.ts',
-  'tests/spaceDetails.test.ts',
-  'tests/spaceStoreComposition.test.ts',
   // Draws an editor edit through the real renderer and counts which components mount again.
   'tests/editorRedraw.test.tsx',
   'tests/shellOverlayRemount.test.tsx',
@@ -102,19 +123,12 @@ const SOLID_TESTS = [
   // Imports the shell's own schemas, which reach Solid modules that refuse to load outside a
   // browser environment. Nothing here renders — the DOM is a condition of the import, not the test.
   'tests/tierFit.test.ts',
-  // Drives a real signal through a real effect, which is the half of the behaviour a comparator
-  // alone cannot show. Nothing renders, but the node project resolves solid-js to its SSR build,
-  // where `createEffect` does nothing at all — so the test passes there for the wrong reason.
-  'tests/datasetIdentity.test.ts',
   // Renders a card's faces through the real renderer, components and host functions.
   'tests/cardPeopleLive.test.tsx',
   // Renders a route through the real router and renderer, reading the surface its layout provides.
   'tests/routeSurface.test.tsx',
   // Mounts a thread through the real fragment and renderer, watching which drill-downs it issues.
   'tests/threadDepth.test.tsx',
-  // Drives the shell's real dock memos through stacking, folding, collapsing a lane and revealing a
-  // hidden panel — reactive derivations, which the node project's SSR build of solid-js never runs.
-  'tests/dockStowAndReveal.test.ts',
   'tests/homeLaneState.test.tsx',
   // A lane holding any panel: renders the shell store's real reactivity, so the node build would not do.
   'tests/laneSections.test.tsx',
@@ -128,8 +142,6 @@ const SOLID_TESTS = [
   // Send-again, the Enter guards, draft restore, refresh clearing, and the remembered conversation
   // are all reads on the mounted chat — they need the browser build's event dispatch and effects.
   'tests/agentChatResend.test.tsx',
-  // A space's ask without its dataset id opens nothing, not the global chat.
-  'tests/chatStoreOpen.test.ts',
   // The refusal card rendered — the sentence and the folded error are DOM, not derivations.
   'tests/agentChatRefusal.test.tsx',
   // Mounts the chat to press Send and Enter into one pending create, and to watch the composer
@@ -149,9 +161,6 @@ const SOLID_TESTS = [
   'tests/panelHost.test.tsx',
   // Mounts the real RecordStore over a stand-in data layer to drive a canvas's undo round trip.
   'tests/canvasHistory.test.tsx',
-  // Builds the workflow store under both ports, whose memos run as they are made — a boot crash the
-  // pure tests cannot see.
-  'tests/workflowStore.test.ts',
   // The same, for a card dragged to another place in a tree.
   'tests/treeUndo.test.tsx',
   // And for a drag on a tree whose spine is a model relation rather than a connection kind.
@@ -175,8 +184,6 @@ const SOLID_TESTS = [
   'tests/liveStoreReactive.test.tsx',
   // Mounts the real router, because the failure was what it matches, not what the table holds.
   'tests/spaceDeepLink.test.tsx',
-  // Real signals and effects: the failure was an effect that never heard what arrived after it.
-  'tests/spaceRecordWait.test.ts',
   // The real router, buildRoutes and the renderer together: where a template's links go.
   'tests/templateNavigation.test.tsx',
   // Drives the create-space modal's schema through the real renderer: what reaches createSpace.
@@ -226,7 +233,33 @@ export default defineConfig({
           alias,
           globals: true,
           include: ['tests/**/*.test.{ts,tsx}'],
-          exclude: ['**/node_modules/**', ...SOLID_TESTS],
+          setupFiles: ['./tests/reactivitySeed.ts'],
+          exclude: ['**/node_modules/**', ...SOLID_TESTS, ...STORE_TESTS, ...REACT_TESTS],
+        },
+      },
+      {
+        resolve: { conditions: ['development', 'browser'] },
+        ssr: { resolve: { conditions: ['development', 'browser'], externalConditions: ['development', 'browser'] } },
+        test: {
+          name: 'stores',
+          alias,
+          globals: true,
+          environment: 'node',
+          include: STORE_TESTS,
+          setupFiles: ['./tests/reactivitySeed.ts'],
+          server: { deps: { inline: [/solid-js/] } },
+        },
+      },
+      {
+        resolve: { conditions: ['development', 'browser'] },
+        test: {
+          name: 'react',
+          alias,
+          globals: true,
+          environment: 'jsdom',
+          include: REACT_TESTS,
+          setupFiles: ['./tests/reactivitySeed.ts'],
+          server: { deps: { inline: [/solid-js/] } },
         },
       },
       {
@@ -243,7 +276,7 @@ export default defineConfig({
           environment: 'jsdom',
           // Observers jsdom lacks — see the file. Only this project needs them: it is the one that
           // renders components, and a component that measures itself reaches for them on mount.
-          setupFiles: ['./tests/jsdomGaps.ts'],
+          setupFiles: ['./tests/jsdomGaps.ts', './tests/reactivitySeed.ts'],
           include: SOLID_TESTS,
         },
       },

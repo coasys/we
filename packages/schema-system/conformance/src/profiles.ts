@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import type { ProfileCaseInput, ProfileOutcome, ProfileWorld } from '../../../app-shell/tests/support/profileHost.tsx';
+import type { ProfileCaseInput, ProfileOutcome, ProfileWorld } from '../../../app-shell/tests/support/profileHost.ts';
 import type { ProfileCase } from './cases/profiles';
 
 export const PROFILE_VECTORS_FILE = join(dirname(fileURLToPath(import.meta.url)), '..', 'vectors', 'profiles.json');

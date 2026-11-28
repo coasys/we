@@ -171,6 +171,12 @@ jobs:
     name: Test
     needs: build
     runs-on: ubuntu-latest
+    # The test reactivity port runs sibling effects in a seeded shuffle. A fixed seed would explore
+    # one ordering on every run, so CI takes a new one each run; a failure prints the seed it ran
+    # under, and `WE_REACTIVITY_SEED=<n> pnpm test` locally runs that order again. Locally the seed
+    # stays fixed unless set.
+    env:
+      WE_REACTIVITY_SEED: ${{ github.run_number }}
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
@@ -180,7 +186,9 @@ jobs:
       # failing package does not hide the state of the rest. It still exits non-zero.
       - name: Test
         id: test
-        run: pnpm test
+        run: |
+          echo "Reactivity seed: $WE_REACTIVITY_SEED"
+          pnpm test
 
       # The primitives' cascade, in a real browser. Which rule wins under a pointer at a container
       # width is the one thing jsdom cannot answer, and every bug in that area passed the unit tests:

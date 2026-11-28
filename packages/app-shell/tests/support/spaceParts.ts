@@ -7,22 +7,17 @@ import { createInMemoryBackendPorts, type InMemoryDatasetSeed } from '@we/backen
 import type { DatasetRef } from '@we/backend-shared';
 import type { AgentSettings } from '@we/entities';
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 
+import { createTestPlatform, type TestPlatform } from '../../src/shared/platform/testPlatform';
 import { provideSeed } from '../../src/shared/seedRegistry';
 import type { AppDataset } from '../../src/shared/stores/DatasetStore';
 import type { BootState } from '../../src/shared/stores/SessionStore';
 import { createSpaceContext, type SpaceContext, type SpaceDatasets } from '../../src/shared/stores/space/context';
 import type { ToastButton } from '../../src/shared/toasts';
+import { testOperations } from './operations';
 
 // The deployment the parts read their defaults from: none beyond what the code has.
 provideSeed({ name: 'test', modules: [] } as never);
-
-export const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
 
 export const ME = 'did:key:z6MkSpaceParts';
 
@@ -33,6 +28,8 @@ export const flush = async () => {
 
 export interface SpaceHarness {
   reactivity: ReactivityPort;
+  /** The window the parts run in. */
+  platform: TestPlatform;
   ctx: SpaceContext;
   ports: ReturnType<typeof createInMemoryBackendPorts>;
   /** Every toast said, in order, as `tone: message`, with the button when one was offered. */
@@ -49,6 +46,11 @@ export interface SpaceHarness {
   };
   setBootState: (state: BootState) => void;
   setAgentSettings: (settings: Partial<AgentSettings> | null) => void;
+  /**
+   * Write as somebody else for the length of `write`: the backend records them as the author, while
+   * the session — who the write check judges — stays this agent.
+   */
+  as: <T>(did: string, write: () => Promise<T>) => Promise<T>;
 }
 
 /**
@@ -56,8 +58,9 @@ export interface SpaceHarness {
  * Build each part inside `reactivity.root`, as a composition root builds the store.
  */
 export async function spaceHarness(reactivity: ReactivityPort, seeds: InMemoryDatasetSeed[]): Promise<SpaceHarness> {
+  let self = ME;
   const ports = createInMemoryBackendPorts(
-    { selfId: () => ME },
+    { selfId: () => self },
     { agent: { id: ME, unlocked: true }, datasets: seeds },
   );
   const refs = await ports.lifecycle.list();
@@ -128,8 +131,11 @@ export async function spaceHarness(reactivity: ReactivityPort, seeds: InMemoryDa
     return toasts.said.length;
   };
 
+  const platform = createTestPlatform();
   const ctx = createSpaceContext({
+    operations: testOperations,
     reactivity,
+    platform,
     toasts: { info: say('info'), success: say('success'), warning: say('warning'), error: say('error') },
     firstScreen: { open: () => true, whenOpen: () => Promise.resolve() },
     sessionStore: {
@@ -144,6 +150,7 @@ export async function spaceHarness(reactivity: ReactivityPort, seeds: InMemoryDa
 
   return {
     reactivity,
+    platform,
     ctx,
     ports,
     toasts,
@@ -156,5 +163,13 @@ export async function spaceHarness(reactivity: ReactivityPort, seeds: InMemoryDa
     },
     setBootState,
     setAgentSettings: (fields) => setSettings(fields as AgentSettings | null),
+    as: async (did, write) => {
+      self = did;
+      try {
+        return await write();
+      } finally {
+        self = ME;
+      }
+    },
   };
 }

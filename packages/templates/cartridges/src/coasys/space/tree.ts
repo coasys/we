@@ -218,7 +218,7 @@ const calls = group(
   { count: 'count(local.calls)', tone: { $: "count(modules.call.liveCalls) ? 'success' : ''" } },
 );
 
-const FLOWS_PAGE = "spaceStore.spacePath + '/workflows'";
+const FLOWS_PAGE = "navigation.spacePath + '/workflows'";
 
 /** A flow is chosen on the flows page — its row, under Social DNA's Flows, is the one lit. */
 const FLOW_CHOSEN = `(${PAGE_EXPR}) == 'workflows' && workflowStore.open`;
@@ -287,7 +287,7 @@ const flowDefinitions = group(
     nested: true,
     openness: FLOWS_HELD,
     count: `count(${FLOW_DEFINITIONS})`,
-    action: addButton('New flow', { $invoke: 'routeStore.navigate', args: [{ $: `${FLOWS_PAGE} + '?new=1'` }] }),
+    action: addButton('New flow', { $invoke: 'navigation.navigate', args: [{ $: `${FLOWS_PAGE} + '?new=1'` }] }),
   },
 );
 
@@ -340,7 +340,7 @@ const revealing = (value: string, inside: string, up: string) => {
       $if: {
         condition: { $: `!event.detail.open && (${within})` },
         then: [
-          { $invoke: 'routeStore.setParam', args: [DNA_PARAM, { $: up }] },
+          { $invoke: 'navigation.setParam', args: [DNA_PARAM, { $: up }] },
           { $if: { condition: { $: `(${value}) in ${OPEN}` }, then: toggle } },
         ],
         else: toggle,
@@ -518,7 +518,7 @@ const themesGroup = group(
 const SOCIAL_DNA_HELD = holding('group|dna', [
   {
     when: `(${DNA_SHOWN}) && ${DNA_AT} != 'all'`,
-    up: { $invoke: 'routeStore.setParam', args: [DNA_PARAM, 'all'] },
+    up: { $invoke: 'navigation.setParam', args: [DNA_PARAM, 'all'] },
   },
   flowChosen,
 ]);
@@ -567,7 +567,7 @@ const onSelect: SchemaProp = [
           .map((p) => `'group|${p}'`)
           .join(', ')}]`,
       },
-      then: { $invoke: 'routeStore.navigate', args: [{ $: withView(`spaceStore.spacePath + '/' + ${ROW_ID}`) }] },
+      then: { $invoke: 'navigation.navigate', args: [{ $: withView(`navigation.spacePath + '/' + ${ROW_ID}`) }] },
     },
   },
   // The flows page shows every flow until one is chosen, so choosing the group closes the one open.
@@ -576,7 +576,7 @@ const onSelect: SchemaProp = [
       condition: { $: "event.detail.value == 'group|workflows'" },
       then: [
         { $invoke: 'workflowStore.closeWorkflow' },
-        { $invoke: 'routeStore.navigate', args: [{ $: withView(FLOWS_PAGE) }] },
+        { $invoke: 'navigation.navigate', args: [{ $: withView(FLOWS_PAGE) }] },
       ],
     },
   },
@@ -590,13 +590,13 @@ const onSelect: SchemaProp = [
   {
     $if: {
       condition: { $: "startsWith(event.detail.value, 'channel|')" },
-      then: { $invoke: 'routeStore.navigate', args: [{ $: channelPath(ROW_ID) }] },
+      then: { $invoke: 'navigation.navigate', args: [{ $: channelPath(ROW_ID) }] },
     },
   },
   {
     $if: {
       condition: { $: "startsWith(event.detail.value, 'call|')" },
-      then: { $invoke: 'routeStore.navigate', args: [{ $: callPath(ROW_ID) }] },
+      then: { $invoke: 'navigation.navigate', args: [{ $: callPath(ROW_ID) }] },
     },
   },
   {
@@ -604,7 +604,7 @@ const onSelect: SchemaProp = [
       condition: { $: "startsWith(event.detail.value, 'workflow|')" },
       then: [
         { $invoke: 'workflowStore.openWorkflow', args: [{ $: ROW_ID }] },
-        { $invoke: 'routeStore.navigate', args: [{ $: withView(FLOWS_PAGE) }] },
+        { $invoke: 'navigation.navigate', args: [{ $: withView(FLOWS_PAGE) }] },
       ],
     },
   },
@@ -620,7 +620,7 @@ const onSelect: SchemaProp = [
       then: [
         { $invoke: 'workflowStore.openWorkflow', args: [{ $: RUN_WORKFLOW }] },
         {
-          $invoke: 'routeStore.navigate',
+          $invoke: 'navigation.navigate',
           args: [{ $: withView(FLOWS_PAGE) }, { $: `{ query: { card: ${RUN_RECORD} } }` }],
         },
       ],
@@ -629,7 +629,7 @@ const onSelect: SchemaProp = [
   {
     $if: {
       condition: { $: "startsWith(event.detail.value, 'person|')" },
-      then: { $invoke: 'routeStore.navigate', args: [{ $: personPath(ROW_ID) }] },
+      then: { $invoke: 'navigation.navigate', args: [{ $: personPath(ROW_ID) }] },
     },
   },
   /*
@@ -694,9 +694,9 @@ const header: SchemaNode = {
         // Large enough to stand beside the name and two lines of what the space is for.
         size: 'xl',
         r: '600',
-        image: { $: 'spaceStore.currentSpace.avatar' },
-        initials: { $: 'spaceStore.currentSpace.name' },
-        hash: { $: 'spaceStore.currentSpace.uuid' },
+        image: { $: 'spaceSettings.currentSpace.avatar' },
+        initials: { $: 'spaceSettings.currentSpace.name' },
+        hash: { $: 'spaceSettings.currentSpace.uuid' },
       },
     },
     {
@@ -706,16 +706,16 @@ const header: SchemaNode = {
         {
           type: 'we-text',
           props: { variant: 'subheading', fontWeight: 'semibold', truncate: true },
-          children: [{ $: 'spaceStore.currentSpace.name' }],
+          children: [{ $: 'spaceSettings.currentSpace.name' }],
         },
         {
           type: '$if',
           props: {
-            condition: { $: 'spaceStore.currentSpace.description' },
+            condition: { $: 'spaceSettings.currentSpace.description' },
             then: {
               type: 'we-text',
               props: { variant: 'footnote', fontSize: '200', color: 'text-muted', lines: 2 },
-              children: [{ $: 'spaceStore.currentSpace.description' }],
+              children: [{ $: 'spaceSettings.currentSpace.description' }],
             },
           },
         },
@@ -749,7 +749,7 @@ const header: SchemaNode = {
             size: 'md',
             square: true,
             label: 'Hide the sidebar',
-            onClick: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', true] },
+            onClick: { $invoke: 'layout.setLaneCollapsed', args: ['tree', true] },
           },
           children: [{ type: 'we-icon', props: { name: 'sidebar-simple' } }],
         },
@@ -765,7 +765,7 @@ const header: SchemaNode = {
 const purpose: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $: '!spaceStore.currentSpace.description && spaceStore.canAdministerCurrentSpace' },
+    condition: { $: '!spaceSettings.currentSpace.description && spaceSettings.canAdministerCurrentSpace' },
     then: {
       type: 'Column',
       props: { px: INSET, pb: '300' },
@@ -822,7 +822,7 @@ const findOrAsk: SchemaNode = {
                 $invoke: 'chatStore.openChat',
                 args: [
                   {
-                    $: `{ datasetId: datasetStore.currentDataset.id, spaceName: spaceStore.currentSpace.name, draft: local.findQuery }`,
+                    $: `{ datasetId: datasetStore.currentDataset.id, spaceName: spaceSettings.currentSpace.name, draft: local.findQuery }`,
                   },
                 ],
               },

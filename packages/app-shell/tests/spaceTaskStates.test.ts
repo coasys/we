@@ -5,7 +5,7 @@
  *
  * Run once under each reactivity port, against the in-memory backend.
  */
-import { clearPredictions, Space, TaskState } from '@we/entities';
+import { Space, TaskState } from '@we/entities';
 import type { Setter } from '@we/reactivity';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -13,14 +13,16 @@ import { createSpaceList, type SpaceList } from '../src/shared/stores/space/spac
 import { createSpaceTaskStates, type SpaceTaskStates } from '../src/shared/stores/space/taskStates';
 import { createSpaceWrites } from '../src/shared/stores/space/writes';
 import { createTaskWorkflowLive } from '../src/shared/taskWorkflowLive';
-import { flush, reactivityPorts, type SpaceHarness, spaceHarness } from './support/spaceParts';
+import { reactivityPorts } from './support/engines';
+import { testPredictions } from './support/operations';
+import { flush, type SpaceHarness, spaceHarness } from './support/spaceParts';
 
 describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   const disposers: (() => void)[] = [];
   afterEach(() => {
     for (const dispose of disposers.splice(0)) dispose();
     // What one test predicted is drawn for a while after it lands; the next test's dataset has the same id.
-    clearPredictions();
+    testPredictions.clear();
   });
 
   interface Built {
@@ -57,13 +59,20 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
           routeStore: { segments: () => [], navigate: () => {} },
           templateStore: { appTemplate: () => null, preloadSpaceTemplates: () => Promise.resolve() } as never,
           shapeStore: { addRecordTypes: () => Promise.resolve([]) } as never,
-          newSpace: {
-            enableView: () => Promise.resolve(),
-            writeAdminGrant: () => Promise.resolve(),
-            writeStartingPolicy: () => Promise.resolve(),
+        });
+        const writes = createSpaceWrites({
+          ...h.ctx,
+          spaces,
+          onScreen: {
+            currentSpace: onScreen,
+            // What a write shows lands on the record on screen, as the navigation part's would.
+            showOnScreen: (_ds, fields) => {
+              const shown = reactivity.untrack(onScreen);
+              if (shown)
+                writeOnScreen(Object.assign(Object.create(Object.getPrototypeOf(shown) as object), shown, fields));
+            },
           },
         });
-        const writes = createSpaceWrites({ ...h.ctx, spaces, onScreen: { current: onScreen, show: () => {} } });
         states = createSpaceTaskStates({
           ...h.ctx,
           recordStore: {
@@ -72,14 +81,14 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
               return () => (vocabularies = null);
             },
           },
-          navigation: { members: { currentSpace: onScreen }, pushedOnScreen: () => false },
+          onScreen: { currentSpace: onScreen, pushedOnScreen: () => false },
           writes,
           canAdministerCurrentSpace: () => admin.yes,
           taskWorkflowLive: createTaskWorkflowLive(reactivity.signal),
-          addStateToSpaceBoard: (slug) => {
-            boardColumns.push(slug);
-            return Promise.resolve();
-          },
+        });
+        states.provideSpaceBoard((slug) => {
+          boardColumns.push(slug);
+          return Promise.resolve();
         });
       }),
     );
@@ -166,5 +175,60 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     await expect(built.states.members.setTaskWorkflowRule('next')).rejects.toThrow(/administers/);
     await expect(built.states.members.setWorkflowArchived('review', true)).rejects.toThrow(/administers/);
     expect(built.states.members.taskWorkflowEnabled()).toBe(false);
+  });
+
+  it('changes a state it has — its name, what it counts as, the agreement it asks for — and keeps its slug', async () => {
+    const built = await build();
+    await enter(built, 'ds-a');
+    await built.states.members.createTaskState({ name: 'Review', semantic: 'active' });
+    await built.states.members.updateTaskState('review', { name: 'In review', semantic: 'blocked', approvals: 2 });
+    expect(built.states.members.taskStates()).toMatchObject([
+      { slug: 'review', name: 'In review', semantic: 'blocked', approvals: 2 },
+    ]);
+  });
+
+  it('adds what a state asks to be there first, and takes it away again by position', async () => {
+    const built = await build();
+    await enter(built, 'ds-a');
+    await built.states.members.createTaskState({ name: 'Done', semantic: 'done' });
+    await built.states.members.addTaskStateEvidence('done', { entity: 'comment', via: 'responses', min: 1 });
+    await built.states.members.addTaskStateEvidence('done', { entity: 'file', min: 2 });
+    const evidence = () => built.states.members.taskStates()[0].evidence;
+    expect(evidence()).toHaveLength(2);
+    expect(evidence()[0]).toMatchObject({ via: 'responses', min: 1 });
+    await built.states.members.removeTaskStateEvidence('done', 0);
+    expect(evidence()).toHaveLength(1);
+    expect(evidence()[0]).toMatchObject({ min: 2 });
+  });
+
+  it('brings a retired state back into use', async () => {
+    const built = await build();
+    await enter(built, 'ds-a');
+    await built.states.members.createTaskState({ name: 'Parked', semantic: 'blocked' });
+    await built.states.members.setTaskStateRetired('parked', true);
+    expect(built.states.members.offeredTaskStates()).toEqual([]);
+    await built.states.members.setTaskStateRetired('parked', false);
+    expect(built.states.members.offeredTaskStates().map((s) => s.slug)).toEqual(['parked']);
+  });
+
+  it('lets whoever administers the space set how tasks move and put a workflow away', async () => {
+    const built = await build();
+    await enter(built, 'ds-a');
+    await built.states.members.setTaskWorkflowRule('next');
+    await built.states.members.setWorkflowArchived('review', true);
+    expect(built.states.members.archivedWorkflows()).toEqual(['review']);
+    const handle = (await built.h.datasets.get('ds-a')).handle;
+    const [stored] = (await Space.findAll(handle, {})) as Space[];
+    expect(stored.taskWorkflowRule).toBe('next');
+    await built.states.members.setWorkflowArchived('review', false);
+    expect(built.states.members.archivedWorkflows()).toEqual([]);
+  });
+
+  it('agrees with or withdraws from nothing, quietly, when no move is waiting', async () => {
+    const built = await build();
+    await enter(built, 'ds-a');
+    await built.states.members.approveTaskMove('task-1');
+    await built.states.members.withdrawTaskMove('task-1');
+    expect(built.h.toasts.said).toEqual([]);
   });
 });

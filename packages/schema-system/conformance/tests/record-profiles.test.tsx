@@ -12,14 +12,16 @@ import { createRequire } from 'node:module';
 import { CAPABILITY_PROFILES } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
-import { runProfileCase, worldEntities } from '../../../app-shell/tests/support/profileHost.tsx';
+import { runProfileCase, worldEntities } from '../../../app-shell/tests/support/profileHost.ts';
+import { solidProfileHost } from '../../../app-shell/tests/support/profileHostSolid.ts';
 import { PROFILE_CASES, PROFILE_WORLDS, profileWorldEntities } from '../src/cases/profiles';
 import { PROFILE_VECTORS_FILE, profileRun, type ProfileVectorFile, profileVectorOf } from '../src/profiles';
 
 describe('record profiles.json', () => {
   it('runs every case and writes the vector file', async () => {
     const cases = [];
-    for (const c of PROFILE_CASES) cases.push(profileVectorOf(c, await runProfileCase(profileRun(c, PROFILE_WORLDS))));
+    for (const c of PROFILE_CASES)
+      cases.push(profileVectorOf(c, await runProfileCase(profileRun(c, PROFILE_WORLDS), solidProfileHost)));
     const file: ProfileVectorFile = {
       version: 1,
       profiles: Object.fromEntries(CAPABILITY_PROFILES.map((p) => [p.id, p.version])),

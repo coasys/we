@@ -250,8 +250,8 @@ const rail: SchemaNode = railShell({
               // must not change when somebody renames it.
               avatar: { src: { $: 'space.avatar' }, name: { $: 'space.name' }, hash: { $: 'space.uuid' } },
               label: { $: 'space.name' },
-              active: { $: 'space.spaceId == routeStore.segments[1]' },
-              onClick: { $invoke: 'spaceStore.navigateToSpace', args: [{ $: 'space.spaceId' }] },
+              active: { $: 'space.spaceId == navigation.segments[1]' },
+              onClick: { $invoke: 'navigation.navigateToSpace', args: [{ $: 'space.spaceId' }] },
               /*
                 Which space the call is in — now that a call outlives leaving its space, that is a
                 question the rail has to be able to answer.

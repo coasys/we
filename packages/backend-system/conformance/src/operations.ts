@@ -1260,6 +1260,17 @@ const CASES: OperationCase[] = [
   },
 ];
 
+/** A space record for the settings cases, named, with whatever settings the case starts from. */
+const SPACE = (fields: Record<string, unknown>) => ({
+  entity: 'Space',
+  id: 'urn:example:space',
+  fields: { name: 'Garden', ...fields },
+});
+/** A picture as a space stores one: a data address, which is what the record reads back as. */
+const PICTURE = 'data:image/png;base64,iVBORw0KGgo=';
+const SPACE_SETTINGS = { entity: 'Space', fields: ['name', 'defaultTemplateId', 'defaultThemeId'], relations: [] };
+const SPACE_PICTURES = { entity: 'Space', fields: ['name', 'avatar', 'coverImage'], relations: [] };
+
 /** WE's own operations over WE's manifest: conformance for a host adopting WE's domain, not the format. */
 const CORE_CASES: OperationCase[] = [
   {
@@ -1515,6 +1526,88 @@ const CORE_CASES: OperationCase[] = [
     invocationId: '00000000-0000-4000-8000-000000000023',
     invokedAt: AT,
     observe: [{ entity: 'CollectionBlock', fields: ['kind'], relations: ['children'] }],
+  },
+  /*
+    The space's own settings: a default template and theme each members open the space with, set and
+    cleared (empty leaves the choice to each member's own default), and its two pictures — one set,
+    one taken away, and a field that is not a picture refused before anything is written.
+  */
+  {
+    id: 'core-set-space-default-template',
+    note: 'core.setSpaceDefaultTemplate writes the template members open the space with',
+    operations: CORE_OPERATIONS,
+    dataset: [SPACE({ defaultTemplateId: 'feed' })],
+    operation: 'setSpaceDefaultTemplate',
+    args: { space: 'urn:example:space', template: 'workshop' },
+    invocationId: '00000000-0000-4000-8000-000000000092',
+    invokedAt: AT,
+    observe: [SPACE_SETTINGS],
+  },
+  {
+    id: 'core-clear-space-default-template',
+    note: 'core.setSpaceDefaultTemplate with an empty template clears the choice, so the field reads as absent',
+    operations: CORE_OPERATIONS,
+    dataset: [SPACE({ defaultTemplateId: 'feed' })],
+    operation: 'setSpaceDefaultTemplate',
+    args: { space: 'urn:example:space', template: '' },
+    invocationId: '00000000-0000-4000-8000-000000000093',
+    invokedAt: AT,
+    observe: [SPACE_SETTINGS],
+  },
+  {
+    id: 'core-set-space-default-theme',
+    note: 'core.setSpaceDefaultTheme writes the theme members open the space with, and leaves the template',
+    operations: CORE_OPERATIONS,
+    dataset: [SPACE({ defaultTemplateId: 'feed' })],
+    operation: 'setSpaceDefaultTheme',
+    args: { space: 'urn:example:space', theme: 'retro' },
+    invocationId: '00000000-0000-4000-8000-000000000094',
+    invokedAt: AT,
+    observe: [SPACE_SETTINGS],
+  },
+  {
+    id: 'core-clear-space-default-theme',
+    note: 'core.setSpaceDefaultTheme with an empty theme clears the choice',
+    operations: CORE_OPERATIONS,
+    dataset: [SPACE({ defaultThemeId: 'retro' })],
+    operation: 'setSpaceDefaultTheme',
+    args: { space: 'urn:example:space', theme: '' },
+    invocationId: '00000000-0000-4000-8000-000000000095',
+    invokedAt: AT,
+    observe: [SPACE_SETTINGS],
+  },
+  {
+    id: 'core-set-space-image',
+    note: 'core.setSpaceImage puts a picture in the avatar, and leaves the cover as it was',
+    operations: CORE_OPERATIONS,
+    dataset: [SPACE({ coverImage: PICTURE })],
+    operation: 'setSpaceImage',
+    args: { space: 'urn:example:space', field: 'avatar', image: PICTURE },
+    invocationId: '00000000-0000-4000-8000-000000000096',
+    invokedAt: AT,
+    observe: [SPACE_PICTURES],
+  },
+  {
+    id: 'core-clear-space-image',
+    note: 'core.setSpaceImage with no image takes the cover away, and leaves the avatar',
+    operations: CORE_OPERATIONS,
+    dataset: [SPACE({ avatar: PICTURE, coverImage: PICTURE })],
+    operation: 'setSpaceImage',
+    args: { space: 'urn:example:space', field: 'coverImage' },
+    invocationId: '00000000-0000-4000-8000-000000000097',
+    invokedAt: AT,
+    observe: [SPACE_PICTURES],
+  },
+  {
+    id: 'core-space-image-not-an-image-field',
+    note: 'core.setSpaceImage naming a field that is not a picture fails as notAnImageField and writes nothing',
+    operations: CORE_OPERATIONS,
+    dataset: [SPACE({})],
+    operation: 'setSpaceImage',
+    args: { space: 'urn:example:space', field: 'name', image: PICTURE },
+    invocationId: '00000000-0000-4000-8000-000000000098',
+    invokedAt: AT,
+    observe: [{ entity: 'Space', fields: ['name', 'avatar'], relations: [] }],
   },
 ];
 

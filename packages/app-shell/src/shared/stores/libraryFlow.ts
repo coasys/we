@@ -12,7 +12,7 @@
  * The flow owns the stores' `operationLoading`: every long action either store runs says what it is
  * doing through the same signal, so a template shows one spinner whichever kind it is listing.
  */
-import { asFileField, compressImageToFileData, ImageBlock } from '@we/entities';
+import { asFileField, compressImageToFileData, ImageBlock, type ImageCodec } from '@we/entities';
 import type { ReactivityPort } from '@we/reactivity';
 
 import { distinctSignal } from '../distinctSignal';
@@ -45,6 +45,8 @@ export type InstallDestination = 'personal' | 'space';
 export interface LibraryFlowDeps<R extends LibraryRecord, J> {
   reactivity: ReactivityPort;
   toasts: Toasts;
+  /** How a screenshot is scaled down and encoded before it is shared — the platform's. */
+  images: ImageCodec;
   entity: LibraryEntity<R>;
   /** What one is called in a sentence — `'template'`, `'theme'`. */
   noun: string;
@@ -114,9 +116,9 @@ export interface LibraryFlow<J> {
 }
 
 /** A screenshot, as the image record the marketplace holds for a listing. */
-async function uploadScreenshot(marketplace: unknown, file: File): Promise<unknown> {
+async function uploadScreenshot(images: ImageCodec, marketplace: unknown, file: File): Promise<unknown> {
   return ImageBlock.create(marketplace, {
-    src: asFileField(await compressImageToFileData(file, `screenshot-${Date.now()}`)),
+    src: asFileField(await compressImageToFileData(images, file, `screenshot-${Date.now()}`)),
     altText: 'Screenshot',
     version: 1,
   });
@@ -156,7 +158,9 @@ export function createLibraryFlow<R extends LibraryRecord, J>(deps: LibraryFlowD
         working listing destroyed by the attempt to update it. Built first and assigned as one list,
         a failed upload never reaches the assignment and the listing keeps what it had.
       */
-      const uploaded = await Promise.all(request.screenshots.map((file) => uploadScreenshot(marketplace, file)));
+      const uploaded = await Promise.all(
+        request.screenshots.map((file) => uploadScreenshot(deps.images, marketplace, file)),
+      );
       if (existing) {
         existing.name = request.name;
         existing.description = request.description;

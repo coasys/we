@@ -1,6 +1,7 @@
-import type { AppConfig, PlatformAdapter } from '@we/app-shell/shared';
+import { type AppConfig, createBrowserPlatform, type PlatformAdapter } from '@we/app-shell/shared';
 
 export const webPlatform: PlatformAdapter = {
+  ...createBrowserPlatform(),
   resolveAppUrl(app: AppConfig, isDevelopment: boolean): string {
     // Development mode: Use devServer configuration from seed
     if (isDevelopment && app.paths.devServer) {

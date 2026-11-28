@@ -114,13 +114,13 @@ export {
   asFileField,
   dataURItoBlob,
   blobToDataURL,
-  resizeImage,
+  canvasImageCodec,
   compressImageToFileData,
   shrinkDataUri,
   dataURIToFileData,
   readFileAsFileData,
 } from './utils/imageHelpers';
-export type { FileData } from './utils/imageHelpers';
+export type { FileData, ImageCodec } from './utils/imageHelpers';
 export { normalizeSignal, denormalizeSignal } from './utils/signalNormalize';
 export { type Generated, generatedRun } from './utils/provenance';
 export { aggregateSignals } from './utils/signalAggregate';

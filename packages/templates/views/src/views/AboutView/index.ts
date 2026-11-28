@@ -73,10 +73,10 @@ export const aboutView: TemplateSchema = {
                 props: {
                   variant: 'heading-md',
                   color: 'text',
-                  loading: { $: '!spaceStore.currentSpace' },
+                  loading: { $: '!spaceSettings.currentSpace' },
                   loadingWidth: '220px',
                 },
-                children: [{ $: 'spaceStore.currentSpace.name' }],
+                children: [{ $: 'spaceSettings.currentSpace.name' }],
               },
             ],
           },
@@ -93,12 +93,12 @@ export const aboutView: TemplateSchema = {
               {
                 type: '$if',
                 props: {
-                  condition: { $: 'spaceStore.currentSpace' },
+                  condition: { $: 'spaceSettings.currentSpace' },
                   then: {
                     type: '$if',
                     props: {
-                      condition: { $: 'spaceStore.currentSpace.description' },
-                      then: { type: 'we-text', children: [{ $: 'spaceStore.currentSpace.description' }] },
+                      condition: { $: 'spaceSettings.currentSpace.description' },
+                      then: { type: 'we-text', children: [{ $: 'spaceSettings.currentSpace.description' }] },
                       else: {
                         type: 'we-text',
                         props: { italic: true },
@@ -114,17 +114,17 @@ export const aboutView: TemplateSchema = {
           attributeRow({
             icon: 'lock-simple',
             label: 'Access',
-            value: { $: "spaceStore.currentSpace.url ? 'Shared' : 'Personal'" },
+            value: { $: "spaceSettings.currentSpace.url ? 'Shared' : 'Personal'" },
             description: {
-              $: "spaceStore.currentSpace.url ? 'Joinable by anyone with the link' : 'Only visible to you'",
+              $: "spaceSettings.currentSpace.url ? 'Joinable by anyone with the link' : 'Only visible to you'",
             },
           }),
           attributeRow({
             icon: 'globe',
             label: 'Discovery',
-            value: { $: "spaceStore.currentSpace.discovery == 'listed' ? 'Listed' : 'Hidden'" },
+            value: { $: "spaceSettings.currentSpace.discovery == 'listed' ? 'Listed' : 'Hidden'" },
             description: {
-              $: "spaceStore.currentSpace.discovery == 'listed' ? 'Appears on the WE discovery globe' : 'Not shown in global discovery'",
+              $: "spaceSettings.currentSpace.discovery == 'listed' ? 'Appears on the WE discovery globe' : 'Not shown in global discovery'",
             },
           }),
 
@@ -132,11 +132,13 @@ export const aboutView: TemplateSchema = {
           {
             type: '$if',
             props: {
-              condition: { $: 'spaceStore.currentSpace.location' },
+              condition: { $: 'spaceSettings.currentSpace.location' },
               then: attributeRow({
                 icon: 'map-pin',
                 label: 'Location',
-                value: { $: '`${spaceStore.currentSpace.location.city}, ${spaceStore.currentSpace.location.country}`' },
+                value: {
+                  $: '`${spaceSettings.currentSpace.location.city}, ${spaceSettings.currentSpace.location.country}`',
+                },
               }),
             },
           },
@@ -145,7 +147,7 @@ export const aboutView: TemplateSchema = {
             label: 'Created',
             value: {
               type: 'we-timestamp',
-              props: { value: { $: 'spaceStore.currentSpace.createdAt' }, relative: true, fontWeight: 'bold' },
+              props: { value: { $: 'spaceSettings.currentSpace.createdAt' }, relative: true, fontWeight: 'bold' },
             },
             description: {
               type: 'Row',
@@ -154,13 +156,13 @@ export const aboutView: TemplateSchema = {
                 { type: 'we-text', props: { variant: 'body' }, children: ['By'] },
                 {
                   type: '$agent',
-                  props: { did: { $: 'spaceStore.currentSpace.author' }, as: 'agent' },
+                  props: { did: { $: 'spaceSettings.currentSpace.author' }, as: 'agent' },
                   children: [
                     {
                       type: 'we-avatar',
                       props: {
                         image: { $: 'agent.avatar' },
-                        hash: { $: 'spaceStore.currentSpace.author' },
+                        hash: { $: 'spaceSettings.currentSpace.author' },
                         size: 'xs',
                       },
                     },

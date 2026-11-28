@@ -5,21 +5,15 @@
  * Run once under each reactivity port, against the in-memory backend holding the connections.
  */
 import { createInMemoryBackendPorts, runInMemoryTransaction } from '@we/backend-inmemory';
-import {
-  clearPredictions,
-  getEntity,
-  predictionsFor,
-  registerEntityWriteCheck,
-  registerTransactionRunner,
-} from '@we/entities';
+import { getEntity, registerEntityWriteCheck, registerTransactionRunner } from '@we/entities';
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createRecordConnections, type RecordConnections } from '../src/shared/stores/records/connections';
 import { operationRunner } from '../src/shared/stores/records/context';
 import { createRecordKinds } from '../src/shared/stores/records/kinds';
+import { reactivityPorts } from './support/engines';
+import { testOperations, testPredictions } from './support/operations';
 
 /** Hold every write until `land`, as a round trip would; put back after each test. */
 function holdWrites(): () => void {
@@ -28,11 +22,6 @@ function holdWrites(): () => void {
   registerTransactionRunner((ds, fn) => landed.then(() => runInMemoryTransaction(ds, fn)));
   return land;
 }
-
-const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
 
 type Row = Record<string, unknown> & { id: string };
 const model = (name: string) =>
@@ -61,7 +50,8 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
             currentDatasetEntities: () => [],
             datasets: () => [],
           } as never,
-          runOp: operationRunner(sessionStore),
+          operations: testOperations,
+          runOp: operationRunner(sessionStore, testOperations),
         };
         const kinds = createRecordKinds({ ...context, shapeStore: { spaceShapes: () => [] } });
         connections = createRecordConnections({ ...context, kinds });
@@ -84,7 +74,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   afterEach(() => {
     registerEntityWriteCheck(null);
     registerTransactionRunner(runInMemoryTransaction);
-    clearPredictions();
+    testPredictions.clear();
     for (const dispose of disposers.splice(0)) dispose();
   });
 
@@ -109,8 +99,8 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     const connections = build();
     const land = holdWrites();
     const writing = connections.connect(handle, ends);
-    for (let i = 0; i < 40 && !predictionsFor(handle).length; i++) await new Promise((r) => setTimeout(r, 0));
-    const [drawn] = predictionsFor(handle).flatMap((p) => p.writes);
+    for (let i = 0; i < 40 && !testPredictions.for(handle).length; i++) await new Promise((r) => setTimeout(r, 0));
+    const [drawn] = testPredictions.for(handle).flatMap((p) => p.writes);
     expect(drawn).toMatchObject({ kind: 'create', entity: 'Relationship', fields: { source: 't1', target: 't2' } });
     land();
     expect(await writing).toBe((drawn as { id: string }).id);
@@ -123,7 +113,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
         throw Object.assign(new Error('refused'), { name: 'PolicyRefusal' });
     });
     await expect(connections.connect(handle, ends)).rejects.toThrow();
-    expect(predictionsFor(handle)).toEqual([]);
+    expect(testPredictions.for(handle)).toEqual([]);
   });
 
   it('rekeys a connection after a record it joins is renamed', async () => {

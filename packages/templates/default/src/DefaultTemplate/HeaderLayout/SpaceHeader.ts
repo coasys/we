@@ -1,5 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { MEMBERS, peopleRow, peopleTooltip } from '@we/template-kit';
+import { MEMBERS, peopleRow, peopleTooltip, spaceImageChange } from '@we/template-kit';
 
 export const spaceHeader: SchemaNode = {
   type: 'Column',
@@ -17,7 +17,7 @@ export const spaceHeader: SchemaNode = {
             {
               type: 'EditableImage',
               props: {
-                src: { $: 'spaceStore.currentSpace.coverImage' },
+                src: { $: 'spaceSettings.currentSpace.coverImage' },
                 alt: 'Cover image',
                 fit: 'cover',
                 width: '100%',
@@ -25,7 +25,7 @@ export const spaceHeader: SchemaNode = {
                 rb: '600',
                 aspect: 4 / 1,
                 placeholderIcon: 'panorama',
-                onImageChange: { $invoke: 'spaceStore.updateSpaceImage', args: ['coverImage', { $: 'arg' }] },
+                onImageChange: spaceImageChange('coverImage'),
               },
             },
             {
@@ -36,7 +36,7 @@ export const spaceHeader: SchemaNode = {
                 {
                   type: 'EditableImage',
                   props: {
-                    src: { $: 'spaceStore.currentSpace.avatar' },
+                    src: { $: 'spaceSettings.currentSpace.avatar' },
                     alt: 'Profile picture',
                     fit: 'cover',
                     width: '120px',
@@ -44,7 +44,7 @@ export const spaceHeader: SchemaNode = {
                     r: 'avatar',
                     ring: '0 0 0 2px var(--we-ring-color)',
                     placeholderIcon: 'users-three',
-                    onImageChange: { $invoke: 'spaceStore.updateSpaceImage', args: ['avatar', { $: 'arg' }] },
+                    onImageChange: spaceImageChange('avatar'),
                   },
                 },
                 // Space Details
@@ -67,23 +67,23 @@ export const spaceHeader: SchemaNode = {
                       props: {
                         variant: 'heading-md',
                         color: 'text',
-                        loading: { $: '!spaceStore.currentSpace' },
+                        loading: { $: '!spaceSettings.currentSpace' },
                         loadingWidth: '220px',
                       },
-                      children: [{ $: 'spaceStore.currentSpace.name' }],
+                      children: [{ $: 'spaceSettings.currentSpace.name' }],
                     },
                     {
                       type: '$if',
                       props: {
-                        condition: { $: 'spaceStore.currentSpace' },
+                        condition: { $: 'spaceSettings.currentSpace' },
                         then: {
                           type: '$if',
                           props: {
-                            condition: { $: 'spaceStore.currentSpace.description' },
+                            condition: { $: 'spaceSettings.currentSpace.description' },
                             then: {
                               type: 'we-text',
                               props: { truncate: true },
-                              children: [{ $: 'spaceStore.currentSpace.description' }],
+                              children: [{ $: 'spaceSettings.currentSpace.description' }],
                             },
                             else: {
                               type: 'we-text',
@@ -242,8 +242,8 @@ export const spaceNavBar: SchemaNode = {
                     {
                       type: 'we-avatar',
                       props: {
-                        image: { $: 'spaceStore.currentSpace.avatar' },
-                        initials: { $: 'spaceStore.currentSpace.name' },
+                        image: { $: 'spaceSettings.currentSpace.avatar' },
+                        initials: { $: 'spaceSettings.currentSpace.name' },
                         // `md`, matching the buttons beside it: the bar is exactly one control
                         // tall, and an `lg` avatar is taller than that.
                         size: 'md',
@@ -255,7 +255,7 @@ export const spaceNavBar: SchemaNode = {
                       // that could grow without bound.
                       type: 'we-text',
                       props: { fontWeight: 'semibold', whiteSpace: 'nowrap', truncate: true, maxWidth: '240px' },
-                      children: [{ $: 'spaceStore.currentSpace.name' }],
+                      children: [{ $: 'spaceSettings.currentSpace.name' }],
                     },
                   ],
                 },
@@ -331,13 +331,13 @@ export const spaceNavBar: SchemaNode = {
                       // carried About and Settings with Flux commented out, the sidebar carried Flux and
                       // neither of the others. Both now read what the routes are built from.
                       type: '$each',
-                      props: { items: { $: 'spaceStore.viewNav' }, as: 'view' },
+                      props: { items: { $: 'navigation.viewNav' }, as: 'view' },
                       children: [
                         {
                           type: 'we-button',
                           props: {
-                            variant: { $: "routeStore.segments[2] == view.segment ? 'solid' : 'ghost'" },
-                            onClick: { $invoke: 'routeStore.navigate', args: [{ $: 'view.path' }] },
+                            variant: { $: "navigation.segments[2] == view.segment ? 'solid' : 'ghost'" },
+                            onClick: { $invoke: 'navigation.navigate', args: [{ $: 'view.path' }] },
                           },
                           children: [
                             { type: 'we-icon', props: { name: { $: 'view.icon' } } },
@@ -352,7 +352,7 @@ export const spaceNavBar: SchemaNode = {
                   ],
                 },
                 // Live presence — who else is in this space right now. Hidden entirely in a personal
-                // space (no neighbourhood, so `presenceStore.available` is false) and when nobody else
+                // space (no neighbourhood, so `presence.available` is false) and when nobody else
                 // is around, rather than rendering "0 online now".
                 //
                 // `flex: '0 0 auto'` because this is an ornament, never the row's shock absorber. It was
@@ -367,7 +367,7 @@ export const spaceNavBar: SchemaNode = {
                     {
                       type: '$if',
                       props: {
-                        condition: { $: 'count(presenceStore.online) > 0' },
+                        condition: { $: 'count(presence.online) > 0' },
                         // The count, the label and the faces are one statement, so the roster covers all
                         // three — "3 online now" is as much the hover target as the avatars are.
                         //
@@ -377,7 +377,7 @@ export const spaceNavBar: SchemaNode = {
                         // shape is a coincidence; the members row above and the participant rows on cards
                         // are the three that made a fragment worth having.
                         then: peopleTooltip({
-                          items: { $: 'presenceStore.online' },
+                          items: { $: 'presence.online' },
                           image: { $: 'person.avatar' },
                           hash: { $: 'person.did' },
                           name: { $: 'person.name' },
@@ -396,7 +396,7 @@ export const spaceNavBar: SchemaNode = {
                                     {
                                       type: 'we-number',
                                       props: {
-                                        value: { $: 'count(presenceStore.online)' },
+                                        value: { $: 'count(presence.online)' },
                                         shorten: true,
                                       },
                                     },
@@ -414,7 +414,7 @@ export const spaceNavBar: SchemaNode = {
                                   type: 'AvatarStack',
                                   props: {
                                     avatars: {
-                                      $: 'presenceStore.online.map(item, { image: item.avatar, hash: item.did, tone: item.tone })',
+                                      $: 'presence.online.map(item, { image: item.avatar, hash: item.did, tone: item.tone })',
                                     },
                                     max: 5,
                                     size: 'sm',

@@ -151,8 +151,12 @@ export type Refusal =
   | { reason: 'frozen'; action: string }
   /** The policy was written in a newer format than this code reads, so nothing here may write. */
   | { reason: 'newer-format'; action: string; format: number }
-  /** The space's rules could not be read, so nothing may write until they can. */
-  | { reason: 'unreadable'; action: string };
+  /**
+   * The space's rules could not be read, so nothing may write until they can. `arriving` when the
+   * read succeeded and the space's own record is not there yet: a space this agent knows, still
+   * syncing, rather than a read that failed.
+   */
+  | { reason: 'unreadable'; action: string; arriving?: true };
 
 /** A refusal as an error, so a write that is not allowed rejects with one. */
 export class PolicyRefusal extends Error {
@@ -177,7 +181,9 @@ export function describeRefusal(refusal: Refusal): string {
     case 'newer-format':
       return "This space's rules were written by a newer version of the app. Update it to make changes here.";
     case 'unreadable':
-      return "This space's rules could not be loaded, so changes are paused. Try again in a moment.";
+      return refusal.arriving
+        ? 'This space is still arriving. Try again in a moment.'
+        : "This space's rules could not be loaded, so changes are paused. Try again in a moment.";
   }
 }
 

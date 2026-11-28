@@ -16,7 +16,7 @@ import { describe, expect, it } from 'vitest';
  *
  * The walk below tests *expansions*, which only covers fragments a fixture exists for — and when the
  * portable tier moved to `@we/schema-kit`, four collection fragments went with it that filter on
- * `spaceStore.mutedDids`, because none of them had one. They were store-namers sitting in the package
+ * `identity.mutedDids`, because none of them had one. They were store-namers sitting in the package
  * whose whole claim is that it names none, and nothing failed.
  *
  * Reading the source catches what no fixture set can promise to. Comments are stripped first: half

@@ -18,7 +18,7 @@ import { VOCABULARY_NAMES } from './vocabulary.ts';
  * one thing after another in the tree shows each on the canvas rather than leaving it.
  */
 export const VIEW_PARAM = 'view';
-export const IN_CANVAS = `routeStore.params.${VIEW_PARAM} == 'canvas'`;
+export const IN_CANVAS = `navigation.params.${VIEW_PARAM} == 'canvas'`;
 
 /** A path with the mode carried on it, whichever way its query begins. */
 export const withView = (pathExpr: string): string =>
@@ -30,7 +30,7 @@ export const withView = (pathExpr: string): string =>
  * page (`/dna`) in Page mode. A definition is read in the inspector as well, which follows `card`.
  */
 export const DNA_PARAM = 'dna';
-export const DNA_FOCUS = `routeStore.params.${DNA_PARAM}`;
+export const DNA_FOCUS = `navigation.params.${DNA_PARAM}`;
 
 /**
  * What an address from before a class was a model meant: its kind, as the class it named. A bookmark
@@ -55,7 +55,7 @@ const LEGACY_AT = `{ ${LEGACY_CLASSES.map(([k, v]) => `${k}: '${v}'`).join(', ')
 export const DNA_AT = `(${DNA_FOCUS} ? [split(${DNA_FOCUS}, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? ${DNA_FOCUS} : [p[0] == 'class' ? p[1] : ${LEGACY_AT}[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all')`;
 
 /** The vocabulary map is being shown, in either mode. */
-export const ON_DNA_PAGE = "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna'";
+export const ON_DNA_PAGE = "(navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'dna'";
 export const DNA_SHOWN = `((${IN_CANVAS}) || ${ON_DNA_PAGE}) && ${DNA_FOCUS}`;
 
 /**
@@ -65,15 +65,15 @@ export const DNA_SHOWN = `((${IN_CANVAS}) || ${ON_DNA_PAGE}) && ${DNA_FOCUS}`;
 export const showDna = (focus: string): SchemaProp => ({
   $if: {
     condition: { $: IN_CANVAS },
-    then: { $invoke: 'routeStore.setParam', args: [DNA_PARAM, { $: focus }] },
+    then: { $invoke: 'navigation.setParam', args: [DNA_PARAM, { $: focus }] },
     else: dnaPage(focus),
   },
 });
 
 /** The Social DNA page, with `focus` in the address — and nothing else, so it is in Page mode. */
 export const dnaPage = (focus: string): SchemaProp => ({
-  $invoke: 'routeStore.navigate',
-  args: [{ $: "spaceStore.spacePath + '/dna'" }, { $: `{ query: { ${DNA_PARAM}: ${focus} } }` }],
+  $invoke: 'navigation.navigate',
+  args: [{ $: "navigation.spacePath + '/dna'" }, { $: `{ query: { ${DNA_PARAM}: ${focus} } }` }],
 });
 
 /** The inspector's panel id, as the space declares it — see `shell.ts`. */
@@ -85,14 +85,14 @@ export const INSPECTOR_PANEL = 'inspector';
  */
 export const inspect = (id: string, type: SchemaProp): SchemaProp[] => [
   ...openRecord(id, type),
-  { $invoke: 'shellStore.openTemplatePanel', args: [INSPECTOR_PANEL] },
+  { $invoke: 'viewState.openTemplatePanel', args: [INSPECTOR_PANEL] },
 ];
 
 /** A definition read in the inspector beside a page lights its class's row. */
-const INSPECTED_DNA = `routeStore.params.cardType in ${VOCABULARY_NAMES}`;
+const INSPECTED_DNA = `navigation.params.cardType in ${VOCABULARY_NAMES}`;
 
 /** The channel on screen: the one the address names, or the space's own collection, its root channel. */
-export const CHANNEL_EXPR = 'routeStore.params.channel ? routeStore.params.channel : spaceStore.root';
+export const CHANNEL_EXPR = 'navigation.params.channel ? navigation.params.channel : spaceStore.root';
 export const CHANNEL = { $: CHANNEL_EXPR };
 
 /** Whether the channel on screen is the space's root — "General", which every space has. */
@@ -115,24 +115,24 @@ export const ROOT_KNOWN_EXPR = 'spaceStore.rootLoaded';
  * back the query string last used there, so "the space with no channel named" came back as the last
  * channel opened and General could not be reached once another had been.
  */
-export const channelPath = (idExpr: string): string => withView(`spaceStore.spacePath + '?channel=' + (${idExpr})`);
+export const channelPath = (idExpr: string): string => withView(`navigation.spacePath + '?channel=' + (${idExpr})`);
 
 /**
  * A call's address: its record's own page, drawn by the call view.
  *
  * The id goes in twice. `id` names the record the page draws; `call` is the parameter the call and
- * transcribe modules read for "the call on screen" (`routeStore.params.call`), so the interpretation
+ * transcribe modules read for "the call on screen" (`navigation.params.call`), so the interpretation
  * panel, its count on the call bar and the transcript all follow the page's call rather than the
  * call this agent has joined.
  */
 export const callPath = (idExpr: string): string =>
-  withView(`spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (${idExpr}) + '&call=' + (${idExpr})`);
+  withView(`navigation.spacePath + '/record/CollectionBlock?kind=call&id=' + (${idExpr}) + '&call=' + (${idExpr})`);
 
 /** A person's address: their profile, drawn as the view. */
-export const personPath = (didExpr: string): string => withView(`spaceStore.spacePath + '/person?did=' + (${didExpr})`);
+export const personPath = (didExpr: string): string => withView(`navigation.spacePath + '/person?did=' + (${didExpr})`);
 
 /** Which part of the page the address is on — '' for a channel's chat. */
-export const PAGE_EXPR = "routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''";
+export const PAGE_EXPR = "navigation.templateSegments[0] ? navigation.templateSegments[0] : ''";
 
 /**
  * The groups of the tree that are pages as well: pressing the row opens the page, a full view of what
@@ -143,7 +143,7 @@ export const GROUP_PAGES = ['channels', 'calls', 'workflows', 'people'] as const
 export type GroupPage = (typeof GROUP_PAGES)[number];
 
 /** A group's page. */
-export const groupPath = (page: GroupPage): string => withView(`spaceStore.spacePath + '/${page}'`);
+export const groupPath = (page: GroupPage): string => withView(`navigation.spacePath + '/${page}'`);
 
 /**
  * The tree row that matches the address, as `we-tree`'s `selected` takes it: `<kind>|<id>`. Each row
@@ -155,15 +155,15 @@ export const SELECTED_EXPR = [
   // A class lights its row, with one of its records chosen as well.
   `${DNA_SHOWN} ? (${DNA_AT} == 'all' ? 'group|dna' : startsWith(${DNA_AT}, 'policy|') ? 'dnaprop|' + ${DNA_AT} : startsWith(${DNA_AT}, 'model|') ? 'dna|model|' + split(${DNA_AT}, '|')[1] : 'dnakind|' + ${DNA_AT})`,
   `:`,
-  `routeStore.params.card && ${INSPECTED_DNA} ? 'dna|model|' + routeStore.params.cardType`,
-  `: (${PAGE_EXPR}) == 'record' ? 'call|' + routeStore.params.id`,
-  `: (${PAGE_EXPR}) == 'person' ? 'person|' + routeStore.params.did`,
+  `navigation.params.card && ${INSPECTED_DNA} ? 'dna|model|' + navigation.params.cardType`,
+  `: (${PAGE_EXPR}) == 'record' ? 'call|' + navigation.params.id`,
+  `: (${PAGE_EXPR}) == 'person' ? 'person|' + navigation.params.did`,
   /*
     A record chosen on the flows page lights its row under Active flows. One that has finished has no
     row there, so nothing is lit: asking whether it is still running would take this expression past
     the length an expression may be.
   */
-  `: (${PAGE_EXPR}) == 'workflows' ? (workflowStore.open ? (routeStore.params.card ? 'run|' + workflowStore.open.name + '|' + routeStore.params.card : 'workflow|' + workflowStore.open.name) : 'group|workflows')`,
+  `: (${PAGE_EXPR}) == 'workflows' ? (workflowStore.open ? (navigation.params.card ? 'run|' + workflowStore.open.name + '|' + navigation.params.card : 'workflow|' + workflowStore.open.name) : 'group|workflows')`,
   `: (${PAGE_EXPR}) in [${GROUP_PAGES.filter((p) => p !== 'workflows')
     .map((p) => `'${p}'`)
     .join(', ')}] ? 'group|' + (${PAGE_EXPR})`,

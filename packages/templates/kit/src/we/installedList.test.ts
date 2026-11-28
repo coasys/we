@@ -17,7 +17,7 @@ const options = {
   avatarIcon: 'layout',
   key: { $: 'template.slug' },
   activeStorePath: 'templateStore.currentTemplate.id',
-  applyAction: 'templateStore.switchTemplate',
+  applyAction: 'appearance.switchTemplate',
   defaultField: 'defaultTemplateId',
   refreshAction: 'templateStore.refreshSpaceTemplates',
 };

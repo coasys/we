@@ -33,7 +33,7 @@ describe('recordLink', () => {
   const button = find(node, 'we-button')!;
 
   it('puts the id in the query, never in the path', () => {
-    expect(button.href.$).toBe("`${spaceStore.spacePath}/record/${'CollectionBlock'}?id=${post.id}`");
+    expect(button.href.$).toBe("`${navigation.spacePath}/record/${'CollectionBlock'}?id=${post.id}`");
   });
 
   it('builds its path out of the route it targets', () => {
@@ -49,6 +49,6 @@ describe('recordLink', () => {
   it('builds an absolute path from the space it is in', () => {
     // A relative href resolves against the current URL rather than the route tree, so it is right
     // from a section's index and wrong from any sub-route of one.
-    expect(button.href.$.startsWith('`${spaceStore.spacePath}/')).toBe(true);
+    expect(button.href.$.startsWith('`${navigation.spacePath}/')).toBe(true);
   });
 });

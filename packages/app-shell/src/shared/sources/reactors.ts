@@ -5,7 +5,7 @@
  *
  * The record already carries the answer — `include: { signals: true }` hydrates every `Signal` with
  * its `author` and `value`, so nothing new is fetched. What a schema cannot do is the **join**: a
- * signal names a DID, and a face and a name live in `profileStore.profiles`, and an expression that
+ * signal names a DID, and a face and a name live in `identity.profiles`, and an expression that
  * paired them would be a `find()` inside a `map()` inside a `filter()` written out at every call
  * site. `involvement` exists for the same reason one concept along, and this is deliberately its
  * shape.

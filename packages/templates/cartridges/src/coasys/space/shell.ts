@@ -29,9 +29,9 @@ import { callPage, spaceRoutes } from './views.ts';
 
 /** Put the inspector away: nothing chosen, and its panel closed. */
 const CLOSE_INSPECTOR = [
-  { $invoke: 'routeStore.setParam', args: ['card', ''] },
-  { $invoke: 'routeStore.setParam', args: ['cardType', ''] },
-  { $invoke: 'shellStore.closeTemplatePanel', args: [INSPECTOR_PANEL] },
+  { $invoke: 'navigation.setParam', args: ['card', ''] },
+  { $invoke: 'navigation.setParam', args: ['cardType', ''] },
+  { $invoke: 'viewState.closeTemplatePanel', args: [INSPECTOR_PANEL] },
 ];
 export const coasysSpace: TemplateSchema & { id: string } = {
   schemaVersion: 1,
@@ -40,7 +40,7 @@ export const coasysSpace: TemplateSchema & { id: string } = {
     name: 'Coasys',
     description: 'A space as one tree and one view: its channels, calls, workflows and people beside what you chose.',
     icon: 'tree-structure',
-    requires: { modules: ['call', 'transcribe'] },
+    requires: { modules: ['call', 'feed', 'transcribe'] },
     // `grow` so the tree takes the lane's whole length and scrolls inside it, rather than stopping
     // where its rows do. `fixed`: see above.
     panels: [

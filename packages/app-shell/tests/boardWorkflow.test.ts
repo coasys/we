@@ -6,10 +6,11 @@
  * the in-memory backend, compared before and after.
  */
 import { createInMemoryBackendPorts } from '@we/backend-inmemory';
-import { getEntity, predictionsFor } from '@we/entities';
+import { getEntity } from '@we/entities';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createBoardActions } from '../src/shared/boards';
+import { testOperations, testPredictions } from './support/operations';
 
 type Row = Record<string, unknown> & { id: string };
 const model = (name: string) =>
@@ -39,6 +40,7 @@ function actions(
   const move = vi.fn(async () => outcome);
   const notify = vi.fn();
   const board = createBoardActions({
+    operations: testOperations,
     dataset: () => dataset,
     invoker: () => 'did:test:me',
     offeredStates: () => [
@@ -83,7 +85,7 @@ describe('a drop into a state that asks for agreement', () => {
   it('draws nothing ahead of it either, so the card never jumps to Done and back', async () => {
     const { board } = actions('waiting');
     await board.moveCardToColumn('col-todo', 'col-done', 't1', ['t1']);
-    expect(predictionsFor(dataset)).toEqual([]);
+    expect(testPredictions.for(dataset)).toEqual([]);
   });
 
   it('writes the arrangement and the state once the move has happened', async () => {

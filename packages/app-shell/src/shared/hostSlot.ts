@@ -33,12 +33,22 @@ export interface HostSlot<T> {
   get: () => T | null;
   /** Lend a value. Returns the disposer; call it, or hand it to `onCleanup`. */
   provide: (value: T) => () => void;
+  /**
+   * What was lent, for a caller to whom absent is a wiring mistake rather than an answer: throws,
+   * naming `what`, when nothing has been. A composition that forgot a `provide*` call fails at the
+   * first use, saying which, rather than as a missing method somewhere downstream.
+   */
+  need: (what: string) => T;
 }
 
 export function hostSlot<T>(): HostSlot<T> {
   let current: T | null = null;
   return {
     get: () => current,
+    need: (what: string) => {
+      if (current === null) throw new Error(`${what} was not provided`);
+      return current;
+    },
     provide: (value: T) => {
       current = value;
       return () => {

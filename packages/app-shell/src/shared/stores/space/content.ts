@@ -17,6 +17,8 @@ import {
 import { CollectionBlock, compressImageToFileData, type DatasetProxy, dataURIToFileData } from '@we/entities';
 
 import { createBoardActions } from '../../boards';
+import { fileAsDataURI } from '../../fileDataURI';
+import { provideModuleHostServices } from '../../registries/moduleHostServices';
 import { uploadOf } from '../../uploadOf';
 import type { RecordStore } from '../RecordStore';
 import type { SpaceStore } from '../SpaceStore';
@@ -33,16 +35,6 @@ export interface SpaceContentDeps extends SpaceContext {
   >;
   taskStates: Pick<SpaceTaskStates, 'offeredTaskStates' | 'boardWorkflow'>;
 }
-
-/** A file's contents as a data URI. */
-const readAsDataURI = (file: File) =>
-  new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    // `readAsDataURL` always yields a string.
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(reader.error ?? new Error(`Could not read ${file.name}`));
-    reader.readAsDataURL(file);
-  });
 
 export function createSpaceContent(deps: SpaceContentDeps) {
   const { reactivity, toasts, sessionStore: session, datasetStore, recordStore, navigation, taskStates } = deps;
@@ -135,6 +127,7 @@ export function createSpaceContent(deps: SpaceContentDeps) {
     they ask for agreement, and how a failure reaches the person who caused it.
   */
   const boards = createBoardActions({
+    operations: deps.operations,
     dataset: datasetFor,
     invoker: () => session.me()?.did,
     offeredStates: () => taskStates.offeredTaskStates(),
@@ -162,6 +155,12 @@ export function createSpaceContent(deps: SpaceContentDeps) {
   });
 
   /*
+    Extraction's hook for a board — see the declaration on `ModuleHostServices`, and `ensureBoardFor`
+    for why it only fires once the collection holds a task. Lent from here, where the boards are.
+  */
+  onCleanup(provideModuleHostServices({ ensureBoardFor: boards.ensureBoardFor }));
+
+  /*
     Where content lives: the space collection, for anything made on the space's own canvas and for
     anything made with no other home. See `provideContentHomes` — lent because the record store is
     composed before this one.
@@ -185,10 +184,10 @@ export function createSpaceContent(deps: SpaceContentDeps) {
     if (!profiles) return null;
     try {
       const fileData = file.type.startsWith('image/')
-        ? await compressImageToFileData(file, name ?? file.name)
+        ? await compressImageToFileData(deps.platform.images, file, name ?? file.name)
         : // Non-images go through unchanged. `dataURIToFileData` is the same decode the image path
           // ends with, so both arrive at the port in one shape.
-          dataURIToFileData(await readAsDataURI(file), name ?? file.name);
+          dataURIToFileData(await fileAsDataURI(file), name ?? file.name);
       return await profiles.uploadFile(uploadOf(fileData));
     } catch (error) {
       console.error('SpaceStore: upload failed', error);

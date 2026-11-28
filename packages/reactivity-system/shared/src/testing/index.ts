@@ -4,5 +4,6 @@
  *
  * The suite imports vitest, which is why this is a subpath of its own and vitest an optional peer.
  */
-export { createTestReactivity } from './port';
+export { createTestReactivity, TEST_REACTIVITY_SEED, type TestReactivityOptions, testPortsMade } from './port';
 export { DEFAULT_HOSTS, describeReactivityGuarantees, type ReactivityHost } from './guarantees';
+export { reportTestReactivitySeed } from './seedReport';

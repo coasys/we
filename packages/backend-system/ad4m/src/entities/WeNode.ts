@@ -81,7 +81,7 @@ export class WeNode extends Ad4mModel {
    * one list on the post that both would have to share.
    *
    * DIDs rather than a relation to an agent model: there is no agent entity in the perspective to
-   * point at, and profiles are already resolved separately (see `profileStore.profiles` feeding
+   * point at, and profiles are already resolved separately (see `identity.profiles` feeding
    * `AvatarStack`). Add-only in practice — each agent appends itself — which is what makes it
    * conflict-free without coordination.
    *

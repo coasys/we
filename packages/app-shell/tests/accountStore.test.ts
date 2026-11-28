@@ -9,19 +9,16 @@
  */
 import type { Account, AccountHost } from '@shared/platform/types';
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
 import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { createTestPlatform, type TestPlatform } from '../src/shared/platform/testPlatform';
 import { type AccountStore, createAccountStore } from '../src/shared/stores/AccountStore';
-
-const ports: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
+import { reactivityPorts } from './support/engines';
 
 let accountHost: AccountHost | undefined;
 let port: ReactivityPort = solidReactivity;
+let platform: TestPlatform = createTestPlatform();
 const disposers: (() => void)[] = [];
 
 function mount(): AccountStore {
@@ -30,7 +27,7 @@ function mount(): AccountStore {
     port.root(() => {
       store = createAccountStore({
         reactivity: port,
-        platform: { isDesktop: true, isDevelopment: true, accounts: accountHost } as never,
+        platform: { ...platform, isDesktop: true, isDevelopment: true, accounts: accountHost } as never,
       });
     }),
   );
@@ -75,12 +72,11 @@ afterEach(() => {
   for (const dispose of disposers.splice(0)) dispose();
 });
 
-describe.each(ports)('under %s', (_name, makePort) => {
+describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   beforeEach(() => {
     port = makePort();
     accountHost = undefined;
-    sessionStorage.clear();
-    localStorage.clear();
+    platform = createTestPlatform();
   });
 
   describe('when the host cannot manage accounts (web)', () => {
@@ -132,13 +128,13 @@ describe.each(ports)('under %s', (_name, makePort) => {
   });
 
   describe('the cache — what the screen can draw before IPC answers', () => {
-    const cached = () => JSON.parse(sessionStorage.getItem('we:accounts') ?? '[]');
+    const cached = () => JSON.parse(platform.sessionStorage.getItem('we:accounts') ?? '[]');
 
     it('seeds the list synchronously, so the whole screen paints on the first frame', () => {
       // The corner switcher reads `accounts` and the badge reads `activeAccount`. Both were empty
       // until the host answered, several frames after first paint — which is why the corner
       // disappeared and came back on every switch.
-      sessionStorage.setItem('we:accounts', JSON.stringify(TWO));
+      platform.sessionStorage.setItem('we:accounts', JSON.stringify(TWO));
       const { host } = stubHost(TWO);
       accountHost = host;
 
@@ -153,14 +149,14 @@ describe.each(ports)('under %s', (_name, makePort) => {
       // The cache used to live in localStorage, which survives app restarts. After deleting the
       // data directories for a clean slate, the first paint still named a deleted account — the
       // cache is in the host's browser profile and nothing on disk touches it.
-      localStorage.setItem('we:accounts', JSON.stringify(TWO));
+      platform.storage.setItem('we:accounts', JSON.stringify(TWO));
       accountHost = stubHost([]).host;
 
       const store = mount();
 
       expect(store.accounts()).toEqual([]);
       // ...and the stale key is cleared, so an existing install stops carrying one.
-      expect(localStorage.getItem('we:accounts')).toBeNull();
+      expect(platform.storage.getItem('we:accounts')).toBeNull();
     });
 
     it('starts empty with no cache, rather than throwing', () => {
@@ -171,7 +167,7 @@ describe.each(ports)('under %s', (_name, makePort) => {
     });
 
     it('ignores a corrupt cache', () => {
-      sessionStorage.setItem('we:accounts', 'not json');
+      platform.sessionStorage.setItem('we:accounts', 'not json');
       const { host } = stubHost(TWO);
       accountHost = host;
       expect(mount().accounts()).toEqual([]);

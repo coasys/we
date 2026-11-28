@@ -17,7 +17,7 @@
  * ## What stays hand-authored, and why
  *
  * **Prose and shape metadata.** A member's *description* is judgement, and `StateMemberMeta`'s
- * `properties`/`model` is what lets the validator check `{ $: 'spaceStore.currentSpace.name' }` one
+ * `properties`/`model` is what lets the validator check `{ $: 'spaceSettings.currentSpace.name' }` one
  * level deeper — neither is recoverable from `Accessor<Space | null>` without resolving the type.
  *
  * So the split is: **source owns the names, the fragment owns the meaning.** `generate.ts` joins
@@ -165,6 +165,64 @@ export function extractAmbientMembers(surfaceFile: string): Map<string, Set<stri
  */
 export function extractDestructiveMembers(surfaceFile: string): Map<string, Set<string>> {
   return extractClassified(surfaceFile, (init) => init.startsWith('destructive('));
+}
+
+/**
+ * The capability group `templateSurface.ts` grants each member under, per store — the first string
+ * its classification names (`state('session')`, `hereOnly('space-settings', 2)`). Wiring has none.
+ * What the validator sorts a template's WE-host-only uses by, so the report says which kind of host
+ * state a template leans on rather than only how much.
+ */
+export function extractMemberGroups(surfaceFile: string): Map<string, Map<string, string>> {
+  const project = new Project({ skipAddingFilesFromTsConfig: true });
+  const file = project.addSourceFileAtPath(surfaceFile);
+  const surface = file
+    .getVariableDeclaration('TEMPLATE_SURFACE')
+    ?.getInitializerIfKind(SyntaxKind.ObjectLiteralExpression);
+  if (!surface) throw new Error(`could not read TEMPLATE_SURFACE from ${surfaceFile}`);
+
+  const found = new Map<string, Map<string, string>>();
+  for (const storeProp of surface.getProperties()) {
+    if (!storeProp.isKind(SyntaxKind.PropertyAssignment)) continue;
+    const members = storeProp.getInitializerIfKind(SyntaxKind.ObjectLiteralExpression);
+    if (!members) continue;
+    const groups = new Map<string, string>();
+    for (const member of members.getProperties()) {
+      if (!member.isKind(SyntaxKind.PropertyAssignment)) continue;
+      const init = member.getInitializer()?.getText() ?? '';
+      const group = init === 'WIRING' ? undefined : /'([a-z-]+)'/.exec(init)?.[1];
+      if (group) groups.set(member.getName(), group);
+    }
+    if (groups.size) found.set(storeProp.getName(), groups);
+  }
+  return found;
+}
+
+/**
+ * Where the host keeps each capability profile member, read from `PROFILE_HOMES` in
+ * `templateSurface.ts`: by namespace, the store holding each member. The bag reaches those members
+ * under the namespace only, so the generated context moves them there from their stores.
+ */
+export function extractProfileHomes(surfaceFile: string): Map<string, Map<string, string>> {
+  const project = new Project({ skipAddingFilesFromTsConfig: true });
+  const file = project.addSourceFileAtPath(surfaceFile);
+  const table = file.getVariableDeclaration('PROFILE_HOMES')?.getInitializerIfKind(SyntaxKind.ObjectLiteralExpression);
+  if (!table) throw new Error(`could not read PROFILE_HOMES from ${surfaceFile}`);
+
+  const homes = new Map<string, Map<string, string>>();
+  for (const namespace of table.getProperties()) {
+    if (!namespace.isKind(SyntaxKind.PropertyAssignment)) continue;
+    const byMember = new Map<string, string>();
+    const stores = namespace.getInitializerIfKind(SyntaxKind.ObjectLiteralExpression);
+    for (const store of stores?.getProperties() ?? []) {
+      if (!store.isKind(SyntaxKind.PropertyAssignment)) continue;
+      const members = store.getInitializerIfKind(SyntaxKind.ArrayLiteralExpression)?.getElements() ?? [];
+      for (const member of members)
+        if (member.isKind(SyntaxKind.StringLiteral)) byMember.set(member.getLiteralText(), store.getName());
+    }
+    homes.set(namespace.getName(), byMember);
+  }
+  return homes;
 }
 
 /** Members of `TEMPLATE_SURFACE` whose classification's source text passes `test`, per store. */

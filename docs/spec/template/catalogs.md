@@ -71,37 +71,77 @@ the parts that need it draw the missing marker or no value, and the rest of the 
 
 ## Declaring what a template requires
 
-A template declares the extension catalogs it depends on in `meta.requires`. In this version it
-holds `modules`, a list of module ids: every module whose store, part or panel the template names.
+A template MAY declare in `meta.requires` what it needs of a host beyond the core catalog, records
+and operations:
 
-- A template naming a module's store, part or panel SHOULD list the module: a host cannot always
-  derive it (a module named only inside an expression or a part is invisible to a walk of component
-  types).
-- A host that lacks a required module MUST still draw the template, and MUST tell the person which
-  module is missing rather than leave its parts blank. A validator that knows the deployment's
-  modules reports a required module it lacks.
+```json
+"requires": { "profiles": ["navigation", "view-state"], "modules": ["call"] }
+```
 
-> **Planned.** `meta.requires` for the other extension catalogs (engines, host functions, foreign
-> elements) and for the [capability profiles](../profiles/README.md), each with the version the
-> template was written against, so a host can refuse or warn before rendering rather than degrading
-> part by part.
+| Key        | Value                                                                                                                      |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `profiles` | The [capability profiles](../profiles/README.md) whose members it names, by id (`navigation`, `view-state`, `appearance`). |
+| `modules`  | The modules whose store (`modules.<id>.<member>`), parts (`$part`) or panels (`meta.panels` naming `module`) it names.     |
+
+`requires` holds these two keys only; any other is an error, since a host cannot tell an extension it
+may skip from one the template cannot work without.
+
+**Absent, nothing is promised.** A template with no `requires` is written for one host (in WE, WE's
+own), may name whatever that host offers, and is checked as before.
+
+**Written, it is a promise a host reads before drawing.** A validator MUST then report as an error:
+
+- a module the template names that `modules` does not list;
+- when `profiles` is written, a profile whose namespace the template names that `profiles` does not
+  list, and an id in `profiles` that is not a profile.
+
+**Writing `profiles` declares the template portable**: it runs on any host that provides those
+profiles and modules. A validator SHOULD warn about every [host-only](../profiles/README.md#we-host-only)
+member such a template uses, since it would not run elsewhere. `profiles: []` is a template that
+needs no profile at all, only records and operations. `modules` written alone keeps the older
+meaning — a template for its own host saying which modules it leans on — and does not declare the
+template portable.
+
+A host that lacks a module a template's `modules` lists:
+
+- at **install** (a person adding the template, alone or in a bundle), MUST refuse it and say which
+  module is missing, in words, or offer the module where it has a way to add one;
+- when **drawing** a template already installed, MUST still draw it, and MUST tell the person which
+  module is missing rather than leave its parts blank.
+
+A validator that knows the deployment's modules reports a listed module it lacks.
+
+> **Why declare.** A host can walk the component types a template mounts, but a module named inside
+> an expression or a part is invisible to that walk, and a profile member reads as no value on a host
+> without the profile. A template that says what it needs lets a host refuse or warn before anything
+> is drawn, instead of degrading part by part, and lets a validator hold a shared template to what it
+> claims.
+
+> **Planned.** Versions in `profiles` (each profile at the version the template was written
+> against, once profiles leave draft), and `requires` for the other extension catalogs: engines, host
+> functions, foreign elements.
 
 ---
 
 Implemented by: [`types.ts`](../../../packages/schema-system/shared/src/types.ts) (`TemplateMeta.requires`),
-[`semanticValidation.ts`](../../../packages/schema-system/shared/src/semanticValidation.ts) (required
-modules), [`templateElements.ts`](../../../packages/schema-system/shared/src/templateElements.ts)
+[`semanticValidation.ts`](../../../packages/schema-system/shared/src/semanticValidation.ts) (`checkRequires`,
+required modules), [`requires.ts`](../../../packages/schema-system/shared/src/profiles/requires.ts)
+(`catalogsNamedBy`), [`templateAcceptance.ts`](../../../packages/app-shell/src/shared/templateAcceptance.ts)
+(refusal at install), [`templateElements.ts`](../../../packages/schema-system/shared/src/templateElements.ts)
 (`isUndefinedWeElement`).
-Pinned by: [`semanticValidation.test.ts`](../../../packages/schema-system/shared/tests/semanticValidation.test.ts).
+Pinned by: validate vectors `validate.requires.*`;
+[`semanticValidation.test.ts`](../../../packages/schema-system/shared/tests/semanticValidation.test.ts);
+[`templateAcceptance.test.ts`](../../../packages/app-shell/tests/templateAcceptance.test.ts).
 
 ## Profiles
 
 A **profile** is the part of a host's bag that is neither a store of a module nor the core library:
-the host state and actions a template reaches beyond records, queries and operations. Five are
+the host state and actions a template reaches beyond records, queries and operations. Seven are
 specified, each a versioned member list with change events, in
-[Capability profiles](../profiles/README.md): `navigation`, `view-state`, `presence`, `identity` and
-`space-settings`. Each member keeps the [capability group](safety.md#capability-grants) that grants
-it.
+[Capability profiles](../profiles/README.md): `navigation`, `view-state`, `layout`, `presence`,
+`identity`, `space-settings` and `appearance`. A template writes each profile's members under the
+profile's namespace (`navigation.params`, `viewState.openPanel`, `spaceSettings.currentSpace`), never
+under a store. Each member keeps the [capability group](safety.md#capability-grants) that grants it.
 
 Beside them are the host values every host provides by name (`me`, the person viewing;
 `currentDataset`, the dataset on screen; the person's profile as `$agent` binds it) and the actions on

@@ -11,6 +11,12 @@ export const fluxView: TemplateSchema = {
     icon: 'chat-circle',
     role: 'view',
     segment: 'flux',
+    /*
+      Portable: it reads a Flux community's records through `$query` and names no profile member,
+      module or store of WE's, so it runs on any host. Declaring it is what lets the validator hold
+      it there — a profile or a WE-only member added later is reported.
+    */
+    requires: { profiles: [] },
   },
   type: 'Column',
   props: { p: '600', gap: '600', bg: 'page' },

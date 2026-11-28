@@ -3,7 +3,7 @@ import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
 
 export interface PeopleAtPathOptions {
-  /** The route's absolute path, as `spaceStore.spacePath` builds one. */
+  /** The route's absolute path, as `navigation.spacePath` builds one. */
   path: SchemaProp;
   max?: number;
   size?: string;
@@ -43,7 +43,7 @@ export interface PeopleAtPathOptions {
  * it is the same fact twice, and it makes an empty page look occupied.
  */
 export function peopleAtPath(opts: PeopleAtPathOptions): SchemaNode {
-  const here = expr`presenceStore.online.filter(p, p.did != me.did && startsWith(p.focus.path, ${opts.path}))`;
+  const here = expr`presence.online.filter(p, p.did != me.did && startsWith(p.focus.path, ${opts.path}))`;
 
   const faces: SchemaNode = peopleTooltip({
     items: here,

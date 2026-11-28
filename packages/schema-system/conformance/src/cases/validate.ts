@@ -33,6 +33,12 @@ const template = (children: unknown[], extra: Record<string, unknown> = {}): unk
   ...extra,
 });
 
+/** A template declaring `requires`, around `children`. */
+const requiring = (requires: Record<string, string[]>, children: unknown[]): unknown => ({
+  ...(template(children) as object),
+  meta: { ...meta, requires },
+});
+
 const text = (...children: unknown[]): SchemaNode => ({ type: 'we-text', children }) as SchemaNode;
 
 const C = (id: string, note: string, document: unknown, opts: { warnings?: true } = {}): ValidateCase => ({
@@ -87,7 +93,7 @@ export const VALIDATE_CASES: ValidateCase[] = [
   C(
     'validate.structure.handler-in-children',
     'a handler in children is invalid',
-    template([{ $invoke: 'routeStore.navigate', args: ['~/'] }]),
+    template([{ $invoke: 'navigation.navigate', args: ['~/'] }]),
   ),
   C(
     'validate.structure.defs-not-root',
@@ -259,5 +265,61 @@ export const VALIDATE_CASES: ValidateCase[] = [
     'validate.node-prop.undeclared-is-data',
     'a node-shaped value in a prop the component does not declare is data, not judged',
     template([{ type: 'Card', props: { front: { type: 'Collumn' } } }]),
+  ),
+
+  /* ── meta.requires ──────────────────────────────────────────────────────────────────────── */
+  C(
+    'validate.requires.absent',
+    'with no meta.requires nothing is checked against it: a template for its own host may name modules freely',
+    template([text({ $: 'modules.call.active' }), text({ $: 'navigation.params.tab' })]),
+  ),
+  C(
+    'validate.requires.module-unlisted',
+    'once meta.requires is written, a module the template names and does not list is an error',
+    requiring({ modules: [] }, [text({ $: 'modules.call.active' })]),
+  ),
+  C(
+    'validate.requires.module-part-unlisted',
+    "a module's part counts as naming the module",
+    requiring({ modules: [] }, [{ type: '$part', props: { id: 'call.tile' } }]),
+  ),
+  C(
+    'validate.requires.module-listed',
+    'a module the template names and lists is valid',
+    requiring({ modules: ['call'] }, [text({ $: 'modules.call.active' })]),
+  ),
+  C(
+    'validate.requires.profile-unlisted',
+    'with profiles written, a profile namespace the template names and does not list is an error',
+    requiring({ profiles: [] }, [text({ $: 'navigation.params.tab' })]),
+  ),
+  C(
+    'validate.requires.profile-listed',
+    'a profile the template names and lists, by id, is valid',
+    requiring({ profiles: ['navigation', 'view-state'] }, [
+      text({ $: 'navigation.params.tab' }),
+      { type: 'we-button', props: { onClick: { $invoke: 'viewState.closePanel', args: ['side'] } }, children: ['x'] },
+    ]),
+  ),
+  C(
+    'validate.requires.profile-unknown',
+    'a listed profile that is not a capability profile is an error',
+    requiring({ profiles: ['navigation', 'nowhere'] }, [text({ $: 'navigation.params.tab' })]),
+  ),
+  C(
+    'validate.requires.modules-only-not-portable',
+    'modules alone do not declare a template portable: profiles it names need not be listed',
+    requiring({ modules: [] }, [text({ $: 'navigation.params.tab' })]),
+  ),
+  C(
+    'validate.requires.host-only-warned',
+    'a template that writes profiles declares itself portable, so a member only its first host has is warned about',
+    requiring({ profiles: [] }, [text({ $: 'spaceStore.root.name' })]),
+    { warnings: true },
+  ),
+  C(
+    'validate.requires.unknown-key',
+    'meta.requires holds profiles and modules only; another key is an error, not something a host may skip',
+    requiring({ profiles: [], engines: ['forest'] }, [text('x')]),
   ),
 ];

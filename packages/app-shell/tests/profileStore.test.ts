@@ -7,22 +7,16 @@
  * disappears until the app is reloaded — which is what happened, because the two events shared a
  * millisecond and the guard compared timestamps with a strict `>`.
  *
- * Plain store tests, run once under each reactivity port: Solid's, and the test port that runs a new
- * effect at once where Solid defers it.
+ * Plain store tests, run once under each engine (Solid, the test port, Vue).
  */
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createCredential, type Credential } from '../src/shared/credential';
 import { createFirstScreen, type FirstScreen } from '../src/shared/firstScreen';
+import { createTestPlatform } from '../src/shared/platform/testPlatform';
 import { createProfileStore, type ProfileStore } from '../src/shared/stores/ProfileStore';
-
-const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
+import { reactivityPorts } from './support/engines';
 
 const DID = 'did:key:z6MkTest';
 
@@ -76,6 +70,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
             error: (message) => toasts.push(message),
           },
           sessionStore: (options.session ?? sessionStub) as never,
+          platform: createTestPlatform(),
           accountStore: accountsStub,
           runtimeStore: runtimeStub,
         });

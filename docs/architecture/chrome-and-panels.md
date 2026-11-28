@@ -109,7 +109,7 @@ change of the window's size, for a lane easing into or out of its strip, or for 
 for less motion.
 
 **Instances.** A panel an interface supplies can be opened more than once —
-`shellStore.openPanel(panel, inputs)` — each instance a panel of its own (`template:<panel>~<key>`),
+`viewState.openPanel(panel, inputs)` — each instance a panel of its own (`template:<panel>~<key>`),
 declared as the panel it is of, so it opens where that one would (a tab beside it, where the
 declaration names an `order`). Its node reads its inputs as `panel.inputs`. The same inputs open the
 same instance; instances are kept per agent and per interface. See `panelInstances.ts`.
@@ -178,8 +178,10 @@ is what its full-bleed sheets always were.
 
 Which tab shows, and which floating panel paints over which, are the same question: **the most
 recently touched.** Every panel carries a monotonic `activatedAt` (beside the placements, not in
-them, so a click pins nothing); `layerOrder` sorts it into a step on the `sticky` band, and a seat
-shows its most recently touched member. A pointer landing on a frame, a drag, a resize and
+them, so a click pins nothing); `layerOrder` sorts it into a rank, which the shell store draws as a
+step on the `sticky` band, and a seat shows its most recently touched member. The kernel answers in
+geometry throughout — pixels as numbers, paint order as a rank — and the shell store formats them as
+CSS for the frames the templates draw (`stores/shell/dockStyle.ts`). A pointer landing on a frame, a drag, a resize and
 maximising all touch. Chrome stays above every step — `chromeLayering.test.ts` pins the headroom.
 
 ### Floors, and folding
@@ -297,7 +299,7 @@ gone with it (`carryPastTheGrip`).
 **A lane can be a sidebar.** `resize: 'end'` (or `'start'`) on the outlet puts a drag handle on that
 edge alone; the width somebody leaves it at is kept per agent and per template
 (`shellStore.laneWidth`), clamped to the outlet's `minWidth` and `maxWidth`, and its `width` is where
-it starts. `shellStore.toggleLane(name)` folds a lane away and back — its sections stay mounted and
+it starts. `layout.toggleLane(name)` folds a lane away and back — its sections stay mounted and
 hidden — and a space template may call it, since folding its own sidebar is its own view state. Both
 are part of a saved layout and undone by "Reset layout". Below `NARROW_VIEWPORT_PX` a kept width
 means nothing, so the lane takes its parent's width and the handle goes; how the page stacks there is
@@ -430,8 +432,15 @@ keep a card's heading.
 
 - `packages/app-shell/src/shared/dockGeometry.ts` — every rule above, as pure functions over a
   viewport and a list of panels. Tested without a browser; that is the point of it being pure.
-  `src/shared/kernels/dockLayout.ts` names the functions a second host reproduces the layout with,
-  against the recorded vectors beside it (`vectors/dockLayout.json`).
+  `src/shared/kernels/dockLayout.ts` names the entry points a second host reproduces the layout
+  with — where a panel is placed (`resolvePlacement`, `fitPlacement`, `arrangedPanel`), the seated
+  layout (`seatLanes`, `resolveDocks`, `edgeLaneLayout`, the insets, `panelFramesOf`), a drag at
+  one moment, each a whole answer (`dragSnapTargets`, `dragDropSlots`, `dragTarget`, which slot or
+  snap the pointer means), what a drop writes (`arrangeDrop`, `arrangeHomeDrop`, `snapDrop`,
+  `stackDrop`, the seat-mates and the seat's size) and the gestures (`resizedBox`,
+  `movedBoundary`, `liftedCard`) — against the scenarios recorded beside it
+  (`vectors/dockLayout.json`). The rest of the file is how WE computes those answers, pinned by
+  `tests/dockGeometry.test.ts` rather than by the vectors, so it can change shape without them.
 - `packages/app-shell/src/shared/stores/ShellStore.ts` — the store's interface, composed of its
   parts in `stores/shell/`, on the reactivity port: `arrangement.ts` (what the reader has done to the
   panels, and the declarations it is read against), `docks.ts` (each panel's box, the edge lanes, the

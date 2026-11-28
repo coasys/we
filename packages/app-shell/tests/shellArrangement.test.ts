@@ -7,8 +7,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { FloatPlacement } from '../src/shared/dockGeometry';
+import { createTestPlatform, type TestPlatform } from '../src/shared/platform/testPlatform';
 import { setTemplatePanels } from '../src/shared/registries/templatePanels';
-import { buildParts, reactivityPorts } from './support/shellPorts';
+import { reactivityPorts } from './support/engines';
+import { buildParts } from './support/shellPorts';
 
 const card = (x: number): FloatPlacement => ({ snap: null, x, y: 40, w: 300, h: 300, displace: false });
 const SCOPE = 'arrangement-test';
@@ -16,14 +18,14 @@ const PANEL = 'template:inspector';
 
 describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   const disposers: (() => void)[] = [];
+  let platform: TestPlatform;
   const build = () => {
-    const parts = buildParts(makePort());
+    const parts = buildParts(makePort(), platform);
     disposers.push(parts.dispose);
     return parts.arrangement;
   };
   beforeEach(() => {
-    localStorage.clear();
-    window.history.replaceState({}, '', '/space/test');
+    platform = createTestPlatform({ url: '/space/test' });
     setTemplatePanels([{ id: 'inspector', title: 'Inspector', node: { type: 'div' } }], SCOPE);
   });
   afterEach(() => {

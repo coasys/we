@@ -8,7 +8,8 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { buildShell, reactivityPorts } from './support/shellPorts';
+import { reactivityPorts } from './support/engines';
+import { buildShell } from './support/shellPorts';
 
 describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   const disposers: (() => void)[] = [];

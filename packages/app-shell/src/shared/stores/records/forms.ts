@@ -14,11 +14,11 @@
  * written until the form saves, as one declared operation, inline records included.
  */
 import { namePropertyOf } from '@we/backend-shared';
-import { compressImageToFileData, dataURIToFileData, inlineRecordId } from '@we/entities';
+import { compressImageToFileData, dataURIToFileData, type ImageCodec, inlineRecordId } from '@we/entities';
 import type { Accessor } from '@we/reactivity';
 
 import { distinctSignal } from '../../distinctSignal';
-import { invokeOperation } from '../../invokeOperation';
+import { fileAsDataURI } from '../../fileDataURI';
 import { imagePropertyOf } from '../../shapes/creatableKinds';
 import {
   asEntityName,
@@ -50,6 +50,8 @@ export interface RecordFormsDeps extends RecordContext {
   canvas: Pick<RecordCanvas, 'writePlacement'>;
   /** Where content made on `canvas` lives — see `RecordStore.provideContentHomes`. */
   contentHome: (canvas?: string) => string | undefined;
+  /** How a picture filled into a file field is scaled down and encoded before it is stored. */
+  images: ImageCodec;
 }
 
 export type RecordForms = Pick<
@@ -85,7 +87,7 @@ export type RecordForms = Pick<
 >;
 
 export function createRecordForms(deps: RecordFormsDeps): RecordForms {
-  const { reactivity, toasts, datasetStore, sessionStore: session, kinds, connections, contentHome } = deps;
+  const { reactivity, toasts, datasetStore, sessionStore: session, kinds, connections, contentHome, images } = deps;
   // Named apart from the canvas a form is aimed at, which the save reads as `canvas`.
   const placing = deps.canvas;
   const { creatableEntities, schemaFor, entityClass, relationTarget } = kinds;
@@ -238,15 +240,8 @@ export function createRecordForms(deps: RecordFormsDeps): RecordForms {
   }
 
   async function readFile(file: File): Promise<RecordFieldValue> {
-    if (file.type.startsWith('image/')) return compressImageToFileData(file, file.name);
-    const uri = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      // `readAsDataURL` always yields a string.
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () => reject(reader.error ?? new Error(`Could not read ${file.name}`));
-      reader.readAsDataURL(file);
-    });
-    return dataURIToFileData(uri, file.name);
+    if (file.type.startsWith('image/')) return compressImageToFileData(images, file, file.name);
+    return dataURIToFileData(await fileAsDataURI(file), file.name);
   }
 
   function setRelationLocation(field: string, detail: unknown): void {
@@ -571,7 +566,7 @@ export function createRecordForms(deps: RecordFormsDeps): RecordForms {
       const invoker = session.me()?.did;
       if (!invoker) throw new Error('Sign in to make this.');
       const run = (name: string, args: Record<string, unknown>) =>
-        invokeOperation(name, args, { dataset: dataset.handle, invoker, invocationId });
+        deps.operations.invoke(name, args, { dataset: dataset.handle, invoker, invocationId });
       const createdId = link
         ? await run('core.connectRecords', {
             source: link.sourceId,

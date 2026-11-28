@@ -7,7 +7,7 @@
  *
  * ## Where a chat opens is a viewport question, not two features
  *
- * Given the room, a chat is a panel like any other — `shellStore.openPanel` on a declaration the
+ * Given the room, a chat is a panel like any other — `viewState.openPanel` on a declaration the
  * app template carries (`chat-global` docks at the right, `chat-space` floats over the space, and
  * both can then be moved, resized, docked and shrunk the way every panel can). Below
  * `NARROW_VIEWPORT_PX` a card over the page leaves nothing usable of either, so the same request
@@ -30,6 +30,7 @@ import type { Accessor, ReactivityPort } from '@we/reactivity';
 
 import { NARROW_VIEWPORT_PX } from '../dockGeometry';
 import { APP_PANEL_SCOPE } from '../panelScope';
+import type { PlatformPort } from '../platform/port';
 
 /** What `openChat` carries: where the chat is scoped, and what it was asked to say. */
 export interface ChatOpen {
@@ -133,28 +134,27 @@ export interface ChatPanels {
 
 export function createChatStore({
   reactivity,
+  platform,
   shellStore,
 }: {
   reactivity: ReactivityPort;
+  /** The window's width, which decides between a panel and the sheet. */
+  platform: Pick<PlatformPort, 'viewport' | 'listen'>;
   shellStore: ChatPanels;
 }): ChatStore {
   const { signal, effect, untrack, onCleanup } = reactivity;
 
-  const [isNarrow, writeNarrow] = signal(
-    typeof window === 'undefined' ? false : window.innerWidth < NARROW_VIEWPORT_PX,
-  );
-  if (typeof window !== 'undefined') {
-    /*
-      Compared first: a resize fires for every pixel dragged, and only a crossing of the width is a
-      change. Whether an equal write wakes the readers is not the port's to say.
-    */
-    const onResize = () => {
-      const narrow = window.innerWidth < NARROW_VIEWPORT_PX;
+  const [isNarrow, writeNarrow] = signal(platform.viewport().width < NARROW_VIEWPORT_PX);
+  /*
+    Compared first: a resize fires for every pixel dragged, and only a crossing of the width is a
+    change. Whether an equal write wakes the readers is not the port's to say.
+  */
+  onCleanup(
+    platform.listen('resize', () => {
+      const narrow = platform.viewport().width < NARROW_VIEWPORT_PX;
       if (untrack(isNarrow) !== narrow) writeNarrow(narrow);
-    };
-    window.addEventListener('resize', onResize);
-    onCleanup(() => window.removeEventListener('resize', onResize));
-  }
+    }),
+  );
 
   const [sheet, setSheet] = signal<ChatInputs | null>(null);
 

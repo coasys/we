@@ -287,8 +287,25 @@ The host lends its implementation — `@we/reactivity-solid` under Solid — and
 only in its imports. A store may rely on the port's three timing guarantees and nothing else; they
 are in that package's README.
 
+**Its environment comes from one `PlatformPort` in the same way** (`app-shell/src/shared/platform/`):
+storage and session storage, the address and its history, a reload, the window's size, media
+queries, the window's input events, animation frames, an image codec (how a picture is scaled
+and encoded before it is stored: a canvas in a browser, the bytes as they came in a test), and the
+document (custom properties and attributes on its root, style sheets, an element by id, a drawn
+box measured, the title and icon). The app's clocks play on the platform's frames: `composeStores`
+makes the one registry (`createAppClocks`) and lends it to the module services and the globe.
+A store reads `platform.storage`, never `localStorage`. The port is the environment half of
+`PlatformAdapter`, which extends it, so the adapter an app supplies is the `platform` every store
+takes; a browser renderer spreads `createBrowserPlatform()` into its adapter, and a host that is not
+a browser implements the port itself. `createTestPlatform()` is the test implementation: storage in
+maps, an address and history in memory, a window a test resizes, events a test sends, frames a test
+runs (`flushFrames`), an image codec that keeps the bytes, and a document that records what was written to its root (`drawn`). Timers and
+`performance.now()` are not on it: every JavaScript runtime has them, and a test's fake clock
+controls them. A measured input that changes the answer rides on the argument (the app's chrome
+frame is `Viewport.frame`), never on module state.
+
 Two places promise to be free of Solid, and `pnpm check:neutral-stores` (in CI beside the other
-checks) holds them to it:
+checks) holds them to it — and the stores and kernels to reading no browser global:
 
 - **`packages/app-shell/src/shared/`**, where every store and the modules they use live. Any
   import of `solid-js` (`solid-js/store` and `solid-js/web` included), app-shell's `@solid/*`
@@ -300,15 +317,25 @@ checks) holds them to it:
   `@we/module-shared`, …). Its `src/` is held to the same import rule, and it may
   not depend on solid-js, nor on a workspace package that does. Mark a new contract package neutral
   when you add it.
+- **`shared/stores/` and `shared/kernels/`** read no browser global: `window`, `document`, storage,
+  `navigator`, the address and history, media queries, animation frames, DOM constructors, in a value
+  position (`typeof window` and `globalThis.<name>` included; a type annotation is not a read, and a
+  name the file declares is its own). The rest of `shared/` may: its browser modules (safe mode, the
+  boot snapshot) are the platform's side of the seam.
 
 **How a neutral store is written and composed.** `RouteStore` (`app-shell/src/shared/stores/`) is
 the first, and the shape the rest copy:
 
-- The factory takes one object: `reactivity` (the port) and the stores it reads, by the registry's
-  names — `createXStore({ reactivity, sessionStore, datasetStore })`. Nothing is looked up.
-- `BootController` is the composition point. It builds every store once, in dependency order,
-  passing `solidReactivity` and the stores already built; a store needing a later one is lent it
-  through a method afterwards (`provideSpaceLookup`), never by reordering.
+- The factory takes one object: `reactivity` (the port), `platform` when it touches the
+  environment (typed as the `Pick<PlatformPort, …>` it uses), and the stores it reads, by the
+  registry's names — `createXStore({ reactivity, platform, sessionStore, datasetStore })`. Nothing is
+  looked up.
+- `composeStores` (`app-shell/src/shared/composeStores.ts`) is the composition point, and neutral: it
+  builds every store once, in dependency order, passing the reactivity port, the platform and the
+  stores already built, and registers the boot sequence; a store needing a later one is lent it
+  through a method afterwards (`provideSpaceLookup`), never by reordering. `BootController` calls it
+  with `solidReactivity` and the app's host state; the profile vectors call it with the test port and
+  the test platform, no framework at all (`tests/support/profileHost.ts`).
 - The composed set is typed twice, both in `shared/stores/`: `StoreRegistry` (`storeRegistry.ts`),
   what components ask of by name, and `Stores` (`storeBag.ts`), the bag a template renders against.
   Components reach the registry through `useStore('xStore')` (`frameworks/solid/stores/useStore.ts`).
@@ -316,23 +343,43 @@ the first, and the shape the rest copy:
   (`liveTemplate.ts`, the nested store a template edit patches), and the app's one copy of each
   piece of host state made over Solid's port (`hostState.ts`). A second framework writes those
   three over the same composed instances.
+- What that binding costs is pinned by a test: `app-shell/tests/react/useStore.ts` is React's, about
+  30 lines of code. A context holding the registry and the engine, `useStore(key)` for a store by
+  name, and `useValue(accessor)` — `useSyncExternalStore` whose subscribe is an effect in a root of
+  its own that reads the accessor and tells React, and whose snapshot is an untracked read. Nothing
+  in a store changes for it; `tests/react/useStore.test.ts` mounts RouteStore and ClockStore under all
+  three engines, calls an action from a press and redraws only when what was read changed. The host
+  state and the live template document are the rest of a second host's bill (`plainLiveTemplates`
+  serves any engine).
 - A store with several jobs is one factory per job, composed back into one store. `SpaceStore`,
   `ShellStore` and `RecordStore` are each an interface and a composition in `shared/stores/`, with
   their parts in `stores/space/`, `stores/shell/` and `stores/records/`. A part is a factory
   (`createSpaceRoles(deps)`, `createShellDocks(deps)`, `createRecordCanvas(deps)`) returning the store
   members it owns, typed as a `Pick` of the store's interface, and what later parts read; the
   composition builds them in order and spreads their members, so a template still reads one
-  namespace (`spaceStore.x`) and the template surface and profiles do not change when a job moves.
-  A part reaches a later one only through a function it calls after the store is built, never
-  while it is being built, and each part has its own test under both ports. The parts sit in a
+  namespace (`spaceStore.x`, or a profile's, `spaceSettings.x`) and the template surface and profiles
+  do not change when a job moves.
+  A part takes the earlier parts it reads as narrow `Pick`s, never a closure over a later one. Where
+  two parts genuinely need each other, the earlier one exposes a `provide*` call (a `hostSlot`, whose
+  `need` throws naming what is missing) and the composition makes it right after building the later
+  part — so every backward edge is one visible line in the composition. Each part has its own test
+  under every engine, and each composition a test that builds it whole under every engine. The parts sit in a
   subdirectory so the AI-context extractor, which reads `stores/*.ts` for store interfaces, never
   takes one for a store.
-- Its tests are plain `.ts` store tests, `describe.each` over `solidReactivity` and
-  `createTestReactivity()`, each store built inside `port.root` and disposed after. What Solid gave
+- Its tests are plain `.ts` store tests, `describe.each(reactivityPorts)` over three engines
+  (`app-shell/tests/support/engines.ts`): `solidReactivity`, `createTestReactivity()` — which runs
+  sibling effects in a seeded shuffle and wakes readers on an equal write, the two things the port
+  does not promise — and a port over `@vue/reactivity` (`tests/support/vueReactivity.ts`), an engine
+  nobody here wrote. Each store is built inside `port.root` and disposed after, given
+  `createTestPlatform()`. A failure under the test port prints its seed; `WE_REACTIVITY_SEED=<n>`
+  runs that order again. The seed is fixed locally and new on every CI run (the workflow sets it from
+  the run number), so each run tries another ordering. They run in app-shell's `stores` test project: no DOM, the browser build of
+  solid-js, so a store reaching past the platform port fails there rather than passing on jsdom's
+  globals. A store test goes in jsdom's project only for a reason it names. What Solid gave
   for free and the port does not — a signal's `equals`, an updater setter — is written out in the
   store: an equal write is skipped by comparing first, a function is stored as the value.
 - A backend read is followed through `followLive` (`app-shell/src/shared/followLive.ts`), called in
-  the effect that owns it, or held whole as signals with `followRows`. It disposes the handle with
+  the effect that owns it, applying each page through the store's own function. It disposes the handle with
   its owner, drops anything for an input the store has moved on from, says when the rows are in,
   and reads the stored rows once when the handle cannot open and an empty answer would mean
   something (`stored`). A store does not keep its own `stopped` flag.
@@ -350,18 +397,36 @@ the same code compiled to WASM. Sharing one implementation is fine for these bec
 what must stay separately implementable is the spec and anything stateful. (Not the same thing as a
 module's capability kernels in `@we/module-shared`, which are ports a module is handed.)
 
-| Kernel            | Where                                                  | What it answers                                                                                                       | Vectors                                  |
-| ----------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
-| Board arrangement | `app-shell/src/shared/kernels/boardArrangement.ts`     | which cards each column of a board shows, in what order, and what is left over                                        | `kernels/vectors/boardArrangement.json`  |
-| Tree ranks        | `app-shell/src/shared/kernels/treeRanks.ts`            | where a card sits in a tree read as arranged (`seatInRow`), and whether a drop would put it inside itself (`isUnder`) | `kernels/vectors/treeRanks.json`         |
-| Connection key    | `app-shell/src/shared/kernels/connectionKey.ts`        | the key a drawn connection is deduplicated by, which an interpretation pass matches                                   | `kernels/vectors/connectionKey.json`     |
-| Dock layout       | `app-shell/src/shared/kernels/dockLayout.ts`           | the 69 functions of `dockGeometry.ts` that place every panel, lane and drop slot                                      | `kernels/vectors/dockLayout.json` (642)  |
-| Block flattening  | `flattenBlocks` in `@we/block-shared` (`src/kernels/`) | a composed document as the ordered rows a post is written as, each keyed to its parent                                | `src/kernels/vectors/flattenBlocks.json` |
+Not every kernel binds. Board arrangement and tree ranks answer with data other members see — which
+cards a column shows, where a card sits — so every host that draws a board or a tree must give the
+same answers, and their vectors are a contract. The dock kernel is WE's reference arrangement: what a
+template may ask of a host about panels is the `layout` capability profile
+(`docs/spec/profiles/`), and a host conforms to that without adopting WE's docks. Its twenty-five
+entry points and their vectors are for a host that wants WE's arrangement, not a rule for one that
+does not.
+
+| Kernel            | Where                                                  | What it answers                                                                                                         | Vectors                                  |
+| ----------------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| Board arrangement | `app-shell/src/shared/kernels/boardArrangement.ts`     | which cards each column of a board shows, in what order, and what is left over                                          | `kernels/vectors/boardArrangement.json`  |
+| Tree ranks        | `app-shell/src/shared/kernels/treeRanks.ts`            | where a card sits in a tree read as arranged (`seatInRow`), and whether a drop would put it inside itself (`isUnder`)   | `kernels/vectors/treeRanks.json`         |
+| Connection key    | `app-shell/src/shared/kernels/connectionKey.ts`        | the key a drawn connection is deduplicated by, which an interpretation pass matches                                     | `kernels/vectors/connectionKey.json`     |
+| Dock layout       | `app-shell/src/shared/kernels/dockLayout.ts`           | the entry points of `dockGeometry.ts`: where a panel is placed, the seated layout, a drag's targets, what a drop writes | `kernels/vectors/dockLayout.json`        |
+| Block flattening  | `flattenBlocks` in `@we/block-shared` (`src/kernels/`) | a composed document as the ordered rows a post is written as, each keyed to its parent                                  | `src/kernels/vectors/flattenBlocks.json` |
 
 The vectors are recorded from the code (`pnpm --filter @we/app-shell record:kernels`,
 `pnpm --filter @we/block-shared record:kernels`) and a test replays each file, so changing a kernel's
 answer means re-recording and the diff shows every answer that moved. Add a kernel when a second host
 would otherwise have to read our source to draw the same thing.
+
+A kernel exports its **entry points**, not its helpers: each answers a whole question the host asks,
+and the vectors ask only those. A vector that called a helper would pin how WE happens to compute the
+answer, so a refactor would rewrite the vectors and a second host would have to copy the
+decomposition. The helpers stay exported from the module they live in, for app code and the
+TypeScript tests that pin them. Where the questions share inputs, the vectors are scenarios: the
+inputs once, then each question with its arguments, an argument `{ "$": "path" }` naming one of the
+inputs or an earlier question's answer (`dockLayout.json` is read this way — `askScenario` in
+`app-shell/scripts/dockLayoutCases.ts`). The kernel's test checks that every entry point is asked
+and every question names one.
 
 A Pattern B package with a neutral core and a Solid binding says which exports are which with
 `"we": { "neutralExports": [".", …] }` — `@we/design-utils` lists `.`, and `@we/components` its

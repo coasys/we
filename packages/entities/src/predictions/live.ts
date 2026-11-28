@@ -28,9 +28,8 @@
 import type { LivePage, LiveQuery } from '@we/backend-shared';
 import { DEFAULT_TTL_MS, done, hold, type Holds, reconcile } from '@we/optimism';
 
-import { holdRead } from './held';
 import { applyPrediction, predictionFingerprint, type ReadShape, readShapeOf } from './overlay';
-import { anyPredictions, datasetKey, onPredictionsChange, type Prediction, predictionsFor } from './registry';
+import { datasetKey, type Prediction, type Predictions } from './registry';
 
 const RULES = { same: (a: string, b: string) => a === b, ttlMs: DEFAULT_TTL_MS };
 
@@ -42,6 +41,7 @@ const RULES = { same: (a: string, b: string) => a === b, ttlMs: DEFAULT_TTL_MS }
  * reads it rather than asking the backend; `query` is the options it was asked with.
  */
 export function withPredictedPages<T>(
+  predictions: Predictions,
   live: LiveQuery<LivePage<T>>,
   dataset: unknown,
   shape: ReadShape,
@@ -53,14 +53,14 @@ export function withPredictedPages<T>(
   let backstop: ReturnType<typeof setTimeout> | undefined;
 
   const overlay = (page: LivePage<T>, wake: () => void): LivePage<T> => {
-    const predictions = predictionsFor(dataset);
-    if (!predictions.length) {
+    const pending = predictions.for(dataset);
+    if (!pending.length) {
       holds = {};
       return page;
     }
     let current = page.results;
     const present = new Set<string>();
-    for (const prediction of predictions) {
+    for (const prediction of pending) {
       const id = prediction.invocationId;
       present.add(id);
       if (retired.has(id)) continue;
@@ -103,12 +103,11 @@ export function withPredictedPages<T>(
   const snapshotOf = (from: Snap): Snap => {
     if (from.status !== 'ready' || !from.data) return from;
     // The registry hands out a new list whenever a dataset's predictions change.
-    const predictions = predictionsFor(dataset);
-    if (made && made.from === from && made.version === version && made.predictions === predictions)
-      return made.snapshot;
+    const pending = predictions.for(dataset);
+    if (made && made.from === from && made.version === version && made.predictions === pending) return made.snapshot;
     const data = overlay(from.data, wake);
     const snapshot = data === from.data ? from : { ...from, data };
-    made = { from, version, predictions, snapshot };
+    made = { from, version, predictions: pending, snapshot };
     return snapshot;
   };
   const listeners = new Set<(snapshot: Snap) => void>();
@@ -136,10 +135,10 @@ export function withPredictedPages<T>(
         pushed = snapshot;
         publish();
       }),
-      onPredictionsChange((changed) => {
+      predictions.onChange((changed) => {
         if (changed === key) wake();
       }),
-      holdRead({
+      predictions.hold({
         dataset: key,
         shape,
         query,
@@ -184,8 +183,13 @@ const isLiveQuery = (value: unknown): value is LiveQuery<LivePage<unknown>> =>
   typeof (value as { first?: { then?: unknown } }).first?.then === 'function';
 
 /** Rows a one-shot read answered with, with the predictions still running laid over them. */
-export function withPredictedRows<T>(rows: readonly T[], dataset: unknown, shape: ReadShape): T[] {
-  const running = predictionsFor(dataset).filter((prediction: Prediction) => !prediction.landed);
+export function withPredictedRows<T>(
+  predictions: Predictions,
+  rows: readonly T[],
+  dataset: unknown,
+  shape: ReadShape,
+): T[] {
+  const running = predictions.for(dataset).filter((prediction: Prediction) => !prediction.landed);
   let current = rows as T[];
   for (const prediction of running) current = applyPrediction(current, shape, prediction);
   return current;
@@ -201,7 +205,11 @@ const READS = new Set(['query', 'findAll', 'findOne']);
  *
  * `entities` is what the reads are of: the class's own name, or the names a combined read spans.
  */
-export function withPredictions<C extends object>(cls: C, entities: readonly string[] | null): C {
+export function withPredictions<C extends object>(
+  predictions: Predictions,
+  cls: C,
+  entities: readonly string[] | null,
+): C {
   const wrapped = new Map<PropertyKey, unknown>();
   return new Proxy(cls, {
     get(target, prop, receiver) {
@@ -216,13 +224,16 @@ export function withPredictions<C extends object>(cls: C, entities: readonly str
         const shape = () => readShapeOf(entities, query);
         if (prop === 'query')
           return isLiveQuery(answer)
-            ? withPredictedPages(answer, dataset, shape(), (query ?? {}) as Record<string, unknown>)
+            ? withPredictedPages(predictions, answer, dataset, shape(), (query ?? {}) as Record<string, unknown>)
             : answer;
         // Nothing pending anywhere is the usual case, and costs one test.
-        if (!anyPredictions()) return answer;
+        if (!predictions.any()) return answer;
         return Promise.resolve(answer).then((found) => {
-          if (prop === 'findAll') return withPredictedRows((found ?? []) as Reader[], dataset, shape());
-          const rows = withPredictedRows(found ? [found as Reader] : [], dataset, { ...shape(), limit: 1 });
+          if (prop === 'findAll') return withPredictedRows(predictions, (found ?? []) as Reader[], dataset, shape());
+          const rows = withPredictedRows(predictions, found ? [found as Reader] : [], dataset, {
+            ...shape(),
+            limit: 1,
+          });
           return rows[0] ?? null;
         });
       };

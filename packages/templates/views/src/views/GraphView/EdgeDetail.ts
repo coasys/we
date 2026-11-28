@@ -60,7 +60,7 @@ const thread: SchemaNode = discussionSection({
   // The community's answer about how deep a conversation goes — the same expression the workshop's
   // inspector reads. Anything but the stored 'flat' is branching, so nothing changes for a space
   // that has never opened the setting.
-  fractal: "spaceStore.currentSpace.threadMode != 'flat'",
+  fractal: "spaceSettings.currentSpace.threadMode != 'flat'",
   record: 'link',
 });
 

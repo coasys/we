@@ -443,7 +443,7 @@ export const callsList: SchemaNode = {
                             {
                               type: '$if',
                               props: {
-                                condition: { $: 'spaceStore.currentSpace.autoInterpret' },
+                                condition: { $: 'spaceSettings.currentSpace.autoInterpret' },
                                 then: {
                                   type: 'Row',
                                   props: { gap: '100', ay: 'center' },

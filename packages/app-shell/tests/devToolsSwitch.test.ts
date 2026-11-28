@@ -69,7 +69,7 @@ describe('Settings → Developer', () => {
     */
     const navToDeveloper = nodes.find((node) => {
       const action = (node.props as Node | undefined)?.onClick as Node | undefined;
-      return action?.$invoke === 'routeStore.navigate' && (action.args as unknown[])?.[0] === '/developer';
+      return action?.$invoke === 'navigation.navigate' && (action.args as unknown[])?.[0] === '/developer';
     });
     expect(navToDeveloper).toBeDefined();
 

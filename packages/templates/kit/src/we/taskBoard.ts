@@ -105,7 +105,7 @@ const CELL = `${VIEW}.contents[col.id]`;
  * that gathers nothing has no anchor, and its pool is the whole space so the add-card picker can
  * bring anything in. An empty anchor is what the renderer reads as "do not narrow".
  */
-const ANCHOR = `(${BOARD}.gathers && ${BOARD}.gathers != spaceStore.currentSpace.id) ? ${BOARD}.gathers : ''`;
+const ANCHOR = `(${BOARD}.gathers && ${BOARD}.gathers != spaceSettings.currentSpace.id) ? ${BOARD}.gathers : ''`;
 
 export interface TaskCardOptions {
   /** Controls shown at the end of the card's meta row — usually {@link moveTaskMenu}. */
@@ -201,7 +201,7 @@ export interface TaskCardOptions {
 
 /** How a card is selected: which card is, and what pressing one does. */
 export interface CardSelection {
-  /** An expression for the id of the selected card, or empty — `routeStore.params.card`. */
+  /** An expression for the id of the selected card, or empty — `navigation.params.card`. */
   selected: string;
   /**
    * What pressing a card does, with the card in scope under its context key. Usually writes where
@@ -511,7 +511,7 @@ function cardPeople(as: string, entity: string, edge?: string): SchemaNode {
   const faces = `${on}.people.filter(p, !p.reflexive)`;
   const doing = `${on}.people.filter(p, !p.reflexive && p.semantic != 'reviewing')`;
   const checking = `${on}.people.filter(p, !p.reflexive && p.semantic == 'reviewing')`;
-  const face = (did: string) => `find(profileStore.profiles, { did: ${did} })`;
+  const face = (did: string) => `find(identity.profiles, { did: ${did} })`;
 
   /** A tooltip whose content is nodes — see `peopleTooltip` for why the slot is on a native div. */
   const hovercard = (content: SchemaNode[], trigger: SchemaNode): SchemaNode => ({
@@ -598,7 +598,7 @@ function cardPeople(as: string, entity: string, edge?: string): SchemaNode {
       searchable: true,
       searchPlaceholder: 'Find a member',
       items: {
-        $: `involvementMenu({ node: ${as}.id, entity: '${entity}', rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.memberDids, profiles: profileStore.profiles, me: me.did, said: ${as}.assignee })`,
+        $: `involvementMenu({ node: ${as}.id, entity: '${entity}', rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: identity.memberDids, profiles: identity.profiles, me: me.did, said: ${as}.assignee })`,
       },
       // A toggle reports the state it had before the press; "Assign to me" carries none, which reads as on.
       onSelect: {
@@ -962,7 +962,7 @@ function waitingLine(waiting: string, as: string): SchemaNode {
             type: 'AvatarStack',
             props: {
               avatars: {
-                $: 'wait.approvers.map(d, { image: find(profileStore.profiles, { did: d }).avatar, hash: d })',
+                $: 'wait.approvers.map(d, { image: find(identity.profiles, { did: d }).avatar, hash: d })',
               },
               max: 3,
               size: 'xs',
@@ -1464,7 +1464,7 @@ const NOBODY = "'nobody'";
  */
 function personRows(opts: TaskBoardOptions): SchemaNode {
   const gutter = '180px';
-  const name = 'find(profileStore.profiles, { did: person }).name';
+  const name = 'find(identity.profiles, { did: person }).name';
   return {
     type: 'Column',
     props: { gap: '300', ay: 'start' },
@@ -1515,7 +1515,7 @@ function personRows(opts: TaskBoardOptions): SchemaNode {
                         type: 'we-avatar',
                         props: {
                           size: 'sm',
-                          image: { $: 'find(profileStore.profiles, { did: person }).avatar' },
+                          image: { $: 'find(identity.profiles, { did: person }).avatar' },
                           hash: { $: 'person' },
                         },
                       },

@@ -29,6 +29,12 @@
  * already draws nothing for it, so it is admitted and reported, with the elements named. A template
  * carrying one is either confused or hostile, and either way the person installing it should hear.
  *
+ * A template that **declares** a module in `meta.requires.modules` that this deployment does not have
+ * is refused when `hasModule` is passed — at an install, where somebody is choosing. It said it cannot
+ * work without the module, so installing it would only add a template that draws absences; the
+ * refusal names the module, in words. A module it names without declaring is still admitted, and
+ * the install reports it.
+ *
  * Semantic validation (does this component exist, does it take this prop) is deliberately *not*
  * run here. It is the expensive half, it runs on every space switch if it runs at all, and its
  * failure mode is mild — an unknown component renders nothing rather than taking the tree down.
@@ -72,6 +78,18 @@ export interface AcceptTemplateOptions {
   grants?: readonly CapabilityGroup[];
   /** Operations it may invoke that are not registered yet — see `InspectOptions.operation`. */
   operation?: InspectOptions['operation'];
+  /**
+   * Whether this deployment has a module. Passed where a template is being installed: a template
+   * whose `meta.requires.modules` names one it lacks is refused, with the module named.
+   */
+  hasModule?: (id: string) => boolean;
+}
+
+/** The modules a template declares in `meta.requires` that `hasModule` says are not here. */
+export function missingRequiredModules(schema: unknown, hasModule: (id: string) => boolean): string[] {
+  const declared = (schema as { meta?: { requires?: { modules?: unknown } } } | null)?.meta?.requires?.modules;
+  if (!Array.isArray(declared)) return [];
+  return [...new Set(declared.filter((id): id is string => typeof id === 'string' && !hasModule(id)))];
 }
 
 /**
@@ -91,6 +109,22 @@ export function acceptTemplate(decoded: unknown, options: AcceptTemplateOptions)
     return {
       schema: null,
       refusals: [`Template from ${options.origin} is not a valid schema`, ...detail],
+      blocked: [],
+      groups: [],
+      refusedElements: [],
+    };
+  }
+
+  const missing = options.hasModule ? missingRequiredModules(decoded, options.hasModule) : [];
+  if (missing.length) {
+    const name = (decoded as TemplateSchema).meta?.name;
+    const modules = missing.map((id) => `"${id}"`).join(', ');
+    return {
+      schema: null,
+      refusals: [
+        `Template from ${options.origin} needs what this deployment does not have`,
+        `${name ? `"${name}"` : 'It'} needs the ${modules} module${missing.length === 1 ? '' : 's'}, which this deployment does not have`,
+      ],
       blocked: [],
       groups: [],
       refusedElements: [],

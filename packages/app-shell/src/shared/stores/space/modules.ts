@@ -33,23 +33,21 @@ import {
   type ViewSetting,
   viewSettings,
 } from '../../viewResolution';
-import type { AppStore } from '../AppStore';
 import type { ShellStore } from '../ShellStore';
 import type { SpaceStore } from '../SpaceStore';
 import type { TemplateStore } from '../TemplateStore';
 import { type SpaceContext, withRow } from './context';
 import { moduleSettingsFrom, registeredModules, resolveEnabledModules } from './enabledModules';
-import type { SpaceNavigation } from './navigation';
+import type { SpaceOnScreen } from './onScreen';
 import type { SpaceList } from './spaces';
 import type { LauncherRow } from './types';
 import type { SpaceWrites } from './writes';
 
 export interface SpaceModulesDeps extends SpaceContext {
   templateStore: Pick<TemplateStore, 'allTemplates' | 'draftOf' | 'defaultTemplateId' | 'currentTemplate'>;
-  appStore: Pick<AppStore, 'provideInstalledModules'>;
   shellStore: Pick<ShellStore, 'provideModuleGate' | 'dockGeometry' | 'revealDock' | 'toggleModulePanel'>;
   spaces: Pick<SpaceList, 'heldSpace' | 'spaceForUuid'>;
-  navigation: { members: Pick<SpaceNavigation['members'], 'currentSpace'> };
+  onScreen: Pick<SpaceOnScreen, 'currentSpace'>;
   writes: Pick<SpaceWrites, 'writeSpaceSetting'>;
 }
 
@@ -59,17 +57,16 @@ export function createSpaceModules(deps: SpaceModulesDeps) {
     toasts,
     datasetStore,
     templateStore,
-    appStore,
     shellStore,
     spaces,
-    navigation,
+    onScreen,
     writes,
     runCore,
     targetDataset,
   } = deps;
   const { memo, effect, onCleanup } = reactivity;
   const { heldSpace, spaceForUuid } = spaces;
-  const { currentSpace } = navigation.members;
+  const { currentSpace } = onScreen;
   const { writeSpaceSetting } = writes;
 
   /**
@@ -465,11 +462,6 @@ export function createSpaceModules(deps: SpaceModulesDeps) {
       path: `./${view.segment}`,
     })),
   );
-
-  // AppStore mounts above this one, so it is handed the set rather than reaching for it — the same
-  // arrangement as `templateStore.provideSpaceLookup`. The *installed* set, not the active one: an
-  // app switcher renders in the shell, so it is gated at the agent layer. See `moduleSurface`.
-  appStore.provideInstalledModules(installedModules);
 
   /**
    * The agent layer as a settings list — every registered module and whether this agent wants it.
@@ -927,7 +919,12 @@ export function createSpaceModules(deps: SpaceModulesDeps) {
     launchModule,
   };
 
-  return { members, usesSectionsFor, overrideFor, writeSpacePreference, listColumns };
+  /*
+    AppStore is composed before this one, so the installed set is lent to it by `composeStores`
+    rather than reached for. The *installed* set, not the active one: an app switcher renders in the
+    shell, so it is gated at the agent layer. See `moduleSurface`.
+  */
+  return { members, usesSectionsFor, overrideFor, writeSpacePreference, listColumns, installedModules };
 }
 
 export type SpaceModules = ReturnType<typeof createSpaceModules>;

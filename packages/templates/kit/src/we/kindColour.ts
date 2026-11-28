@@ -31,9 +31,9 @@ import { PALETTE_HUES } from '@we/tokens';
  */
 export const KIND_STYLES_QUERY = {
   entity: 'TypeStyle',
-  scope: { anchor: 'Space', via: 'typeStyles', anchorId: { $: 'spaceStore.currentSpace.id' } },
+  scope: { anchor: 'Space', via: 'typeStyles', anchorId: { $: 'spaceSettings.currentSpace.id' } },
   limit: 50,
-  when: { $: 'spaceStore.currentSpace.id' },
+  when: { $: 'spaceSettings.currentSpace.id' },
 };
 
 /** The palette's hues as a list literal, for `in`. */

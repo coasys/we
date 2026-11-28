@@ -562,6 +562,59 @@ export const SPACE_OPERATIONS: Record<string, OperationDefinition> = {
     },
     ...spaceList('archivedWorkflows', toggled('(record.archivedWorkflows ?? [])', 'workflow', 'archived')),
   },
+  setSpaceDefaultTemplate: {
+    description: 'Choose the template members see when they open the space.',
+    params: {
+      space: spaceParam,
+      template: {
+        type: 'string',
+        required: true,
+        description: 'The template’s id, as the host lists it; empty leaves the choice to each member’s own default.',
+      },
+    },
+    // Two presses before the first has landed: the second is what the space keeps.
+    serial: { $: "'default template ' + space" },
+    steps: [{ update: { entity: 'Space', id: { $: 'space' }, fields: { defaultTemplateId: { $: 'template' } } } }],
+  },
+  setSpaceDefaultTheme: {
+    description: 'Choose the theme members see when they open the space.',
+    params: {
+      space: spaceParam,
+      theme: {
+        type: 'string',
+        required: true,
+        description: 'The theme’s id, as the host lists it; empty leaves the choice to each member’s own default.',
+      },
+    },
+    serial: { $: "'default theme ' + space" },
+    steps: [{ update: { entity: 'Space', id: { $: 'space' }, fields: { defaultThemeId: { $: 'theme' } } } }],
+  },
+  setSpaceImage: {
+    description: 'Set the space’s avatar or its cover image, or take it away.',
+    params: {
+      space: spaceParam,
+      field: { type: 'string', required: true, description: 'avatar or coverImage.' },
+      image: {
+        type: 'json',
+        description:
+          'The picture as the record stores a file — what the host made of the one the person chose; absent takes it away.',
+      },
+    },
+    errors: { notAnImageField: 'A space has an avatar and a cover image, and nothing else to put a picture in.' },
+    serial: { $: "'image ' + space + ' ' + field" },
+    steps: [
+      { check: { condition: { $: "field in ['avatar', 'coverImage']" }, error: 'notAnImageField' } },
+      // '' is the clear: an absent field in an update is left as it was.
+      {
+        update: { entity: 'Space', id: { $: 'space' }, fields: { avatar: { $: "image ?? ''" } } },
+        when: { $: "field == 'avatar'" },
+      },
+      {
+        update: { entity: 'Space', id: { $: 'space' }, fields: { coverImage: { $: "image ?? ''" } } },
+        when: { $: "field == 'coverImage'" },
+      },
+    ],
+  },
   setSpaceModuleSetting: {
     description: 'Write, or withdraw, the community’s answer to one setting.',
     params: {

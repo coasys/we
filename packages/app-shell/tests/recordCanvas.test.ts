@@ -7,28 +7,16 @@
  */
 import { createInMemoryBackendPorts, runInMemoryTransaction } from '@we/backend-inmemory';
 import type { LivePage, LiveQuery } from '@we/backend-shared';
-import {
-  clearPredictions,
-  getEntity,
-  Placement,
-  predictionsFor,
-  registerEntityWriteCheck,
-  registerTransactionRunner,
-} from '@we/entities';
+import { getEntity, Placement, registerEntityWriteCheck, registerTransactionRunner } from '@we/entities';
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createRecordCanvas, type RecordCanvas } from '../src/shared/stores/records/canvas';
 import { createRecordConnections } from '../src/shared/stores/records/connections';
 import { canvasChildren, operationRunner } from '../src/shared/stores/records/context';
 import { createRecordKinds } from '../src/shared/stores/records/kinds';
-
-const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
+import { reactivityPorts } from './support/engines';
+import { testOperations, testPredictions } from './support/operations';
 
 const CANVAS = 'canvas-1';
 type Row = Record<string, unknown> & { id: string };
@@ -58,7 +46,8 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
             currentDatasetEntities: () => [],
             datasets: () => [],
           } as never,
-          runOp: operationRunner(sessionStore),
+          operations: testOperations,
+          runOp: operationRunner(sessionStore, testOperations),
         };
         const kinds = createRecordKinds({ ...context, shapeStore: { spaceShapes: () => [] } });
         const connections = createRecordConnections({ ...context, kinds });
@@ -69,7 +58,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   }
 
   const placements = () => model('Placement').findAll(handle, { parent: canvasChildren(CANVAS) });
-  const predicted = () => predictionsFor(handle).flatMap((prediction) => prediction.writes);
+  const predicted = () => testPredictions.for(handle).flatMap((prediction) => prediction.writes);
 
   beforeEach(async () => {
     reactivity = makePort();
@@ -84,7 +73,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
 
   afterEach(() => {
     registerEntityWriteCheck(null);
-    clearPredictions();
+    testPredictions.clear();
     for (const dispose of disposers.splice(0)) dispose();
   });
 

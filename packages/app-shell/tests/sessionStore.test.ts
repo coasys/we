@@ -3,24 +3,18 @@
  * on, what signing in and creating an account report when they fail, and the run from a first run's
  * `finishing` to the app.
  *
- * Plain store tests, run once under each reactivity port: Solid's, and the test port that runs a new
- * effect at once where Solid defers it.
+ * Plain store tests, run once under each engine (Solid, the test port, Vue).
  */
 import type { AgentCredentials, AgentSessionPort, AgentSessionStatus } from '@we/backend-shared';
 import { NO_IDENTITY_CAPABILITIES, SessionTimeoutError } from '@we/backend-shared';
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createCredential, type Credential } from '../src/shared/credential';
 import { createFirstScreen } from '../src/shared/firstScreen';
+import { createTestPlatform } from '../src/shared/platform/testPlatform';
 import { createSessionStore, type SessionStore } from '../src/shared/stores/SessionStore';
-
-const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
+import { reactivityPorts } from './support/engines';
 
 const DID = 'did:key:z6MkSession';
 const flush = async () => {
@@ -73,7 +67,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
       reactivity.root(() => {
         store = createSessionStore({
           reactivity,
-          platform: { isDesktop: false, isDevelopment: true } as never,
+          platform: { ...createTestPlatform(), isDesktop: false, isDevelopment: true } as never,
           backend: { initialize: () => Promise.resolve({ client: {}, ports }) } as never,
           credential,
           firstScreen,
@@ -215,7 +209,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
       reactivity.root(() => {
         store = createSessionStore({
           reactivity,
-          platform: { isDesktop: false, isDevelopment: true } as never,
+          platform: { ...createTestPlatform(), isDesktop: false, isDevelopment: true } as never,
           backend: { initialize: () => Promise.reject(new Error('No backend here')) } as never,
           credential,
           firstScreen: createFirstScreen({ signal: reactivity.signal }),
@@ -237,7 +231,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
       reactivity.root(() => {
         createSessionStore({
           reactivity,
-          platform: { isDesktop: false, isDevelopment: true } as never,
+          platform: { ...createTestPlatform(), isDesktop: false, isDevelopment: true } as never,
           backend: {
             initialize: () => {
               connects++;

@@ -14,6 +14,7 @@ import PanelLane from '../src/frameworks/solid/components/PanelLane';
 import { panelInstances, publishPanelInstances, shellHost } from '../src/frameworks/solid/stores/hostState';
 import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
 import { APP_PANEL_SCOPE } from '../src/shared/panelScope';
+import { createBrowserPlatform } from '../src/shared/platform/browser';
 import { provideChromeBag, provideTemplateBag } from '../src/shared/registries/templateBag';
 import { setTemplatePanels } from '../src/shared/registries/templatePanels';
 import { buildTemplateBag, CHROME_TIER } from '../src/shared/registries/templateSurface';
@@ -49,7 +50,7 @@ afterEach(() => {
 function mount() {
   let store!: ShellStore;
   const { container } = render(() => {
-    store = createShellStore({ reactivity: solidReactivity, host: shellHost });
+    store = createShellStore({ reactivity: solidReactivity, platform: createBrowserPlatform(), host: shellHost });
     // The store keeps instances under a DID — as SessionStore provides it in the app.
     store.provideAgentDid(() => 'did:test:me');
     release.push(provideChromeBag(buildTemplateBag({ shellStore: store } as never, { grants: CHROME_TIER }) as never));

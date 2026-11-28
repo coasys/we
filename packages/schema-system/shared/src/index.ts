@@ -62,14 +62,24 @@ export type {
 // What a host provides a template beyond records, queries and operations — see `profiles/profiles.ts`.
 export {
   CAPABILITY_PROFILES,
+  catalogsNamedBy,
   describeHostOnly,
   HOST_ONLY_EQUIVALENTS,
   hostOnlyUses,
   NEUTRAL_NAMESPACES,
   PROFILE_MEMBERS,
+  PROFILE_NAMESPACES,
+  profileMemberNamed,
   profileOf,
 } from './profiles';
-export type { CapabilityProfile, HostOnlyUse, ProfileArg, ProfileEvent, ProfileMember } from './profiles';
+export type {
+  CapabilityProfile,
+  HostOnlyUse,
+  NamedCatalogs,
+  ProfileArg,
+  ProfileEvent,
+  ProfileMember,
+} from './profiles';
 
 export {
   asHostChrome,
@@ -214,7 +224,7 @@ export {
   TEMPLATE_SCHEMA_VERSIONS,
   templateVersionProblem,
 } from './templateFormat';
-export { isRelativePath, type PathBase, resolvePath } from './navigationPaths';
+export { isRelativePath, type LinkRoute, type PathBase, resolveHref, resolvePath } from './navigationPaths';
 export {
   decodeLocalParam,
   encodeLocalParam,

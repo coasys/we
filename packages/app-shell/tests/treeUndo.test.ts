@@ -8,16 +8,8 @@
  * forward write, and a card a peer has moved since is left where they put it.
  */
 import { createInMemoryBackendPorts, runInMemoryTransaction } from '@we/backend-inmemory';
-import {
-  clearPredictions,
-  getEntity,
-  predictionsFor,
-  registerEntityWriteCheck,
-  registerTransactionRunner,
-} from '@we/entities';
+import { getEntity, registerEntityWriteCheck, registerTransactionRunner } from '@we/entities';
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 const CANVAS = 'canvas-1';
@@ -51,11 +43,14 @@ const shapeStub = {
   interpretationCandidatesLoaded: () => true,
 };
 
+import { createTestPlatform } from '../src/shared/platform/testPlatform';
 import { createRecordStore, type RecordStore } from '../src/shared/stores/RecordStore';
+import { reactivityPorts } from './support/engines';
+import { testOperations, testPredictions } from './support/operations';
 
 /*
-  Run once under each reactivity port: Solid's, and the test port, which runs a new effect at once
-  where Solid defers it. Each store is built in a root of its own and disposed after its case.
+  Run once under each engine (Solid, the test port, Vue). Each store is built in a root of its own
+  and disposed after its case.
 */
 /** Hold every write until `land`, as a round trip would; put back after each test. */
 function holdWrites(): () => void {
@@ -65,10 +60,6 @@ function holdWrites(): () => void {
   return land;
 }
 
-const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
 let reactivity: ReactivityPort;
 const disposers: (() => void)[] = [];
 
@@ -85,11 +76,13 @@ function mount(): RecordStore {
   disposers.push(
     reactivity.root(() => {
       store = createRecordStore({
+        operations: testOperations,
         reactivity,
         toasts,
         datasetStore: datasetStub as never,
         sessionStore: sessionStub as never,
         shapeStore: shapeStub as never,
+        platform: createTestPlatform(),
       });
     }),
   );
@@ -139,7 +132,7 @@ beforeEach(async () => {
 afterEach(() => {
   registerEntityWriteCheck(null);
   registerTransactionRunner(runInMemoryTransaction);
-  clearPredictions();
+  testPredictions.clear();
 });
 
 const drop = (store: RecordStore, payload: Record<string, unknown>) =>
@@ -288,7 +281,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
 
   describe('connections drawn before they land', () => {
     /** Every write the predictions draw now, across the invocations still pending. */
-    const predicted = () => predictionsFor(handle).flatMap((prediction) => prediction.writes);
+    const predicted = () => testPredictions.for(handle).flatMap((prediction) => prediction.writes);
     const waitForPrediction = async () => {
       for (let i = 0; i < 40 && !predicted().length; i++) await new Promise((r) => setTimeout(r, 0));
     };

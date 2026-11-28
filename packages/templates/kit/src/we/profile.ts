@@ -43,7 +43,7 @@ export const profileEditor: SchemaNode = {
               type: 'we-input',
               props: {
                 placeholder: 'First name',
-                value: { $: 'profileStore.ownProfile.firstName' },
+                value: { $: 'identity.ownProfile.firstName' },
                 onChange: {
                   $invoke: 'profileStore.updateOwnProfile',
                   args: [{ firstName: { $: 'arg.detail' } }],
@@ -60,7 +60,7 @@ export const profileEditor: SchemaNode = {
               type: 'we-input',
               props: {
                 placeholder: 'Last name',
-                value: { $: 'profileStore.ownProfile.lastName' },
+                value: { $: 'identity.ownProfile.lastName' },
                 onChange: {
                   $invoke: 'profileStore.updateOwnProfile',
                   args: [{ lastName: { $: 'arg.detail' } }],
@@ -79,7 +79,7 @@ export const profileEditor: SchemaNode = {
           type: 'we-input',
           props: {
             placeholder: 'yourhandle',
-            value: { $: 'profileStore.ownProfile.handle' },
+            value: { $: 'identity.ownProfile.handle' },
             onChange: {
               $invoke: 'profileStore.updateOwnProfile',
               args: [{ handle: { $: 'arg.detail' } }],
@@ -96,7 +96,7 @@ export const profileEditor: SchemaNode = {
           type: 'we-textarea',
           props: {
             placeholder: 'Tell us about yourself...',
-            value: { $: 'profileStore.ownProfile.bio' },
+            value: { $: 'identity.ownProfile.bio' },
             onChange: {
               $invoke: 'profileStore.updateOwnProfile',
               args: [{ bio: { $: 'arg.detail' } }],
@@ -112,8 +112,8 @@ export const profileEditor: SchemaNode = {
         {
           type: 'we-location-picker',
           props: {
-            latitude: { $: 'profileStore.ownProfile.location.latitude' },
-            longitude: { $: 'profileStore.ownProfile.location.longitude' },
+            latitude: { $: 'identity.ownProfile.location.latitude' },
+            longitude: { $: 'identity.ownProfile.location.longitude' },
             placeholder: 'Pin your location on the globe…',
             onChange: {
               $invoke: 'profileStore.updateOwnLocation',
@@ -134,7 +134,7 @@ export const profileEditor: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $: 'profileStore.ownProfile.location' },
+        condition: { $: 'identity.ownProfile.location' },
         then: {
           type: 'Row',
           props: { gap: '300', wrap: true },
@@ -147,7 +147,7 @@ export const profileEditor: SchemaNode = {
                   type: 'we-input',
                   props: {
                     placeholder: 'City',
-                    value: { $: 'profileStore.ownProfile.location.city' },
+                    value: { $: 'identity.ownProfile.location.city' },
                     onChange: {
                       $invoke: 'profileStore.updateOwnLocation',
                       args: [{ city: { $: 'arg.detail' } }],
@@ -164,7 +164,7 @@ export const profileEditor: SchemaNode = {
                   type: 'we-input',
                   props: {
                     placeholder: 'Country',
-                    value: { $: 'profileStore.ownProfile.location.country' },
+                    value: { $: 'identity.ownProfile.location.country' },
                     onChange: {
                       $invoke: 'profileStore.updateOwnLocation',
                       args: [{ country: { $: 'arg.detail' } }],

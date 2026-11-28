@@ -35,6 +35,7 @@ import type { Accessor, ReactivityPort } from '@we/reactivity';
 
 import { type BringInItem } from '../bringIn';
 import { hostSlot } from '../hostSlot';
+import type { PlatformPort } from '../platform/port';
 import { type CreatableEntity } from '../shapes/creatableKinds';
 import { type TypePresentation } from '../shapes/presentation';
 import { fieldEditValue, type RecordDisplay } from '../shapes/recordDisplay';
@@ -43,7 +44,7 @@ import { type Spine } from '../sources/treeSpines';
 import type { Toasts } from '../toasts';
 import { createRecordCanvas } from './records/canvas';
 import { createRecordConnections } from './records/connections';
-import { operationRunner, type RecordDatasets, RELATIONSHIP } from './records/context';
+import { operationRunner, type RecordContext, type RecordDatasets, RELATIONSHIP } from './records/context';
 import { createRecordDrops } from './records/drops';
 import { createRecordForms } from './records/forms';
 import { createRecordKinds } from './records/kinds';
@@ -480,7 +481,7 @@ export interface RecordStore {
    * recolour every meeting.
    *
    * Takes the space's record id rather than reading it, for the reason every canvas action takes a
-   * canvas: this store knows datasets, not spaces, and a template has `spaceStore.currentSpace.id` to
+   * canvas: this store knows datasets, not spaces, and a template has `spaceSettings.currentSpace.id` to
    * hand. An empty colour *deletes* the record rather than writing the unset sentinel, so the list a
    * key reads back never carries a row that means nothing.
    */
@@ -526,14 +527,19 @@ export interface RecordStoreDeps {
   datasetStore: RecordDatasets;
   /** The space's own models, which it offers forms and displays for beside WE's. */
   shapeStore: Pick<ShapeStore, 'spaceShapes'>;
+  /** How a picture filled into a form is scaled down and encoded before it is stored. */
+  platform: Pick<PlatformPort, 'images'>;
+  /** How the composition runs declared operations, and the predictions its reads hold. */
+  operations: RecordContext['operations'];
 }
 
 export function createRecordStore(deps: RecordStoreDeps): RecordStore {
   const { reactivity, toasts } = deps;
   const datasetStore = deps.datasetStore;
   const session = deps.sessionStore;
-  const runOp = operationRunner(session);
-  const context = { reactivity, toasts, sessionStore: session, datasetStore, runOp };
+  const { operations } = deps;
+  const runOp = operationRunner(session, operations);
+  const context = { reactivity, toasts, sessionStore: session, datasetStore, operations, runOp };
 
   const kinds = createRecordKinds({ ...context, shapeStore: deps.shapeStore });
   const { creatableEntities, displays, titleField } = kinds;
@@ -547,7 +553,14 @@ export function createRecordStore(deps: RecordStoreDeps): RecordStore {
 
   const onCanvas = createRecordCanvas({ ...context, connections, contentHome });
   const tree = createRecordTree({ ...context, shapeStore: deps.shapeStore, kinds, connections, canvas: onCanvas });
-  const forms = createRecordForms({ ...context, kinds, connections, canvas: onCanvas, contentHome });
+  const forms = createRecordForms({
+    ...context,
+    kinds,
+    connections,
+    canvas: onCanvas,
+    contentHome,
+    images: deps.platform.images,
+  });
   const drops = createRecordDrops({ ...context, kinds, canvas: onCanvas, contentHome });
 
   async function updateRecordField(entity: string, id: string, field: string, value: unknown): Promise<void> {

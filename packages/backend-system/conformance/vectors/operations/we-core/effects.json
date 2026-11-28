@@ -2171,6 +2171,86 @@
       "permission": { "group": "agent", "chosen": [], "destructive": true, "writes": true }
     },
     {
+      "id": "effects.core-setSpaceDefaultTemplate",
+      "note": "WE’s core.setSpaceDefaultTemplate",
+      "operation": {
+        "description": "Choose the template members see when they open the space.",
+        "params": {
+          "space": { "type": "string", "required": true, "description": "The space record’s id." },
+          "template": {
+            "type": "string",
+            "required": true,
+            "description": "The template’s id, as the host lists it; empty leaves the choice to each member’s own default."
+          }
+        },
+        "serial": { "$": "'default template ' + space" },
+        "steps": [
+          {
+            "update": {
+              "entity": "Space",
+              "id": { "$": "space" },
+              "fields": { "defaultTemplateId": { "$": "template" } }
+            }
+          }
+        ]
+      },
+      "summary": { "entities": { "Space": ["edit"] }, "categories": {}, "bulk": false, "destructive": false },
+      "permission": { "group": "space-settings", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-setSpaceDefaultTheme",
+      "note": "WE’s core.setSpaceDefaultTheme",
+      "operation": {
+        "description": "Choose the theme members see when they open the space.",
+        "params": {
+          "space": { "type": "string", "required": true, "description": "The space record’s id." },
+          "theme": {
+            "type": "string",
+            "required": true,
+            "description": "The theme’s id, as the host lists it; empty leaves the choice to each member’s own default."
+          }
+        },
+        "serial": { "$": "'default theme ' + space" },
+        "steps": [
+          { "update": { "entity": "Space", "id": { "$": "space" }, "fields": { "defaultThemeId": { "$": "theme" } } } }
+        ]
+      },
+      "summary": { "entities": { "Space": ["edit"] }, "categories": {}, "bulk": false, "destructive": false },
+      "permission": { "group": "space-settings", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-setSpaceImage",
+      "note": "WE’s core.setSpaceImage",
+      "operation": {
+        "description": "Set the space’s avatar or its cover image, or take it away.",
+        "params": {
+          "space": { "type": "string", "required": true, "description": "The space record’s id." },
+          "field": { "type": "string", "required": true, "description": "avatar or coverImage." },
+          "image": {
+            "type": "json",
+            "description": "The picture as the record stores a file — what the host made of the one the person chose; absent takes it away."
+          }
+        },
+        "errors": {
+          "notAnImageField": "A space has an avatar and a cover image, and nothing else to put a picture in."
+        },
+        "serial": { "$": "'image ' + space + ' ' + field" },
+        "steps": [
+          { "check": { "condition": { "$": "field in ['avatar', 'coverImage']" }, "error": "notAnImageField" } },
+          {
+            "update": { "entity": "Space", "id": { "$": "space" }, "fields": { "avatar": { "$": "image ?? ''" } } },
+            "when": { "$": "field == 'avatar'" }
+          },
+          {
+            "update": { "entity": "Space", "id": { "$": "space" }, "fields": { "coverImage": { "$": "image ?? ''" } } },
+            "when": { "$": "field == 'coverImage'" }
+          }
+        ]
+      },
+      "summary": { "entities": { "Space": ["edit"] }, "categories": {}, "bulk": false, "destructive": false },
+      "permission": { "group": "space-settings", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
       "id": "effects.core-setSpaceModuleSetting",
       "note": "WE’s core.setSpaceModuleSetting",
       "operation": {

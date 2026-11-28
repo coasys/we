@@ -20,6 +20,7 @@
  */
 import type { Accessor, ReactivityPort } from '@we/reactivity';
 
+import type { PlatformPort } from '../platform/port';
 import type { Account, PlatformAdapter } from '../platform/types';
 
 /**
@@ -56,13 +57,13 @@ function isCachedAccount(value: unknown): value is Account {
   return typeof id === 'string' && id !== '' && typeof name === 'string' && name !== '';
 }
 
-function readCachedAccounts(): Account[] {
+function readCachedAccounts(platform: Pick<PlatformPort, 'storage' | 'sessionStorage'>): Account[] {
   try {
     // Drop the key this used to be kept under, so an existing install stops carrying a cache that
     // survives app restarts — the one that could name a deleted account.
-    localStorage.removeItem(CACHE_KEY);
+    platform.storage.removeItem(CACHE_KEY);
 
-    const raw = sessionStorage.getItem(CACHE_KEY);
+    const raw = platform.sessionStorage.getItem(CACHE_KEY);
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     // Written by `writeCachedAccounts`, so a row with an id and a name is an Account.
@@ -73,9 +74,9 @@ function readCachedAccounts(): Account[] {
   }
 }
 
-function writeCachedAccounts(accounts: Account[]): void {
+function writeCachedAccounts(platform: Pick<PlatformPort, 'sessionStorage'>, accounts: Account[]): void {
   try {
-    sessionStorage.setItem(CACHE_KEY, JSON.stringify(accounts));
+    platform.sessionStorage.setItem(CACHE_KEY, JSON.stringify(accounts));
   } catch {
     // Best effort. A stale or missing cache costs a frame of empty screen, nothing more.
   }
@@ -163,7 +164,7 @@ export function createAccountStore({
   const { signal, memo, effect, untrack } = reactivity;
 
   // Seeded synchronously, before the first paint — see the cache notes above.
-  const [accounts, setAccounts] = signal<Account[]>(readCachedAccounts());
+  const [accounts, setAccounts] = signal<Account[]>(readCachedAccounts(platform));
   const [busy, setBusy] = signal(false);
   const [error, setError] = signal('');
   const [pendingRemovalId, setPendingRemovalId] = signal<string | null>(null);
@@ -195,7 +196,7 @@ export function createAccountStore({
       setAccountsLoaded(true);
       // Keep the cache current, so the next boot draws immediately — including after a profile
       // edit, which changes the name and picture this holds.
-      writeCachedAccounts(loaded);
+      writeCachedAccounts(platform, loaded);
     } catch (err) {
       console.error('AccountStore: could not list accounts', err);
       setError(err instanceof Error ? err.message : String(err));
@@ -245,7 +246,7 @@ export function createAccountStore({
       (account) => {
         const optimistic = [...accounts().map((a) => ({ ...a, active: false })), account];
         setAccounts(optimistic);
-        writeCachedAccounts(optimistic);
+        writeCachedAccounts(platform, optimistic);
       },
     );
 
@@ -305,7 +306,7 @@ export function createAccountStore({
     // next document would otherwise draw the account just left as current.
     const optimistic = accounts().map((a) => ({ ...a, active: a.id === id }));
     setAccounts(optimistic);
-    writeCachedAccounts(optimistic);
+    writeCachedAccounts(platform, optimistic);
 
     const ok = await mutateAndRestart(() => host()!.select(id));
 

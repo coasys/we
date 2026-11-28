@@ -152,7 +152,7 @@ const sharedIn: SchemaNode = {
           props: {
             variant: 'ghost',
             size: 'xs',
-            onClick: { $invoke: 'spaceStore.openRecordRef', args: [{ $: 'share.ref' }] },
+            onClick: { $invoke: 'navigation.openRecordRef', args: [{ $: 'share.ref' }] },
           },
           children: [{ $: "share.spaceName ? 'Shared in ' + share.spaceName : 'Shared'" }],
         },
@@ -279,13 +279,13 @@ const confirmShare = confirmModal({
   icon: 'share-network',
   title: 'Share this note?',
   body: {
-    $: "spaceStore.currentSpace.name ? 'It will be posted in ' + spaceStore.currentSpace.name + ', where its members can read it.' : 'It will be posted in this space, where its members can read it.'",
+    $: "spaceSettings.currentSpace.name ? 'It will be posted in ' + spaceSettings.currentSpace.name + ', where its members can read it.' : 'It will be posted in this space, where its members can read it.'",
   },
   detail: 'A copy is posted. Editing the note afterwards does not change the post.',
   confirmLabel: 'Share',
   confirm: {
     $invoke: 'modules.notes.share',
-    args: [{ $: 'local.confirmShareId' }, { $: 'spaceStore.currentSpace.name' }],
+    args: [{ $: 'local.confirmShareId' }, { $: 'spaceSettings.currentSpace.name' }],
   },
   busy: { $: "modules.notes.sharing != ''" },
 });

@@ -40,7 +40,7 @@
  * ## What another host provides
  *
  * This file is WE's bag. Which of its members a template may expect of any host is a separate
- * question, answered by the capability profiles (`profiles/` in `@we/schema-shared`): five versioned
+ * question, answered by the capability profiles (`profiles/` in `@we/schema-shared`): seven versioned
  * member lists, each member keeping the group it has here. `capabilityProfiles.test.ts` holds the
  * two together. A member outside every profile is WE-host-only, and the validator says so.
  */
@@ -186,8 +186,7 @@ interface MemberSpec {
    *
    * There is one thing this is for. Every space-configuring action takes the space as a trailing
    * optional argument — `updateSpaceMeta(updates, spaceUuid?)`,
-   * `setSpaceDefaultTemplate(templateId, spaceUuid?)`, `setModuleEnabled(id, enabled, spaceUuid?)` —
-   * omitted meaning "the space on screen". That default is exactly right for a template and the
+   * `setModuleEnabled(id, enabled, spaceUuid?)` — omitted meaning "the space on screen". That default is exactly right for a template and the
    * argument is exactly wrong: it is the difference between "this community's template configures
    * this community" and "any space you visit can rename every other space you are in".
    *
@@ -716,7 +715,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       Exactly the check working: an unreadable member fell out as a failing test rather than as an
       indicator that silently never rendered.
     */
-    // Templates read the field off the space record: `spaceStore.currentSpace.autoInterpret`.
+    // Templates read the field off the space record: `spaceSettings.currentSpace.autoInterpret`.
     autoInterpret: WIRING,
     /*
       `content`, not `space-settings`, and the difference is who may press it.
@@ -746,10 +745,13 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     shareSpace: action('space-admin'),
     initializeAsWeSpace: action('space-settings'),
     removeSpace: destructive('space-admin'),
-    updateSpaceImage: hereOnly('space-settings', 2),
+    /*
+      The host's half of setting the space's picture: what the record stores for the one chosen.
+      Writes nothing — `ops.core.setSpaceImage` does, pinned to the space on screen as every
+      operation a space template holds is.
+    */
+    prepareSpaceImage: action('space-settings'),
     updateSpaceMeta: hereOnly('space-settings', 1),
-    setSpaceDefaultTemplate: hereOnly('space-settings', 1),
-    setSpaceDefaultTheme: hereOnly('space-settings', 1),
     setModuleEnabled: hereOnly('space-settings', 2),
     setAutoInterpret: hereOnly('space-settings', 1),
     setThreadMode: hereOnly('space-settings', 1),
@@ -982,9 +984,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     setDefaultTheme: action('library'),
     provideTemplates: WIRING,
     provideSpaceAppearance: WIRING,
-    explainSpaceThemeHidden: WIRING,
     // ── the theme a space is seen in: this agent's override per space ──
-    themeOverrideOptions: state('space-admin'),
+    // `appearance` with the override it lists choices for: this agent's own choice for the space on
+    // screen, offered from the themes they already have.
+    themeOverrideOptions: state('appearance'),
     /*
       `appearance`, not `space-admin` beside its options list: this answers "is the theme you are
       looking at one you chose here", which is a fact about the current view rather than about
@@ -1143,7 +1146,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     toggleInstalled: action('library'),
     provideSpaceAppearance: WIRING,
     // This agent's override of the template one space shows — beside its theme twin in `themeStore`.
-    templateOverrideOptions: state('space-admin'),
+    templateOverrideOptions: state('appearance'),
     setSpaceTemplateOverride: hereOnly('appearance', 1),
     provideEditingProbe: WIRING,
     /*
@@ -1177,7 +1180,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     templateSegments: state('view-state'),
     params: state('view-state'),
     navigate: ambient('navigation'),
-    resolve: ambient('navigation'),
     setParam: ambient('view-state'),
     back: ambient('navigation'),
 
@@ -1731,6 +1733,95 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
 };
 
 /**
+ * Where WE keeps each capability profile member: by profile namespace, the store whose member of the
+ * same name implements it.
+ *
+ * A profile member is written under its profile's namespace — `navigation.params`,
+ * `viewState.openPanel` — and the bag builds each namespace as a thin object over these store
+ * members: the same accessor, tagged as the store's would be, and the same gesture gate and grant on
+ * each action. It is not also reachable under its store. The store is how WE happens to be built
+ * (SpaceStore is thirteen parts, and a member may move between stores); the namespace is the
+ * contract, so a template that names only namespaces, records and operations needs nothing of WE's
+ * stores. A store name in a template therefore always means a member that works only in WE.
+ *
+ * Classification stays per store, in `TEMPLATE_SURFACE`, so the group a member is granted under is
+ * said once. `capabilityProfiles.test.ts` holds this table to the profiles: every member homed once,
+ * in a store that classifies it.
+ */
+export const PROFILE_HOMES: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
+  navigation: {
+    routeStore: ['currentPath', 'segments', 'templateSegments', 'params', 'navigate', 'setParam', 'back'],
+    spaceStore: ['mySpaces', 'spacePath', 'viewNav', 'navigateToSpace', 'openRecordRef'],
+  },
+  viewState: {
+    shellStore: ['panelInstances', 'openTemplatePanel', 'closeTemplatePanel', 'openPanel', 'closePanel', 'scrollToId'],
+    clockStore: ['clocks', 'play', 'pause', 'toggle', 'seek', 'seekProgress', 'setSpeed', 'setLoop', 'configure'],
+  },
+  layout: {
+    shellStore: ['layoutDirty', 'collapsedLanes', 'toggleLane', 'setLaneCollapsed', 'resetTemplateLayout'],
+  },
+  presence: {
+    presenceStore: ['available', 'peers', 'online', 'onlineHere', 'setAvailability', 'setActivity', 'clearActivity'],
+  },
+  identity: {
+    profileStore: ['ownProfile', 'ownProfileLoaded', 'profiles'],
+    spaceStore: ['memberDids', 'mutedDids', 'readMarkers'],
+  },
+  spaceSettings: {
+    spaceStore: [
+      'currentSpace',
+      'canAdministerCurrentSpace',
+      'spaceDefaultTemplateId',
+      'spaceDefaultThemeId',
+      'myModuleSettings',
+      'prepareSpaceImage',
+      'setViewVisible',
+      'setModuleVisible',
+      'setMyModuleSetting',
+    ],
+  },
+  appearance: {
+    templateStore: [
+      'switcherGroups',
+      'currentSwitcherId',
+      'templateOverrideOptions',
+      'switchTemplate',
+      'setSpaceTemplateOverride',
+    ],
+    themeStore: [
+      'builtInThemes',
+      'installedThemes',
+      'spaceThemes',
+      'themeOverrideOptions',
+      'currentThemeId',
+      'spaceThemePinned',
+      'applyTheme',
+      'clearSpaceThemePin',
+      'setSpaceThemeOverride',
+    ],
+  },
+};
+
+/** By store, then member: the profile namespace a store member is reached under. */
+const NAMESPACE_OF: ReadonlyMap<string, ReadonlyMap<string, string>> = (() => {
+  const out = new Map<string, Map<string, string>>();
+  for (const [namespace, stores] of Object.entries(PROFILE_HOMES))
+    for (const [store, members] of Object.entries(stores)) {
+      const byMember = out.get(store) ?? new Map<string, string>();
+      for (const member of members) byMember.set(member, namespace);
+      out.set(store, byMember);
+    }
+  return out;
+})();
+
+/** The store holding a profile namespace's member in WE, or undefined when the namespace has none. */
+export function profileHome(namespace: string, member: string): string | undefined {
+  const stores = PROFILE_HOMES[namespace];
+  if (!stores) return undefined;
+  return Object.keys(stores).find((store) => stores[store].includes(member));
+}
+
+/**
  * Members present in every bag: renderer bindings and template-facing vocabulary, not store state.
  *
  * The renderer's bindings come from its own contract rather than being listed again here — a list
@@ -1858,11 +1949,13 @@ function gated(path: string, method: AnyFn, gate: GestureGate): AnyFn {
 /**
  * What the host lends for declared operations: one runner, which every `ops.<ns>.<name>` in a bag
  * calls with its own name. `options.dataset` is the same store path `record.create` takes;
- * `options.admitChosen` is the bag's judgement of an entity an operation chooses at call time,
- * which the host hands the runner (`RunOperationOptions.admitChosen`).
+ * `options.space` names another space by its dataset id, and reaches the runner only from a bag
+ * holding `space-admin`; `options.admitChosen` is the bag's judgement of an entity an operation
+ * chooses at call time, which the host hands the runner (`RunOperationOptions.admitChosen`).
  */
 export interface OperationRunOptions {
   dataset?: string;
+  space?: string;
   admitChosen?: (entity: string) => boolean;
 }
 
@@ -1890,14 +1983,23 @@ function operationNamespaces(
   for (const [name, spec] of Object.entries(operationSurfaceEntries())) {
     if (!granted.has(spec.group)) continue;
     const path = `ops.${name}`;
-    // One argument, the params, and the dataset option after it; nothing else of the caller's reaches
-    // the runner. The judgement of a chosen entity is the bag's own, never the template's.
+    /*
+      One argument, the params, and the options after it; nothing else of the caller's reaches the
+      runner. The judgement of a chosen entity is the bag's own, never the template's. Another space
+      is named only with `space-admin`, the grant a store action's trailing space id needs too
+      (`arity`): below it an operation runs in the space on screen whatever the template says, so a
+      space's template configures that space and no other.
+    */
     const admitChosen = (entity: string) => admitsChosen(granted, entity);
-    let method: AnyFn = (params?: unknown, given?: unknown) =>
-      host.run(name, params && typeof params === 'object' ? (params as Record<string, unknown>) : undefined, {
-        ...(given && typeof given === 'object' ? { dataset: (given as { dataset?: string }).dataset } : {}),
+    const otherSpaces = granted.has('space-admin');
+    let method: AnyFn = (params?: unknown, given?: unknown) => {
+      const { dataset, space } = (given && typeof given === 'object' ? given : {}) as OperationRunOptions;
+      return host.run(name, params && typeof params === 'object' ? (params as Record<string, unknown>) : undefined, {
+        ...(typeof dataset === 'string' ? { dataset } : {}),
+        ...(otherSpaces && typeof space === 'string' ? { space } : {}),
         admitChosen,
       });
+    };
     if (spec.destructive && options.onDestructive) {
       const guard = options.onDestructive;
       const bound = method;
@@ -1915,14 +2017,24 @@ function operationNamespaces(
  *
  * Copies rather than proxies, so what a template can reach is decided once at construction and is
  * not a function of how it asks. A proxy would have to answer `has`/`get` for arbitrary keys, and
- * every such answer is an oracle.
+ * every such answer is an oracle. What is copied is the member itself — an accessor stays the
+ * store's accessor — so a read through the bag is as reactive as one on the store.
+ *
+ * Three kinds of name come out: data (`record`, `ops`, `$query` through the bindings), the profile
+ * namespaces (`navigation`, `viewState`, …, from {@link PROFILE_HOMES}), and the stores, holding only
+ * what no profile does.
  */
-export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, options: BuildBagOptions): T {
+export function buildTemplateBag<T extends Record<string, unknown>>(
+  stores: T,
+  options: BuildBagOptions,
+): T & Record<string, unknown> {
   const granted = new Set(options.grants);
   // The grant that says "change settings in spaces other than this one" — so the bag holding it is
   // the bag where naming a space is the point rather than the danger. See `MemberSpec.arity`.
   const mayNameASpace = granted.has('space-admin');
   const bag: Record<string, unknown> = {};
+  // The profile namespaces, filled from whichever of their stores the host passed.
+  const profiles: Record<string, Record<string, unknown>> = {};
 
   for (const key of Object.keys(stores)) {
     /*
@@ -1983,10 +2095,14 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
     if (!members || value == null || typeof value !== 'object') continue;
 
     const filtered: Record<string, unknown> = {};
+    const homed = NAMESPACE_OF.get(key);
     for (const [name, member] of Object.entries(value as Record<string, unknown>)) {
       const spec = members[name];
       if (spec === undefined || spec === WIRING) continue;
       if (!granted.has(spec.group)) continue;
+      // A profile member goes into its profile's namespace instead, and only there.
+      const namespace = homed?.get(name);
+      const into = namespace ? (profiles[namespace] ??= {}) : filtered;
 
       if (spec.kind === 'state') {
         /*
@@ -1996,16 +2112,17 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
         */
         if (Object.getOwnPropertyDescriptor(value, name)?.get) {
           const source = value as Record<string, unknown>;
-          Object.defineProperty(filtered, name, { enumerable: true, get: () => source[name] });
+          Object.defineProperty(into, name, { enumerable: true, get: () => source[name] });
           continue;
         }
         // Tagged so `walkPath` will call it. Anything untagged is data to the resolver, never
         // something to invoke — which is what stops a store read from running an action.
-        filtered[name] = typeof member === 'function' ? markReactive(member) : member;
+        into[name] = typeof member === 'function' ? markReactive(member) : member;
         continue;
       }
 
-      const path = `${key}.${name}`;
+      // The name the template wrote, which is what a refusal or a confirmation reports.
+      const path = `${namespace ?? key}.${name}`;
       let method = member as (...args: unknown[]) => unknown;
 
       // Pinned to the space on screen: the trailing `spaceUuid` argument is dropped before the store
@@ -2064,10 +2181,11 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
 
       // Outermost, so the question is asked of the call as it arrives — before a destructive
       // confirmation, whose answer comes back after the press that asked has finished.
-      filtered[name] = spec.ambient ? method : gated(path, method, options.gesture);
+      into[name] = spec.ambient ? method : gated(path, method, options.gesture);
     }
     bag[key] = filtered;
   }
+  Object.assign(bag, profiles);
 
   return bag as T;
 }
@@ -2123,9 +2241,19 @@ const EXPRESSION_ROOTS = new Set([
   'item',
 ]);
 
+/**
+ * A reference's root and member, and the classification the bag would build it from. A profile
+ * namespace's member is classified where its store holds it; a profile member named under its store
+ * has none, since the bag does not put it there.
+ */
 function classify(path: string): { store: string; member: string; spec: Classification | undefined } | null {
   const [store, member] = path.split('.');
   if (!store || !member) return null;
+  if (store in PROFILE_HOMES) {
+    const home = profileHome(store, member);
+    return { store, member, spec: home ? TEMPLATE_SURFACE[home]?.[member] : undefined };
+  }
+  if (NAMESPACE_OF.get(store)?.has(member)) return { store, member, spec: undefined };
   return { store, member, spec: TEMPLATE_SURFACE[store]?.[member] };
 }
 
@@ -2181,7 +2309,7 @@ function collectReferences(value: unknown, into: { path: string; via: 'store' | 
 /**
  * Inspect a template against a set of grants.
  *
- * A store path may be deeper than `store.member` (`spaceStore.currentSpace.name`); only the
+ * A store path may be deeper than `store.member` (`spaceSettings.currentSpace.name`); only the
  * first two segments decide access, which is exactly what the bag does — it filters members, and
  * everything below one travels with it.
  */
@@ -2241,9 +2369,17 @@ export function inspectTemplateSurface(
     */
     if (
       !parsed ||
-      (TEMPLATE_SURFACE[parsed.store] === undefined && (EXPRESSION_ROOTS.has(root) || !/Store$/.test(root)))
+      (TEMPLATE_SURFACE[parsed.store] === undefined &&
+        !(root in PROFILE_HOMES) &&
+        (EXPRESSION_ROOTS.has(root) || !/Store$/.test(root)))
     )
       continue;
+    /*
+      A profile namespace with a member no profile has: a row an enclosing `$each` bound under the
+      same name (`as: 'layout'`, then `layout.name`), or a typo. Neither is a grant question — the
+      validator, which knows the bound names, reports the second.
+    */
+    if (root in PROFILE_HOMES && !profileHome(root, parsed.member)) continue;
     if (parsed.spec === undefined || parsed.spec === WIRING) {
       // Unclassified or host wiring. Blocked either way — an undecided member is not an open one —
       // but with a null group, so a caller can word "there is no such thing" differently from

@@ -1,4 +1,4 @@
-import type { AppConfig, PlatformAdapter } from '@we/app-shell/shared';
+import { type AppConfig, createBrowserPlatform, type PlatformAdapter } from '@we/app-shell/shared';
 
 /**
  * The host contract, answered for a browser with nothing behind it.
@@ -14,6 +14,7 @@ import type { AppConfig, PlatformAdapter } from '@we/app-shell/shared';
  * the class of difference a fidelity tool must not have.
  */
 export const previewPlatform: PlatformAdapter = {
+  ...createBrowserPlatform(),
   resolveAppUrl(app: AppConfig, isDevelopment: boolean): string {
     if (isDevelopment && app.paths.devServer) {
       const host = app.paths.devServer.host || 'localhost';

@@ -6225,6 +6225,301 @@
   ],
   "storeEntries": [
     {
+      "name": "navigation",
+      "state": {
+        "currentPath": {
+          "type": "string"
+        },
+        "segments": {
+          "type": "array"
+        },
+        "templateSegments": {
+          "type": "array"
+        },
+        "params": {
+          "type": "object"
+        },
+        "mySpaces": {
+          "type": "array",
+          "model": "Space"
+        },
+        "spacePath": {
+          "type": "string"
+        },
+        "viewNav": {
+          "type": "array"
+        }
+      },
+      "actions": ["navigate", "setParam", "back", "navigateToSpace", "openRecordRef"],
+      "homes": {
+        "currentPath": "routeStore",
+        "segments": "routeStore",
+        "templateSegments": "routeStore",
+        "params": "routeStore",
+        "navigate": "routeStore",
+        "setParam": "routeStore",
+        "back": "routeStore",
+        "mySpaces": "spaceStore",
+        "spacePath": "spaceStore",
+        "viewNav": "spaceStore",
+        "navigateToSpace": "spaceStore",
+        "openRecordRef": "spaceStore"
+      },
+      "ambient": ["navigate", "setParam", "back", "navigateToSpace", "openRecordRef"],
+      "needsArgs": ["navigate", "setParam", "navigateToSpace", "openRecordRef"]
+    },
+    {
+      "name": "viewState",
+      "state": {
+        "panelInstances": {
+          "type": "array"
+        },
+        "clocks": {
+          "type": "object"
+        }
+      },
+      "actions": [
+        "openTemplatePanel",
+        "closeTemplatePanel",
+        "openPanel",
+        "closePanel",
+        "scrollToId",
+        "play",
+        "pause",
+        "toggle",
+        "seek",
+        "seekProgress",
+        "setSpeed",
+        "setLoop",
+        "configure"
+      ],
+      "homes": {
+        "panelInstances": "shellStore",
+        "openTemplatePanel": "shellStore",
+        "closeTemplatePanel": "shellStore",
+        "openPanel": "shellStore",
+        "closePanel": "shellStore",
+        "scrollToId": "shellStore",
+        "clocks": "clockStore",
+        "play": "clockStore",
+        "pause": "clockStore",
+        "toggle": "clockStore",
+        "seek": "clockStore",
+        "seekProgress": "clockStore",
+        "setSpeed": "clockStore",
+        "setLoop": "clockStore",
+        "configure": "clockStore"
+      },
+      "ambient": [
+        "openTemplatePanel",
+        "closeTemplatePanel",
+        "closePanel",
+        "scrollToId",
+        "play",
+        "pause",
+        "toggle",
+        "seek",
+        "seekProgress",
+        "setSpeed",
+        "setLoop",
+        "configure"
+      ],
+      "needsArgs": [
+        "openTemplatePanel",
+        "closeTemplatePanel",
+        "openPanel",
+        "closePanel",
+        "scrollToId",
+        "play",
+        "pause",
+        "toggle",
+        "seek",
+        "seekProgress",
+        "setSpeed",
+        "setLoop",
+        "configure"
+      ]
+    },
+    {
+      "name": "layout",
+      "state": {
+        "layoutDirty": {
+          "type": "boolean"
+        },
+        "collapsedLanes": {
+          "type": "array"
+        }
+      },
+      "actions": ["toggleLane", "setLaneCollapsed", "resetTemplateLayout"],
+      "homes": {
+        "layoutDirty": "shellStore",
+        "collapsedLanes": "shellStore",
+        "toggleLane": "shellStore",
+        "setLaneCollapsed": "shellStore",
+        "resetTemplateLayout": "shellStore"
+      },
+      "ambient": ["toggleLane", "setLaneCollapsed", "resetTemplateLayout"],
+      "needsArgs": ["toggleLane", "setLaneCollapsed"]
+    },
+    {
+      "name": "presence",
+      "state": {
+        "available": {
+          "type": "boolean"
+        },
+        "peers": {
+          "type": "array"
+        },
+        "online": {
+          "type": "array"
+        },
+        "onlineHere": {
+          "type": "array"
+        }
+      },
+      "actions": ["setAvailability", "setActivity", "clearActivity"],
+      "homes": {
+        "available": "presenceStore",
+        "peers": "presenceStore",
+        "online": "presenceStore",
+        "onlineHere": "presenceStore",
+        "setAvailability": "presenceStore",
+        "setActivity": "presenceStore",
+        "clearActivity": "presenceStore"
+      },
+      "needsArgs": ["setAvailability", "setActivity", "clearActivity"]
+    },
+    {
+      "name": "identity",
+      "state": {
+        "ownProfile": {
+          "type": "object",
+          "properties": ["did", "firstName", "lastName", "handle", "bio", "avatar", "coverImage", "location"]
+        },
+        "ownProfileLoaded": {
+          "type": "boolean"
+        },
+        "profiles": {
+          "type": "array",
+          "properties": ["did", "firstName", "lastName", "handle", "bio", "avatar", "coverImage", "location"]
+        },
+        "memberDids": {
+          "type": "array"
+        },
+        "mutedDids": {
+          "type": "array"
+        },
+        "readMarkers": {
+          "type": "array"
+        }
+      },
+      "actions": [],
+      "homes": {
+        "ownProfile": "profileStore",
+        "ownProfileLoaded": "profileStore",
+        "profiles": "profileStore",
+        "memberDids": "spaceStore",
+        "mutedDids": "spaceStore",
+        "readMarkers": "spaceStore"
+      }
+    },
+    {
+      "name": "spaceSettings",
+      "state": {
+        "currentSpace": {
+          "type": "object",
+          "model": "Space"
+        },
+        "canAdministerCurrentSpace": {
+          "type": "boolean"
+        },
+        "spaceDefaultTemplateId": {
+          "type": "string"
+        },
+        "spaceDefaultThemeId": {
+          "type": "string"
+        },
+        "myModuleSettings": {
+          "type": "array"
+        }
+      },
+      "actions": ["prepareSpaceImage", "setViewVisible", "setModuleVisible", "setMyModuleSetting"],
+      "homes": {
+        "currentSpace": "spaceStore",
+        "canAdministerCurrentSpace": "spaceStore",
+        "spaceDefaultTemplateId": "spaceStore",
+        "spaceDefaultThemeId": "spaceStore",
+        "myModuleSettings": "spaceStore",
+        "prepareSpaceImage": "spaceStore",
+        "setViewVisible": "spaceStore",
+        "setModuleVisible": "spaceStore",
+        "setMyModuleSetting": "spaceStore"
+      },
+      "needsArgs": ["prepareSpaceImage", "setViewVisible", "setModuleVisible", "setMyModuleSetting"]
+    },
+    {
+      "name": "appearance",
+      "state": {
+        "switcherGroups": {
+          "type": "array",
+          "properties": ["label", "items"]
+        },
+        "currentSwitcherId": {
+          "type": "string"
+        },
+        "templateOverrideOptions": {
+          "type": "array",
+          "properties": ["label", "value"]
+        },
+        "builtInThemes": {
+          "type": "array",
+          "properties": ["id", "name", "icon", "origin"]
+        },
+        "installedThemes": {
+          "type": "array",
+          "properties": ["id", "name", "icon", "origin"]
+        },
+        "spaceThemes": {
+          "type": "array",
+          "properties": ["id", "name", "icon", "origin"]
+        },
+        "themeOverrideOptions": {
+          "type": "array",
+          "properties": ["label", "value"]
+        },
+        "currentThemeId": {
+          "type": "string"
+        },
+        "spaceThemePinned": {
+          "type": "boolean"
+        }
+      },
+      "actions": [
+        "switchTemplate",
+        "setSpaceTemplateOverride",
+        "applyTheme",
+        "clearSpaceThemePin",
+        "setSpaceThemeOverride"
+      ],
+      "homes": {
+        "switcherGroups": "templateStore",
+        "currentSwitcherId": "templateStore",
+        "templateOverrideOptions": "templateStore",
+        "builtInThemes": "themeStore",
+        "installedThemes": "themeStore",
+        "spaceThemes": "themeStore",
+        "themeOverrideOptions": "themeStore",
+        "currentThemeId": "themeStore",
+        "spaceThemePinned": "themeStore",
+        "switchTemplate": "templateStore",
+        "setSpaceTemplateOverride": "templateStore",
+        "applyTheme": "themeStore",
+        "clearSpaceThemePin": "themeStore",
+        "setSpaceThemeOverride": "themeStore"
+      },
+      "needsArgs": ["switchTemplate", "setSpaceTemplateOverride", "applyTheme", "setSpaceThemeOverride"]
+    },
+    {
       "name": "accountStore",
       "state": {
         "canManageAccounts": {
@@ -6275,6 +6570,27 @@
         "confirmRemoval",
         "clearError"
       ],
+      "groups": {
+        "accounts": "session",
+        "accountsLoaded": "session",
+        "activeAccount": "session",
+        "busy": "session",
+        "canManageAccounts": "session",
+        "cancelRemoval": "session",
+        "clearError": "session",
+        "confirmRemoval": "session",
+        "createAccount": "session",
+        "creating": "session",
+        "error": "session",
+        "hasOtherAccounts": "session",
+        "isFirstRun": "session",
+        "pendingRemoval": "session",
+        "refresh": "session",
+        "removeAccount": "session",
+        "requestRemoval": "session",
+        "switchAccount": "session",
+        "switchingTo": "session"
+      },
       "ambient": ["refresh", "requestRemoval", "cancelRemoval", "clearError"],
       "destructive": ["removeAccount", "confirmRemoval"],
       "needsArgs": ["switchAccount", "removeAccount", "requestRemoval"]
@@ -6295,6 +6611,13 @@
         }
       },
       "actions": ["activateApp", "deactivateApp"],
+      "groups": {
+        "activateApp": "navigation",
+        "activeAppId": "navigation",
+        "apps": "navigation",
+        "appsWithWe": "navigation",
+        "deactivateApp": "navigation"
+      },
       "ambient": ["activateApp", "deactivateApp"],
       "needsArgs": ["activateApp"]
     },
@@ -6327,6 +6650,21 @@
         "confirmSetUp",
         "removeBundle"
       ],
+      "groups": {
+        "busy": "library",
+        "cancelInstall": "library",
+        "closeSetUp": "library",
+        "confirmInstall": "library",
+        "confirmSetUp": "library",
+        "installFromFile": "library",
+        "installed": "library",
+        "openSetUp": "library",
+        "pendingInstall": "library",
+        "removeBundle": "library",
+        "setUpPicker": "library",
+        "spaceChoices": "library",
+        "toggleSpace": "library"
+      },
       "ambient": ["cancelInstall", "toggleSpace", "openSetUp", "closeSetUp"],
       "destructive": ["removeBundle"],
       "needsArgs": ["installFromFile", "toggleSpace", "openSetUp", "removeBundle"]
@@ -6342,18 +6680,18 @@
         }
       },
       "actions": ["openChat", "closeSheet"],
+      "groups": {
+        "closeSheet": "view-state",
+        "isNarrow": "view-state",
+        "openChat": "view-state",
+        "sheet": "view-state"
+      },
       "ambient": ["closeSheet"]
     },
     {
       "name": "clockStore",
-      "state": {
-        "clocks": {
-          "type": "object"
-        }
-      },
-      "actions": ["play", "pause", "toggle", "seek", "seekProgress", "setSpeed", "setLoop", "configure"],
-      "ambient": ["play", "pause", "toggle", "seek", "seekProgress", "setSpeed", "setLoop", "configure"],
-      "needsArgs": ["play", "pause", "toggle", "seek", "seekProgress", "setSpeed", "setLoop", "configure"]
+      "state": {},
+      "actions": []
     },
     {
       "name": "datasetStore",
@@ -6427,6 +6765,31 @@
         }
       },
       "actions": ["switchDataset", "reorderDatasets", "removeDataset"],
+      "groups": {
+        "currentDataset": "content",
+        "currentDatasetCid": "content",
+        "currentDatasetEntities": "content",
+        "currentDatasetEntitiesLoaded": "content",
+        "currentDatasetUri": "content",
+        "datasets": "navigation",
+        "datasetsLoaded": "navigation",
+        "globalDataset": "navigation",
+        "globalSpaceConfigured": "navigation",
+        "globalSpaceId": "navigation",
+        "isWeSpace": "navigation",
+        "joinedSpaceCids": "navigation",
+        "marketplaceConfigured": "navigation",
+        "marketplaceDataset": "library",
+        "marketplaceId": "navigation",
+        "marketplaceJoined": "navigation",
+        "orderedDatasets": "navigation",
+        "personalDataset": "agent",
+        "removeDataset": "space-admin",
+        "reorderDatasets": "agent",
+        "rootDataset": "agent",
+        "switchDataset": "navigation",
+        "systemDatasetUuids": "navigation"
+      },
       "ambient": ["switchDataset"],
       "destructive": ["removeDataset"],
       "needsArgs": ["switchDataset", "reorderDatasets", "removeDataset"]
@@ -6452,6 +6815,16 @@
         }
       },
       "actions": ["refresh", "addDevice", "revoke"],
+      "groups": {
+        "addDevice": "devices",
+        "canManage": "devices",
+        "devices": "devices",
+        "devicesLoaded": "devices",
+        "error": "devices",
+        "refresh": "devices",
+        "revoke": "devices",
+        "validCount": "devices"
+      },
       "ambient": ["refresh"],
       "needsArgs": ["revoke"]
     },
@@ -6588,6 +6961,70 @@
         "sendMessage",
         "clearHistory"
       ],
+      "groups": {
+        "activeSessionId": "editor",
+        "aiDockEdge": "editor",
+        "assistantAvailable": "editor",
+        "assistantStatus": "editor",
+        "canRedo": "editor",
+        "canUndo": "editor",
+        "cancelPicker": "editor",
+        "clearHistory": "editor",
+        "close": "editor",
+        "closeCodePanel": "editor",
+        "closeThemePanel": "editor",
+        "codeDockEdge": "editor",
+        "codePanelOpen": "editor",
+        "confirmPicker": "editor",
+        "contentMode": "editor",
+        "deleteSession": "editor",
+        "editAction": "editor",
+        "editApp": "editor",
+        "editorDockFloat": "editor",
+        "editorDockSize": "editor",
+        "enterTemplateEditing": "appearance",
+        "enterThemeEditing": "appearance",
+        "exitTemplateEditing": "editor",
+        "exitThemeEditing": "editor",
+        "forkApp": "editor",
+        "isEditingTemplate": "editor",
+        "isEditingTheme": "editor",
+        "isOpen": "editor",
+        "isReadOnly": "editor",
+        "isStreaming": "editor",
+        "messages": "editor",
+        "newChat": "editor",
+        "open": "editor",
+        "openCodePanel": "editor",
+        "openThemePanel": "editor",
+        "pickerAction": "editor",
+        "pickerDefaultIcon": "editor",
+        "pickerDefaultName": "editor",
+        "pickerOpen": "editor",
+        "pickerShowDestination": "editor",
+        "redo": "editor",
+        "refreshAssistant": "editor",
+        "schemaJson": "editor",
+        "sendMessage": "editor",
+        "sessions": "editor",
+        "setContentMode": "editor",
+        "startFork": "appearance",
+        "startFresh": "appearance",
+        "streamingContent": "editor",
+        "switchSession": "editor",
+        "templateIcon": "editor",
+        "templateName": "editor",
+        "themeDockEdge": "editor",
+        "themePanelOpen": "editor",
+        "toggle": "editor",
+        "toggleCodePanel": "editor",
+        "toggleThemeEditing": "editor",
+        "toggleThemePanel": "editor",
+        "toggleVisualPanel": "editor",
+        "undo": "editor",
+        "visualDockEdge": "editor",
+        "visualPanelOpen": "editor"
+      },
       "ambient": [
         "refreshAssistant",
         "setContentMode",
@@ -6665,6 +7102,29 @@
         }
       },
       "actions": ["refresh", "open", "makeIdentity", "startWithoutIdentity"],
+      "groups": {
+        "available": "keys",
+        "busy": "keys",
+        "canChange": "keys",
+        "changeBlocked": "keys",
+        "custody": "keys",
+        "did": "keys",
+        "error": "keys",
+        "fork": "keys",
+        "forked": "keys",
+        "keyId": "keys",
+        "keyLog": "keys",
+        "keyLogLoaded": "keys",
+        "lastOutcome": "keys",
+        "makeIdentity": "keys",
+        "needsFirstRun": "keys",
+        "open": "keys",
+        "refresh": "keys",
+        "startWithoutIdentity": "keys",
+        "status": "keys",
+        "statusLoaded": "keys",
+        "thisDeviceRevoked": "keys"
+      },
       "ambient": ["refresh"],
       "needsArgs": ["open"]
     },
@@ -6694,47 +7154,39 @@
         }
       },
       "actions": ["dismissSettled"],
+      "groups": {
+        "activity": "presence",
+        "capable": "content",
+        "dismissSettled": "view-state",
+        "hasActivity": "presence",
+        "runningCount": "presence",
+        "runningPasses": "presence",
+        "settledCount": "presence",
+        "settledPasses": "presence"
+      },
       "ambient": ["dismissSettled"]
     },
     {
       "name": "presenceStore",
       "state": {
-        "peers": {
-          "type": "array"
-        },
-        "online": {
-          "type": "array"
-        },
-        "onlineHere": {
-          "type": "array"
-        },
         "calls": {
           "type": "object"
-        },
-        "available": {
-          "type": "boolean"
         },
         "focusDepth": {
           "type": "object"
         }
       },
-      "actions": ["setFocusDepth", "setAvailability", "setActivity", "clearActivity"],
-      "needsArgs": ["setFocusDepth", "setAvailability", "setActivity", "clearActivity"]
+      "actions": ["setFocusDepth"],
+      "groups": {
+        "calls": "presence",
+        "focusDepth": "presence",
+        "setFocusDepth": "agent"
+      },
+      "needsArgs": ["setFocusDepth"]
     },
     {
       "name": "profileStore",
       "state": {
-        "profiles": {
-          "type": "array",
-          "properties": ["did", "firstName", "lastName", "handle", "bio", "avatar", "coverImage", "location"]
-        },
-        "ownProfile": {
-          "type": "object",
-          "properties": ["did", "firstName", "lastName", "handle", "bio", "avatar", "coverImage", "location"]
-        },
-        "ownProfileLoaded": {
-          "type": "boolean"
-        },
         "needsName": {
           "type": "boolean"
         },
@@ -6753,6 +7205,19 @@
         "clearProfileImage",
         "updateOwnLocation"
       ],
+      "groups": {
+        "clearProfileImage": "agent",
+        "completeAccountSetup": "session",
+        "dismissNamePrompt": "agent",
+        "fetchProfile": "identity",
+        "needsName": "agent",
+        "pendingAvatar": "agent",
+        "saveNameFromPrompt": "agent",
+        "setPendingAvatar": "agent",
+        "updateOwnLocation": "agent",
+        "updateOwnProfile": "agent",
+        "updateProfileImage": "agent"
+      },
       "ambient": ["fetchProfile"],
       "needsArgs": [
         "setPendingAvatar",
@@ -6853,6 +7318,62 @@
         "createOnCanvas",
         "createCardOnCanvas"
       ],
+      "groups": {
+        "addRelationImage": "content",
+        "anchorOnCanvas": "content",
+        "arrangeOnTree": "content",
+        "bringIn": "content",
+        "cancelRecordForm": "content",
+        "cancelRelationForm": "content",
+        "canvasHistory": "content",
+        "connectNodes": "content",
+        "connectNodesNow": "content",
+        "creatableEntities": "content",
+        "createCardOnCanvas": "content",
+        "createOnCanvas": "content",
+        "deleteRecords": "content",
+        "displays": "content",
+        "dragOnCanvas": "content",
+        "dropOnCanvas": "content",
+        "kinds": "content",
+        "lastCreatedId": "content",
+        "openRecordForm": "content",
+        "openRelationForm": "content",
+        "pendingLink": "content",
+        "pickRelation": "content",
+        "placeOnCanvas": "content",
+        "plumbingClasses": "content",
+        "previewCardStyle": "content",
+        "recordDraft": "content",
+        "recordDraftDirty": "content",
+        "recordErrors": "content",
+        "redoCanvas": "content",
+        "rekeyConnection": "content",
+        "relationDraft": "content",
+        "relationErrors": "content",
+        "relationshipKind": "content",
+        "removeFromCanvas": "content",
+        "removeRelationEntry": "content",
+        "rerouteOnCanvas": "content",
+        "resizeOnCanvas": "content",
+        "retargetOnCanvas": "content",
+        "saveRecord": "content",
+        "saveRelationForm": "content",
+        "savingRecord": "content",
+        "setCardStyle": "content",
+        "setRecordEntity": "content",
+        "setRecordField": "content",
+        "setRecordPlace": "content",
+        "setRelationEntryField": "content",
+        "setRelationField": "content",
+        "setRelationLocation": "content",
+        "setRelationshipKind": "content",
+        "setSpaceTypeColor": "content",
+        "setSpaceTypePresentation": "content",
+        "setTypeColor": "content",
+        "undoCanvas": "content",
+        "updateRecordField": "content"
+      },
       "ambient": [
         "openRecordForm",
         "connectNodes",
@@ -6915,25 +7436,14 @@
     {
       "name": "routeStore",
       "state": {
-        "currentPath": {
-          "type": "string"
-        },
-        "segments": {
-          "type": "array"
-        },
-        "templateSegments": {
-          "type": "array"
-        },
-        "params": {
-          "type": "object"
-        },
         "page": {
           "type": "string"
         }
       },
-      "actions": ["navigate", "resolve", "setParam", "back"],
-      "ambient": ["navigate", "resolve", "setParam", "back"],
-      "needsArgs": ["navigate", "resolve", "setParam"]
+      "actions": [],
+      "groups": {
+        "page": "view-state"
+      }
     },
     {
       "name": "runtimeStore",
@@ -7243,6 +7753,120 @@
         "denyConsent",
         "dismissConsentSecret"
       ],
+      "groups": {
+        "addDetectedEndpoint": "runtime-admin",
+        "addPeerInfos": "runtime-admin",
+        "aiApiKeyError": "runtime-admin",
+        "aiCanPull": "runtime-admin",
+        "aiDetectedEndpoints": "runtime-admin",
+        "aiDiscoveredModelHint": "runtime-admin",
+        "aiDiscoveredModelOptions": "runtime-admin",
+        "aiEndpointForm": "runtime-admin",
+        "aiEndpointFormComplete": "runtime-admin",
+        "aiEndpointFormDirty": "runtime-admin",
+        "aiEndpointOptions": "runtime-admin",
+        "aiEndpoints": "runtime-admin",
+        "aiForm": "runtime-admin",
+        "aiFormComplete": "runtime-admin",
+        "aiFormDirty": "runtime-admin",
+        "aiInstallLinks": "runtime-admin",
+        "aiMaxContextError": "runtime-admin",
+        "aiModels": "runtime-admin",
+        "aiPullText": "runtime-admin",
+        "aiRecommendedModel": "runtime-admin",
+        "aiServiceOptions": "runtime-admin",
+        "aiSetupOptions": "runtime-admin",
+        "aiTasks": "runtime-admin",
+        "approveConsent": "runtime-admin",
+        "authorizedApps": "runtime-admin",
+        "backupStatus": "runtime-admin",
+        "canAdminister": "runtime-admin",
+        "canBackUp": "runtime-admin",
+        "canConfigureAi": "runtime-admin",
+        "canConfigureExecutor": "runtime-admin",
+        "canConfigureLocalAi": "runtime-admin",
+        "canDiscoverAiModels": "runtime-admin",
+        "canManageAi": "runtime-admin",
+        "canManageAiEndpoints": "runtime-admin",
+        "canManageApps": "runtime-admin",
+        "canManageLanguages": "runtime-admin",
+        "canManageNetwork": "runtime-admin",
+        "canManageTrust": "runtime-admin",
+        "canRestartExecutor": "runtime-admin",
+        "canRestartNetwork": "runtime-admin",
+        "canUseLocalAi": "runtime-admin",
+        "closeAiEndpointForm": "runtime-admin",
+        "closeAiForm": "runtime-admin",
+        "consentSecret": "runtime-admin",
+        "copyNetworkMetrics": "runtime-admin",
+        "copyPeerInfos": "runtime-admin",
+        "denyConsent": "runtime-admin",
+        "detectAiEndpoints": "runtime-admin",
+        "discoverAiModels": "runtime-admin",
+        "dismissConsentSecret": "runtime-admin",
+        "editAiEndpoint": "runtime-admin",
+        "editAiModel": "runtime-admin",
+        "error": "runtime-admin",
+        "executorConfigFile": "runtime-admin",
+        "executorConfigRows": "runtime-admin",
+        "executorLogTail": "runtime-admin",
+        "executorRestartPending": "runtime-admin",
+        "exportDatabase": "runtime-admin",
+        "finishAiSetup": "runtime-admin",
+        "importDatabase": "runtime-admin",
+        "installLanguage": "runtime-admin",
+        "installLocalAi": "runtime-admin",
+        "languages": "runtime-admin",
+        "loadAiModels": "runtime-admin",
+        "loadAiTasks": "runtime-admin",
+        "loadAuthorizedApps": "runtime-admin",
+        "loadExecutorLogTail": "runtime-admin",
+        "loadLanguages": "runtime-admin",
+        "loadLocalAi": "runtime-admin",
+        "loadNetworkMetrics": "runtime-admin",
+        "loadPeerInfos": "runtime-admin",
+        "loadTrustedAgents": "runtime-admin",
+        "loading": "runtime-admin",
+        "localAi": "runtime-admin",
+        "logLevels": "runtime-admin",
+        "mcpEnabled": "runtime-admin",
+        "mcpPort": "runtime-admin",
+        "networkMetrics": "runtime-admin",
+        "newAiEndpoint": "runtime-admin",
+        "newAiModel": "runtime-admin",
+        "peerInfos": "runtime-admin",
+        "peerInfosReadable": "runtime-admin",
+        "pending": "runtime-admin",
+        "pendingConsent": "runtime-admin",
+        "pullAiModel": "runtime-admin",
+        "removeAiEndpoint": "runtime-admin",
+        "removeAiModel": "runtime-admin",
+        "removeAiTask": "runtime-admin",
+        "removeApp": "runtime-admin",
+        "removeLanguage": "runtime-admin",
+        "removeLocalAi": "runtime-admin",
+        "removeLogLevel": "runtime-admin",
+        "restartExecutor": "runtime-admin",
+        "restartNetwork": "runtime-admin",
+        "revokeApp": "runtime-admin",
+        "saveAiEndpoint": "runtime-admin",
+        "saveAiModel": "runtime-admin",
+        "setAiEndpointField": "runtime-admin",
+        "setAiFormField": "runtime-admin",
+        "setAiService": "runtime-admin",
+        "setDefaultAiModel": "runtime-admin",
+        "setExecutorConfigValue": "runtime-admin",
+        "setLogLevel": "runtime-admin",
+        "setMcpEnabled": "runtime-admin",
+        "setMcpPort": "runtime-admin",
+        "skipAiSetup": "runtime-admin",
+        "startLocalAi": "runtime-admin",
+        "stopLocalAi": "runtime-admin",
+        "trustAgent": "runtime-admin",
+        "trustedAgents": "runtime-admin",
+        "unsupportedCapabilities": "runtime-admin",
+        "untrustAgent": "runtime-admin"
+      },
       "ambient": [
         "loadAiModels",
         "loadAiTasks",
@@ -7401,6 +8025,34 @@
         "logout",
         "retryBoot"
       ],
+      "groups": {
+        "bootError": "session",
+        "bootState": "session",
+        "clearPasswordError": "session",
+        "createAgentError": "session",
+        "createAgentLoading": "session",
+        "credentialConfirmed": "session",
+        "credentialEntered": "session",
+        "devFeatures": "session",
+        "devTools": "session",
+        "finishSetup": "session",
+        "host": "session",
+        "hostAccount": "session",
+        "identityCapabilities": "session",
+        "isDevelopment": "session",
+        "isGuest": "session",
+        "loginError": "session",
+        "loginLoading": "session",
+        "logout": "session",
+        "passwordError": "session",
+        "retryBoot": "session",
+        "setDevTools": "session",
+        "setTestPeople": "session",
+        "signInStep": "session",
+        "testPeople": "session",
+        "touchCredential": "session",
+        "unlock": "session"
+      },
       "ambient": ["touchCredential", "clearPasswordError"],
       "needsArgs": ["setDevTools", "setTestPeople"]
     },
@@ -7527,6 +8179,59 @@
         "saveHintEditor",
         "resetHintEditor"
       ],
+      "groups": {
+        "addProperty": "space-settings",
+        "addRelationship": "space-settings",
+        "aiAvailable": "space-settings",
+        "cancelDiscard": "space-settings",
+        "cancelReplaceFields": "space-settings",
+        "cancelShapeWizard": "space-settings",
+        "closeHintEditor": "space-settings",
+        "commitDraft": "space-settings",
+        "confirmDiscard": "space-settings",
+        "confirmReplaceFields": "space-settings",
+        "deleteShape": "space-settings",
+        "draftErrors": "space-settings",
+        "draftNameMember": "space-settings",
+        "editingShapeId": "space-settings",
+        "expandedMembers": "space-settings",
+        "generateIntent": "space-settings",
+        "generateShapeDraft": "space-settings",
+        "generateShapeFields": "space-settings",
+        "generating": "space-settings",
+        "hintBusy": "space-settings",
+        "hintEditor": "space-settings",
+        "hintEditorDirty": "space-settings",
+        "hintEntities": "space-settings",
+        "identityOptions": "space-settings",
+        "interpretationCandidates": "content",
+        "interpretationCandidatesLoaded": "content",
+        "interpretationNeedsIdentity": "space-settings",
+        "memberOptions": "space-settings",
+        "nameOptions": "space-settings",
+        "openHintEditor": "space-settings",
+        "openShapeWizard": "space-settings",
+        "relationshipTargets": "space-settings",
+        "removeMember": "space-settings",
+        "reorderMembers": "space-settings",
+        "replaceDraft": "space-settings",
+        "requestCloseWizard": "space-settings",
+        "requestGenerateFields": "space-settings",
+        "resetHintEditor": "space-settings",
+        "saveHintEditor": "space-settings",
+        "saveShapeDraft": "space-settings",
+        "savingShape": "space-settings",
+        "setHintDraft": "space-settings",
+        "setIdentityMember": "space-settings",
+        "setInterpretable": "space-settings",
+        "setMemberField": "space-settings",
+        "setNameMember": "space-settings",
+        "setShapeField": "space-settings",
+        "shapeDraft": "space-settings",
+        "shapesLoaded": "space-settings",
+        "spaceShapes": "space-settings",
+        "toggleMemberExpanded": "space-settings"
+      },
       "ambient": [
         "openShapeWizard",
         "cancelShapeWizard",
@@ -7635,17 +8340,8 @@
         "layoutPinned": {
           "type": "object"
         },
-        "layoutDirty": {
-          "type": "boolean"
-        },
         "panelSupplied": {
           "type": "object"
-        },
-        "panelInstances": {
-          "type": "array"
-        },
-        "collapsedLanes": {
-          "type": "array"
         },
         "customisingLayout": {
           "type": "boolean"
@@ -7674,7 +8370,6 @@
         "toggleSpaceSettings",
         "openSpaceSettings",
         "closeSpaceSettings",
-        "scrollToId",
         "beginDockResize",
         "resizeDock",
         "resizeColumn",
@@ -7688,13 +8383,6 @@
         "endTabDrag",
         "endDockMove",
         "resetDockToLayout",
-        "closeTemplatePanel",
-        "openTemplatePanel",
-        "openPanel",
-        "closePanel",
-        "resetTemplateLayout",
-        "toggleLane",
-        "setLaneCollapsed",
         "toggleCustomiseLayout",
         "saveLayout",
         "applyLayout",
@@ -7716,6 +8404,79 @@
         "insertHome",
         "saveArrangementAsTemplate"
       ],
+      "groups": {
+        "activeInsert": "host-layout",
+        "activeLayout": "host-layout",
+        "activeShellView": "navigation",
+        "activeSnap": "host-layout",
+        "applyLayout": "host-layout",
+        "beginDockMove": "host-layout",
+        "beginDockResize": "host-layout",
+        "beginTabDrag": "host-layout",
+        "breakOut": "host-layout",
+        "cancelDestructive": "host-layout",
+        "chooseScreenSource": "host-layout",
+        "closeModulePanel": "host-layout",
+        "closeShellView": "navigation",
+        "closeSpaceSettings": "navigation",
+        "confirmDestructive": "host-layout",
+        "contentInset": "host-layout",
+        "coveredInset": "host-layout",
+        "createSpaceOpen": "space-admin",
+        "customisingLayout": "host-layout",
+        "deleteLayout": "host-layout",
+        "dockGeometry": "host-layout",
+        "dockPlacement": "host-layout",
+        "dockResizing": "host-layout",
+        "dragGhost": "host-layout",
+        "endDockMove": "host-layout",
+        "endDockResize": "host-layout",
+        "endTabDrag": "host-layout",
+        "fitDock": "host-layout",
+        "hasPanels": "host-layout",
+        "insertDock": "host-layout",
+        "insertHome": "host-layout",
+        "insertSlots": "host-layout",
+        "joinSpaceOpen": "space-admin",
+        "layoutNames": "host-layout",
+        "layoutPinned": "host-layout",
+        "moveDock": "host-layout",
+        "moveTab": "host-layout",
+        "movingDock": "host-layout",
+        "openModulePanel": "host-layout",
+        "openShellView": "navigation",
+        "openSpaceSettings": "navigation",
+        "panelFrames": "host-layout",
+        "panelMaximised": "host-layout",
+        "panelSupplied": "host-layout",
+        "panelsHidden": "host-layout",
+        "pendingDestructive": "host-layout",
+        "pendingScreenSources": "host-layout",
+        "raiseDock": "host-layout",
+        "resetDockToLayout": "host-layout",
+        "resizeColumn": "host-layout",
+        "resizeDock": "host-layout",
+        "returnHome": "host-layout",
+        "revealDock": "host-layout",
+        "saveArrangementAsTemplate": "host-layout",
+        "saveLayout": "host-layout",
+        "setCreateSpaceOpen": "navigation",
+        "setJoinSpaceOpen": "navigation",
+        "snapDock": "host-layout",
+        "snapTargets": "host-layout",
+        "spaceSettingsFocus": "navigation",
+        "spaceSettingsOpen": "navigation",
+        "spaceSettingsTab": "navigation",
+        "stackDock": "host-layout",
+        "toggleCollapseDock": "host-layout",
+        "toggleCustomiseLayout": "host-layout",
+        "toggleDockDisplace": "host-layout",
+        "toggleMaximiseDock": "host-layout",
+        "toggleModulePanel": "host-layout",
+        "togglePanelsHidden": "host-layout",
+        "toggleSpaceSettings": "navigation",
+        "toggleStowLane": "host-layout"
+      },
       "ambient": [
         "openShellView",
         "closeShellView",
@@ -7724,7 +8485,6 @@
         "toggleSpaceSettings",
         "openSpaceSettings",
         "closeSpaceSettings",
-        "scrollToId",
         "resizeDock",
         "resizeColumn",
         "endDockResize",
@@ -7733,12 +8493,6 @@
         "moveTab",
         "endTabDrag",
         "endDockMove",
-        "closeTemplatePanel",
-        "openTemplatePanel",
-        "closePanel",
-        "resetTemplateLayout",
-        "toggleLane",
-        "setLaneCollapsed",
         "toggleCustomiseLayout",
         "revealDock",
         "openModulePanel",
@@ -7751,7 +8505,6 @@
         "setCreateSpaceOpen",
         "setJoinSpaceOpen",
         "chooseScreenSource",
-        "scrollToId",
         "beginDockResize",
         "resizeDock",
         "resizeColumn",
@@ -7764,12 +8517,6 @@
         "endTabDrag",
         "endDockMove",
         "resetDockToLayout",
-        "closeTemplatePanel",
-        "openTemplatePanel",
-        "openPanel",
-        "closePanel",
-        "toggleLane",
-        "setLaneCollapsed",
         "saveLayout",
         "applyLayout",
         "deleteLayout",
@@ -7791,23 +8538,6 @@
     {
       "name": "spaceStore",
       "state": {
-        "memberDids": {
-          "type": "array"
-        },
-        "spaceDefaultTemplateId": {
-          "type": "string"
-        },
-        "spaceDefaultThemeId": {
-          "type": "string"
-        },
-        "currentSpace": {
-          "type": "object",
-          "model": "Space"
-        },
-        "mySpaces": {
-          "type": "array",
-          "model": "Space"
-        },
         "personalSpaces": {
           "type": "array",
           "model": "Space"
@@ -7840,9 +8570,6 @@
         },
         "routeSpaceUnjoined": {
           "type": "boolean"
-        },
-        "spacePath": {
-          "type": "string"
         },
         "creatingSpace": {
           "type": "boolean"
@@ -7925,9 +8652,6 @@
         "enabledViewIds": {
           "type": "array"
         },
-        "viewNav": {
-          "type": "array"
-        },
         "sharingOptions": {
           "type": "array"
         },
@@ -7937,13 +8661,7 @@
         "starterChoices": {
           "type": "array"
         },
-        "mutedDids": {
-          "type": "array"
-        },
         "mutedAgents": {
-          "type": "array"
-        },
-        "readMarkers": {
           "type": "array"
         },
         "unreadNodeIds": {
@@ -7954,9 +8672,6 @@
           "properties": ["id", "author", "createdAt"]
         },
         "spaceModuleSettings": {
-          "type": "array"
-        },
-        "myModuleSettings": {
           "type": "array"
         },
         "agentModuleSettings": {
@@ -7980,9 +8695,6 @@
         "archivedWorkflows": {
           "type": "array"
         },
-        "canAdministerCurrentSpace": {
-          "type": "boolean"
-        },
         "policy": {
           "type": "object",
           "properties": ["loaded", "preset", "permissions", "frozen", "me", "roles", "sentences"]
@@ -8005,13 +8717,9 @@
         "markRead",
         "uploadFile",
         "deleteCollection",
-        "updateSpaceImage",
         "updateSpaceMeta",
-        "setSpaceDefaultTemplate",
-        "setSpaceDefaultTheme",
         "setModuleEnabled",
         "setSpaceModuleSetting",
-        "setMyModuleSetting",
         "setAgentModuleSetting",
         "autoInterpretFor",
         "setAutoInterpretFor",
@@ -8020,10 +8728,8 @@
         "setThreadMode",
         "setInterpretationTarget",
         "setModuleInstalled",
-        "setModuleVisible",
         "setViewEnabled",
         "reorderViews",
-        "setViewVisible",
         "launchModule",
         "setSignalTypeRetired",
         "createTaskState",
@@ -8040,8 +8746,6 @@
         "createInvolvementType",
         "updateInvolvementType",
         "setInvolvementTypeRetired",
-        "navigateToSpace",
-        "openRecordRef",
         "canAdministerSpace",
         "createRole",
         "updateRole",
@@ -8054,13 +8758,108 @@
         "exportInterpretationLog",
         "removeSpaceFromGlobal"
       ],
-      "ambient": [
-        "autoInterpretFor",
-        "canSetInterpretationFor",
-        "navigateToSpace",
-        "openRecordRef",
-        "canAdministerSpace"
-      ],
+      "groups": {
+        "activeModules": "navigation",
+        "addTaskStateEvidence": "signals",
+        "addTaskToColumn": "content",
+        "agentModuleSettings": "space-settings",
+        "approveTaskMove": "content",
+        "archivedWorkflows": "content",
+        "autoInterpretFor": "content",
+        "canAdministerSpace": "navigation",
+        "canSetInterpretationFor": "content",
+        "copyGuestLink": "navigation",
+        "copyShareLink": "navigation",
+        "createInvolvementType": "signals",
+        "createPost": "content",
+        "createRole": "space-settings",
+        "createSpace": "space-admin",
+        "createTaskState": "signals",
+        "creatingSpace": "space-admin",
+        "defaultSharing": "space-admin",
+        "deleteCollection": "content",
+        "enabledModules": "space-admin",
+        "enabledViewIds": "navigation",
+        "exportCallTranscript": "content",
+        "exportInterpretationLog": "content",
+        "firstScreenOpen": "content",
+        "foreignSpacePrefill": "space-settings",
+        "grantRole": "space-settings",
+        "initializeAsWeSpace": "space-settings",
+        "installedModules": "agent",
+        "interpretationTargets": "space-settings",
+        "involvementTypes": "content",
+        "involvementTypesLoaded": "content",
+        "joinError": "navigation",
+        "joinSlow": "navigation",
+        "joinSpace": "navigation",
+        "joiningSpace": "navigation",
+        "launchModule": "navigation",
+        "markRead": "content",
+        "missingModules": "navigation",
+        "moduleInstallSettings": "space-admin",
+        "moduleLaunchers": "navigation",
+        "moveCardToColumn": "content",
+        "mutedAgents": "content",
+        "myMentions": "content",
+        "myRoles": "content",
+        "offeredInvolvementTypes": "content",
+        "offeredTaskStates": "content",
+        "openBoardFor": "content",
+        "orderedSidebarItems": "navigation",
+        "personalSpaces": "navigation",
+        "policy": "content",
+        "removeBoardColumn": "content",
+        "removeSpace": "space-admin",
+        "removeSpaceFromGlobal": "space-admin",
+        "removeTaskStateEvidence": "signals",
+        "reorderTaskStates": "signals",
+        "reorderViews": "space-settings",
+        "requiredModules": "navigation",
+        "revokeRole": "space-settings",
+        "rolesLoaded": "content",
+        "root": "content",
+        "rootLoaded": "content",
+        "routableViews": "navigation",
+        "routeSpaceUnjoined": "navigation",
+        "setAgentModuleSetting": "space-settings",
+        "setAgentMuted": "content",
+        "setAttending": "content",
+        "setAutoInterpret": "space-settings",
+        "setAutoInterpretFor": "content",
+        "setInterpretationTarget": "space-settings",
+        "setInvolvement": "content",
+        "setInvolvementTypeRetired": "signals",
+        "setModuleEnabled": "space-settings",
+        "setModuleInstalled": "agent",
+        "setPolicyPreset": "space-settings",
+        "setSignalTypeRetired": "signals",
+        "setSpaceModuleSetting": "space-settings",
+        "setTaskStateRetired": "signals",
+        "setTaskWorkflowRule": "space-settings",
+        "setThreadMode": "space-settings",
+        "setViewEnabled": "space-settings",
+        "setWorkflowArchived": "space-settings",
+        "shareSpace": "space-admin",
+        "sharedSpaces": "navigation",
+        "sharingOptions": "space-admin",
+        "spaceList": "navigation",
+        "spaceModuleSettings": "space-settings",
+        "spaceViews": "navigation",
+        "starterChoices": "space-admin",
+        "taskStates": "content",
+        "taskStatesLoaded": "content",
+        "taskWorkflowEnabled": "content",
+        "unreadNodeIds": "content",
+        "updateInvolvementType": "signals",
+        "updatePost": "content",
+        "updateRole": "space-settings",
+        "updateSpaceMeta": "space-settings",
+        "updateTaskState": "signals",
+        "uploadFile": "content",
+        "withdrawTaskMove": "content"
+      },
+      "ambient": ["autoInterpretFor", "canSetInterpretationFor", "canAdministerSpace"],
       "destructive": ["removeSpace", "deleteCollection", "removeSpaceFromGlobal"],
       "needsArgs": [
         "createSpace",
@@ -8078,13 +8877,9 @@
         "markRead",
         "uploadFile",
         "deleteCollection",
-        "updateSpaceImage",
         "updateSpaceMeta",
-        "setSpaceDefaultTemplate",
-        "setSpaceDefaultTheme",
         "setModuleEnabled",
         "setSpaceModuleSetting",
-        "setMyModuleSetting",
         "setAgentModuleSetting",
         "autoInterpretFor",
         "setAutoInterpretFor",
@@ -8093,10 +8888,8 @@
         "setThreadMode",
         "setInterpretationTarget",
         "setModuleInstalled",
-        "setModuleVisible",
         "setViewEnabled",
         "reorderViews",
-        "setViewVisible",
         "launchModule",
         "setSignalTypeRetired",
         "createTaskState",
@@ -8113,8 +8906,6 @@
         "createInvolvementType",
         "updateInvolvementType",
         "setInvolvementTypeRetired",
-        "navigateToSpace",
-        "openRecordRef",
         "canAdministerSpace",
         "createRole",
         "updateRole",
@@ -8131,10 +8922,6 @@
     {
       "name": "templateStore",
       "state": {
-        "templateOverrideOptions": {
-          "type": "array",
-          "properties": ["label", "value"]
-        },
         "personalTemplates": {
           "type": "array",
           "properties": ["id", "meta", "type", "props", "children", "routes"]
@@ -8162,13 +8949,6 @@
         "refusedTemplates": {
           "type": "array",
           "properties": ["id", "name", "icon", "reason"]
-        },
-        "switcherGroups": {
-          "type": "array",
-          "properties": ["label", "items"]
-        },
-        "currentSwitcherId": {
-          "type": "string"
         },
         "currentTemplate": {
           "type": "object",
@@ -8205,8 +8985,6 @@
         }
       },
       "actions": [
-        "setSpaceTemplateOverride",
-        "switchTemplate",
         "removeTemplate",
         "deleteTemplate",
         "deleteRefusedTemplate",
@@ -8229,11 +9007,49 @@
         "leaveSafeMode",
         "leaveSafeModeInto"
       ],
+      "groups": {
+        "allTemplates": "appearance",
+        "appTemplateId": "library",
+        "appTemplateOptions": "library",
+        "brand": "appearance",
+        "builtInTemplates": "appearance",
+        "cancelInstall": "library",
+        "confirmInstall": "library",
+        "currentTemplate": "view-state",
+        "defaultTemplateId": "library",
+        "deleteMarketplaceTemplate": "library",
+        "deleteRefusedTemplate": "library",
+        "deleteTemplate": "library",
+        "followTemplateUpdates": "view-state",
+        "installFromMarketplace": "library",
+        "installTemplate": "library",
+        "installToSpace": "space-settings",
+        "leaveSafeMode": "session",
+        "leaveSafeModeInto": "library",
+        "loading": "library",
+        "myTemplates": "library",
+        "operationLoading": "appearance",
+        "pendingInstall": "library",
+        "personalTemplates": "appearance",
+        "publishToMarketplace": "library",
+        "publishToSpace": "library",
+        "refreshSpaceTemplates": "appearance",
+        "refusedTemplates": "library",
+        "removeTemplate": "library",
+        "safeMode": "session",
+        "saveTemplate": "editor",
+        "saveTemplateAs": "editor",
+        "setAppTemplate": "library",
+        "setDefaultTemplate": "library",
+        "setFollowTemplateUpdates": "agent",
+        "spaceTemplates": "appearance",
+        "templateManagementList": "library",
+        "toggleInstalled": "library",
+        "uninstallTemplate": "library"
+      },
       "ambient": ["cancelInstall", "refreshSpaceTemplates"],
       "destructive": ["removeTemplate", "deleteTemplate", "deleteRefusedTemplate", "deleteMarketplaceTemplate"],
       "needsArgs": [
-        "setSpaceTemplateOverride",
-        "switchTemplate",
         "deleteTemplate",
         "deleteRefusedTemplate",
         "installTemplate",
@@ -8255,28 +9071,13 @@
     {
       "name": "themeStore",
       "state": {
-        "builtInThemes": {
-          "type": "array",
-          "properties": ["id", "name", "icon", "origin"]
-        },
         "automaticThemes": {
-          "type": "array",
-          "properties": ["id", "name", "icon", "origin"]
-        },
-        "installedThemes": {
-          "type": "array",
-          "properties": ["id", "name", "icon", "origin"]
-        },
-        "spaceThemes": {
           "type": "array",
           "properties": ["id", "name", "icon", "origin"]
         },
         "allThemes": {
           "type": "array",
           "properties": ["id", "name", "icon", "origin"]
-        },
-        "currentThemeId": {
-          "type": "string"
         },
         "currentTheme": {
           "type": "object",
@@ -8294,13 +9095,6 @@
         },
         "operationLoading": {
           "type": "string"
-        },
-        "themeOverrideOptions": {
-          "type": "array",
-          "properties": ["label", "value"]
-        },
-        "spaceThemePinned": {
-          "type": "boolean"
         },
         "spaceThemeHiddenBy": {
           "type": "string"
@@ -8354,9 +9148,6 @@
       "actions": [
         "setCurrentTheme",
         "setDefaultTheme",
-        "setSpaceThemeOverride",
-        "applyTheme",
-        "clearSpaceThemePin",
         "focusRole",
         "setSystemTheme",
         "setThemeMode",
@@ -8385,13 +9176,65 @@
         "publishToSpace",
         "refreshSpaceThemes"
       ],
+      "groups": {
+        "activeTemplateTheme": "view-state",
+        "allThemes": "appearance",
+        "automaticThemes": "appearance",
+        "cancelEditing": "editor",
+        "cancelThemeFork": "appearance",
+        "changeBasePreset": "editor",
+        "createAndStartEditing": "editor",
+        "currentTheme": "view-state",
+        "currentThemeSides": "appearance",
+        "defaultThemeId": "library",
+        "deleteMarketplaceTheme": "library",
+        "deleteTheme": "library",
+        "displayPreferences": "appearance",
+        "editingTheme": "editor",
+        "focusRole": "editor",
+        "focusedRole": "editor",
+        "installFromMarketplace": "library",
+        "installToSpace": "space-settings",
+        "operationLoading": "appearance",
+        "previewThemeScope": "editor",
+        "publishToMarketplace": "library",
+        "publishToSpace": "library",
+        "refreshSpaceThemes": "appearance",
+        "saveEditingTheme": "editor",
+        "saveEditingThemeAs": "editor",
+        "setCurrentTheme": "appearance",
+        "setDefaultTheme": "library",
+        "setDisplayPreference": "agent",
+        "setSystemTheme": "agent",
+        "setThemeInstalled": "library",
+        "setThemeMode": "agent",
+        "setThemeScopeGlobal": "agent",
+        "setUseTemplateTheme": "agent",
+        "spaceThemeHiddenBy": "space-settings",
+        "startEditing": "appearance",
+        "startThemeFork": "appearance",
+        "systemThemeOptions": "agent",
+        "systemThemes": "agent",
+        "templateThemePending": "editor",
+        "themeFork": "appearance",
+        "themeManagementList": "library",
+        "themeMode": "appearance",
+        "themeScope": "view-state",
+        "themeScopeGlobal": "view-state",
+        "themeScopePreference": "view-state",
+        "themeScopePreviewing": "editor",
+        "themeSide": "appearance",
+        "uninstallTheme": "library",
+        "updateEditingCss": "editor",
+        "updateEditingMeta": "editor",
+        "updateEditingOverrides": "editor",
+        "useTemplateTheme": "view-state"
+      },
       "ambient": ["focusRole", "previewThemeScope", "startThemeFork", "cancelThemeFork", "refreshSpaceThemes"],
       "destructive": ["deleteTheme", "uninstallTheme", "deleteMarketplaceTheme"],
       "needsArgs": [
         "setCurrentTheme",
         "setDefaultTheme",
-        "setSpaceThemeOverride",
-        "applyTheme",
         "focusRole",
         "setSystemTheme",
         "setThemeMode",
@@ -8495,6 +9338,47 @@
         "addEvidence",
         "removeEvidence"
       ],
+      "groups": {
+        "active": "content",
+        "addBranch": "view-state",
+        "addEvidence": "view-state",
+        "addException": "view-state",
+        "addStep": "view-state",
+        "available": "content",
+        "canEdit": "content",
+        "cancelDraft": "view-state",
+        "capabilities": "content",
+        "closeWorkflow": "view-state",
+        "deleteWorkflow": "space-settings",
+        "draft": "view-state",
+        "editWorkflow": "view-state",
+        "loadHistory": "content",
+        "moveRecord": "content",
+        "moveStep": "view-state",
+        "newWorkflow": "view-state",
+        "open": "content",
+        "openWorkflow": "view-state",
+        "recordWorkflows": "content",
+        "refreshWorkflows": "content",
+        "removeEvidence": "view-state",
+        "removeException": "view-state",
+        "removeStep": "view-state",
+        "renameStep": "view-state",
+        "saveDraft": "space-settings",
+        "setApprovals": "view-state",
+        "setBranchEnd": "view-state",
+        "setDraftEntities": "view-state",
+        "setDraftHint": "view-state",
+        "setDraftLabel": "view-state",
+        "setRule": "view-state",
+        "setStepHint": "view-state",
+        "startWorkflow": "content",
+        "startable": "content",
+        "updateStep": "view-state",
+        "withdrawRecord": "content",
+        "workflows": "content",
+        "workflowsLoaded": "content"
+      },
       "ambient": [
         "refreshWorkflows",
         "openWorkflow",
@@ -8553,6 +9437,11 @@
       "name": "record",
       "state": {},
       "actions": ["create", "update", "delete"],
+      "groups": {
+        "create": "content",
+        "delete": "content",
+        "update": "content"
+      },
       "destructive": ["delete"],
       "needsArgs": ["create", "update", "delete"]
     },
@@ -8560,6 +9449,9 @@
       "name": "clipboard",
       "state": {},
       "actions": ["copy"],
+      "groups": {
+        "copy": "clipboard"
+      },
       "needsArgs": ["copy"]
     }
   ],
@@ -8631,8 +9523,8 @@
     {
       "name": "involvementMenu",
       "params": ["options"],
-      "doc": "The entries of a \"who is on this\" DropdownMenu for one record: the member a conversation named, when `said` matches exactly one and nobody is doing it yet; \"Assign to me\" while the viewer is not already on it, then a group per kind the entity is offered that anybody may give (the first open, the rest closed unless somebody holds them), each listing members with their faces — current holders ticked and first, then the viewer, then everyone by name. Every entry carries `kind`, and a toggle `checked`, so one handler serves all: setInvolvement(record, arg.id, arg.kind, !arg.checked). Options: node, entity, rows (an Involvement query), types (spaceStore.offeredInvolvementTypes), members (spaceStore.memberDids), profiles (profileStore.profiles — each member is drawn from it), me (me.did), said (a name somebody said — TaskBlock.assignee).",
-      "example": "involvementMenu({ node: card.id, entity: 'TaskBlock', rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.memberDids, profiles: profileStore.profiles, me: me.did })"
+      "doc": "The entries of a \"who is on this\" DropdownMenu for one record: the member a conversation named, when `said` matches exactly one and nobody is doing it yet; \"Assign to me\" while the viewer is not already on it, then a group per kind the entity is offered that anybody may give (the first open, the rest closed unless somebody holds them), each listing members with their faces — current holders ticked and first, then the viewer, then everyone by name. Every entry carries `kind`, and a toggle `checked`, so one handler serves all: setInvolvement(record, arg.id, arg.kind, !arg.checked). Options: node, entity, rows (an Involvement query), types (spaceStore.offeredInvolvementTypes), members (identity.memberDids), profiles (identity.profiles — each member is drawn from it), me (me.did), said (a name somebody said — TaskBlock.assignee).",
+      "example": "involvementMenu({ node: card.id, entity: 'TaskBlock', rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: identity.memberDids, profiles: identity.profiles, me: me.did })"
     },
     {
       "name": "signalTally",
@@ -8643,20 +9535,20 @@
     {
       "name": "reactors",
       "params": ["options"],
-      "doc": "Who reacted with one type and what each gave — { people, total, unresolved }. `people` are { did, name, avatar, value, mine }, the reader first and then by name; `total` counts everybody before any search, which is what \"12 people\" says. The record already carries this — `include: { signals: true }` hydrates each Signal's author and value — so nothing is fetched; what a schema cannot do is join a DID to a face and a name. `search` narrows by name, and `unresolved` says how many could not be judged because their profile has not arrived. Options: signals (one type's signals, hydrated), profiles (profileStore.profiles), me (me.did), search.",
-      "example": "reactors({ signals: filter(row.signals, { signalTypeId: sig.id }), profiles: profileStore.profiles, me: me.did })"
+      "doc": "Who reacted with one type and what each gave — { people, total, unresolved }. `people` are { did, name, avatar, value, mine }, the reader first and then by name; `total` counts everybody before any search, which is what \"12 people\" says. The record already carries this — `include: { signals: true }` hydrates each Signal's author and value — so nothing is fetched; what a schema cannot do is join a DID to a face and a name. `search` narrows by name, and `unresolved` says how many could not be judged because their profile has not arrived. Options: signals (one type's signals, hydrated), profiles (identity.profiles), me (me.did), search.",
+      "example": "reactors({ signals: filter(row.signals, { signalTypeId: sig.id }), profiles: identity.profiles, me: me.did })"
     },
     {
       "name": "signalTypesByUse",
       "params": ["options"],
-      "doc": "Reaction types ordered by how many PEOPLE reacted with each, most first — never by what they said, since a total of values cannot compare a rating with a vote and a downvoted type would sort below one nobody has used. Ties keep the order they arrived in, so a panel does not reshuffle as reactions come in. Muted authors are left out of the count. It orders and nothing else: which types a surface draws is a filter, and stays in the schema — which is what keeps an overflow count evaluable, since reordering a list cannot change how long it is. Sorting is here because the expression language has no sort, the grammar is closed, and these types come from a subscription rather than a query that could carry an `order`. Pass `of` — the record's id — and the order SETTLES: it is worked out the first time that record's reactions are drawn and then held, so a reaction somebody withdraws does not slide down the column under their cursor. It has to be held outside the template, because a reaction surface sits inside an `$each` over a query and a subscription hands the renderer fresh objects, which remounts the row and takes any `$localState` with it. Types the settled order has never seen are appended by use, so nothing new is hidden; the order is dropped when the space changes. Options: of (the record whose order this is), types (the rows to order), signals (the record's `signals`, hydrated), muted (spaceStore.mutedDids), limit (keep the first N of that order).",
-      "example": "signalTypesByUse({ of: row.id, types: local.signalTypes.filter(t, !t.retired), signals: row.signals, muted: spaceStore.mutedDids, limit: 4 })"
+      "doc": "Reaction types ordered by how many PEOPLE reacted with each, most first — never by what they said, since a total of values cannot compare a rating with a vote and a downvoted type would sort below one nobody has used. Ties keep the order they arrived in, so a panel does not reshuffle as reactions come in. Muted authors are left out of the count. It orders and nothing else: which types a surface draws is a filter, and stays in the schema — which is what keeps an overflow count evaluable, since reordering a list cannot change how long it is. Sorting is here because the expression language has no sort, the grammar is closed, and these types come from a subscription rather than a query that could carry an `order`. Pass `of` — the record's id — and the order SETTLES: it is worked out the first time that record's reactions are drawn and then held, so a reaction somebody withdraws does not slide down the column under their cursor. It has to be held outside the template, because a reaction surface sits inside an `$each` over a query and a subscription hands the renderer fresh objects, which remounts the row and takes any `$localState` with it. Types the settled order has never seen are appended by use, so nothing new is hidden; the order is dropped when the space changes. Options: of (the record whose order this is), types (the rows to order), signals (the record's `signals`, hydrated), muted (identity.mutedDids), limit (keep the first N of that order).",
+      "example": "signalTypesByUse({ of: row.id, types: local.signalTypes.filter(t, !t.retired), signals: row.signals, muted: identity.mutedDids, limit: 4 })"
     },
     {
       "name": "voices",
       "params": ["options"],
-      "doc": "Whose reactions a weighted score was made from, as a list a reader turns voices up and down in — { did, name, avatar, cards, mean, weight, share, mine, pretend }, the busiest first. `weight` is how much the voice counts (0–100) and `share` its part of everybody's say. Options: summary (what a GraphView's onSeedSummary reported — the canvas seed's `{ type, voices }`), param (the weights as the address holds them, `did=50,did=0`), profiles (profileStore.profiles), me (me.did).",
-      "example": "voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did })"
+      "doc": "Whose reactions a weighted score was made from, as a list a reader turns voices up and down in — { did, name, avatar, cards, mean, weight, share, mine, pretend }, the busiest first. `weight` is how much the voice counts (0–100) and `share` its part of everybody's say. Options: summary (what a GraphView's onSeedSummary reported — the canvas seed's `{ type, voices }`), param (the weights as the address holds them, `did=50,did=0`), profiles (identity.profiles), me (me.did).",
+      "example": "voices({ summary: local.voiceSummary, param: local.voices, profiles: identity.profiles, me: me.did })"
     },
     {
       "name": "voicesParam",
@@ -9039,7 +9931,7 @@
         },
         {
           "name": "renameCallButton",
-          "subject": "routeStore.params.call ? routeStore.params.call : modules.call.callRecordId"
+          "subject": "navigation.params.call ? navigation.params.call : modules.call.callRecordId"
         },
         {
           "name": "deviceSettings"
@@ -9595,7 +10487,7 @@
       "parts": [
         {
           "name": "transcriptFeed",
-          "subject": "routeStore.params.call ? routeStore.params.call : modules.transcribe.collectionId"
+          "subject": "navigation.params.call ? navigation.params.call : modules.transcribe.collectionId"
         },
         {
           "name": "transcriptLines",
@@ -9869,7 +10761,7 @@
         },
         {
           "name": "callFeed",
-          "subject": "routeStore.params.call"
+          "subject": "navigation.params.call"
         }
       ],
       "panels": [
@@ -12126,6 +13018,85 @@
         "categories": {},
         "bulk": true,
         "destructive": true
+      }
+    },
+    {
+      "name": "core.setSpaceDefaultTemplate",
+      "description": "Choose the template members see when they open the space.",
+      "params": {
+        "space": {
+          "type": "string",
+          "required": true,
+          "description": "The space record’s id."
+        },
+        "template": {
+          "type": "string",
+          "required": true,
+          "description": "The template’s id, as the host lists it; empty leaves the choice to each member’s own default."
+        }
+      },
+      "returns": false,
+      "effects": {
+        "entities": {
+          "Space": ["edit"]
+        },
+        "categories": {},
+        "bulk": false,
+        "destructive": false
+      }
+    },
+    {
+      "name": "core.setSpaceDefaultTheme",
+      "description": "Choose the theme members see when they open the space.",
+      "params": {
+        "space": {
+          "type": "string",
+          "required": true,
+          "description": "The space record’s id."
+        },
+        "theme": {
+          "type": "string",
+          "required": true,
+          "description": "The theme’s id, as the host lists it; empty leaves the choice to each member’s own default."
+        }
+      },
+      "returns": false,
+      "effects": {
+        "entities": {
+          "Space": ["edit"]
+        },
+        "categories": {},
+        "bulk": false,
+        "destructive": false
+      }
+    },
+    {
+      "name": "core.setSpaceImage",
+      "description": "Set the space’s avatar or its cover image, or take it away.",
+      "params": {
+        "space": {
+          "type": "string",
+          "required": true,
+          "description": "The space record’s id."
+        },
+        "field": {
+          "type": "string",
+          "required": true,
+          "description": "avatar or coverImage."
+        },
+        "image": {
+          "type": "json",
+          "description": "The picture as the record stores a file — what the host made of the one the person chose; absent takes it away."
+        }
+      },
+      "returns": false,
+      "effects": {
+        "entities": {
+          "Space": ["edit"]
+        },
+        "categories": {},
+        "bulk": false,
+        "destructive": false
       }
     },
     {

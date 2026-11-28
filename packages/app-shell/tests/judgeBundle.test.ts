@@ -55,10 +55,12 @@ const bundle = (): Bundle =>
       {
         id: 'map',
         type: 'Column',
-        meta: { ...meta('Map', 'view'), requires: { modules: ['globe'] } },
+        meta: meta('Map', 'view'),
         children: [
+          // Named, not declared: a module this build lacks is reported, and its parts draw empty.
+          { type: 'we-text', children: [{ $: 'modules.globe.drawsSpace' }] },
           { type: 'we-button', props: { onClick: { $invoke: 'runtimeStore.trustAgent', args: ['did:x'] } } },
-          { type: 'we-text', children: [{ $: 'spaceStore.memberDids' }] },
+          { type: 'we-text', children: [{ $: 'identity.memberDids' }] },
         ],
       },
     ],
@@ -197,6 +199,17 @@ describe('judging a bundle', () => {
   it('splits modules into those to turn on and those this build does not have', () => {
     expect(judged.modulesToTurnOn).toEqual([{ id: 'polls', name: 'Polls' }]);
     expect(judged.modulesNotInBuild).toEqual(['globe']);
+  });
+
+  it('refuses a template that declares a module this build does not have, naming it', () => {
+    const { app: _app, templates, ...rest } = bundle();
+    const declaring = templates!.map((t) =>
+      t.id === 'map' ? { ...t, meta: { ...t.meta, requires: { modules: ['globe'] } } } : t,
+    );
+    const result = judgeBundle({ ...rest, templates: declaring } as unknown as Bundle, deps);
+    expect(result.refusals).toEqual([
+      '"Map" is not a template this app can draw — "Map" needs the "globe" module, which this deployment does not have',
+    ]);
   });
 
   it('keeps what it found as groups and module ids, for a later version to be compared against', () => {

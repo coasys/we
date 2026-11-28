@@ -54,7 +54,7 @@ be several hundred kilobytes on the engine that exists to be light.
 ## Time
 
 A globe can follow a **clock** (`@we/clock`): `clock: "events"` names one of the app's clocks, the
-same one `clockStore.clocks.events` reads and `clockStore.toggle` plays, so the controls beside a
+same one `viewState.clocks.events` reads and `viewState.toggle` plays, so the controls beside a
 globe are ordinary template nodes. A data kind given `time: "<field>"` then draws only the rows up to
 the clock's moment; `window: "7d"` keeps only the recent ones, which fade out over the last quarter
 of it. The clock's range is the span of every timed layer's rows, so nobody has to know the dates.

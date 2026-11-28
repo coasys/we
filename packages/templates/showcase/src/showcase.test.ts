@@ -53,7 +53,7 @@ import {
 } from './WorkshopKey.ts';
 
 /** The workshop's own name for the call on screen — see `CALL_EXPR` in its schema. */
-const CALL_EXPR = 'routeStore.params.call ? routeStore.params.call : modules.call.callRecordId';
+const CALL_EXPR = 'navigation.params.call ? navigation.params.call : modules.call.callRecordId';
 /** The space's canvas, by role — what the workshop's canvas, its actions and its key are about. */
 const SPACE_CANVAS_EXPR = "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''";
 
@@ -195,7 +195,7 @@ describe('the showcase templates', () => {
       reads, an option a fragment turns into a handler — and the string is the one thing they share.
     */
     const serialised = JSON.stringify(schema.routes ?? []);
-    const absolute = [...serialised.matchAll(/routeStore\.navigate[^)]*?'(\/[a-z][^']*)'/g)].map((m) => m[1]);
+    const absolute = [...serialised.matchAll(/navigation\.navigate[^)]*?'(\/[a-z][^']*)'/g)].map((m) => m[1]);
     expect(absolute).toEqual([]);
   });
 });
@@ -229,7 +229,7 @@ describe('the workshop template’s call selection', () => {
   it('carries the call in a query parameter, and falls back to the live one', () => {
     const json = JSON.stringify(workshop);
 
-    expect(json).toContain('routeStore.params.call');
+    expect(json).toContain('navigation.params.call');
     expect(json).not.toContain('./canvas/$');
   });
 
@@ -265,9 +265,9 @@ describe('the workshop template’s call selection', () => {
     */
     const select = JSON.stringify(workshop.meta?.panels?.find((panel) => panel.id === 'calls'));
 
-    expect(select).toContain('spaceStore.spacePath}/${routeStore.templateSegments[0]');
+    expect(select).toContain('navigation.spacePath}/${navigation.templateSegments[0]');
     expect(select).not.toContain('spacePath}/canvas?call=');
-    expect(select).not.toContain('routeStore.setParam');
+    expect(select).not.toContain('navigation.setParam');
   });
 
   it('stops naming a call when a new one starts', () => {
@@ -294,7 +294,7 @@ describe('the workshop template’s call selection', () => {
     expect(region.type).toBe('Row');
     expect((region.props as { position?: string }).position).toBe('fixed');
     // The pill is inside it and still conditional; the region around it is not.
-    expect(JSON.stringify(region)).toContain('"condition":{"$":"routeStore.params.call ? routeStore.params.call');
+    expect(JSON.stringify(region)).toContain('"condition":{"$":"navigation.params.call ? navigation.params.call');
   });
 
   it('offers a new call from the page rather than from the corner', () => {
@@ -529,7 +529,7 @@ describe('the workshop template’s call selection', () => {
   it('carries the call from page to page in the switcher', () => {
     // Panels that stand on every route are about `CALL`, so a link that dropped the parameter would
     // show one call's transcript beside another call's canvas.
-    expect(JSON.stringify(workshop)).toContain("/${nav.segment}?call=${routeStore.params.call ?? ''}");
+    expect(JSON.stringify(workshop)).toContain("/${nav.segment}?call=${navigation.params.call ?? ''}");
   });
 
   it('leaves the delete confirmation to the host, panel or not', () => {
@@ -630,7 +630,7 @@ describe('the workshop template’s call selection', () => {
     expect(json).toContain('{"when":{"data.changed":true},"style":{"borderColor":"warning-text","borderWidth":2}}');
     expect(json).toContain('"id":"review"');
     expect(json).toContain(
-      `"hidden":{"$":"(routeStore.params.suggestions == 'hide') ? modules.transcribe.unconfirmedIds : []"}`,
+      `"hidden":{"$":"(navigation.params.suggestions == 'hide') ? modules.transcribe.unconfirmedIds : []"}`,
     );
     expect(json).toContain('"$invoke":"modules.transcribe.applyChange"');
     // Said in the key, which carries every reason a card is off the canvas, and nowhere else: a chip
@@ -649,7 +649,7 @@ describe('the workshop template’s call selection', () => {
     );
     // The calendar reads its events through the same filter the board does.
     expect(json).toContain(
-      "((routeStore.params.suggestions == 'hide') ? local.events.filter(r, !(r.id in modules.transcribe.unconfirmedIds)) : local.events)",
+      "((navigation.params.suggestions == 'hide') ? local.events.filter(r, !(r.id in modules.transcribe.unconfirmedIds)) : local.events)",
     );
   });
 
@@ -689,7 +689,7 @@ describe('the workshop template’s call selection', () => {
     const json = JSON.stringify(workshop);
 
     expect(inspector).toBeTruthy();
-    expect(JSON.stringify(inspector)).toContain('recordStore.displays[routeStore.params.cardType]');
+    expect(JSON.stringify(inspector)).toContain('recordStore.displays[navigation.params.cardType]');
     expect(json).toContain('"syncParam":"card"');
     expect(json).toContain('"syncParam":"cardType"');
     // Set from the click, cleared only when the selection actually empties — an unguarded clear
@@ -771,7 +771,7 @@ describe('the workshop template’s call selection', () => {
 
     // And the panel's own, which takes the id from the address rather than from a node payload —
     // the inspector is a panel, so the selection reaches it as parameters and nothing else.
-    expect(json).toContain('"args":[{"$":"routeStore.params.cardType"},{"$":"routeStore.params.card"}]');
+    expect(json).toContain('"args":[{"$":"navigation.params.cardType"},{"$":"navigation.params.card"}]');
   });
 
   it('asks once about a whole selection rather than once per card', () => {
@@ -981,7 +981,7 @@ describe('the timeline’s sections', () => {
     // that a rail wired to nothing is a lie, so each section here reads a store or a query.
     expect(panels.map((panel) => panel.home)).toEqual(['right', 'right']);
     const json = JSON.stringify(panels);
-    expect(json).toContain('spaceStore.memberDids');
+    expect(json).toContain('identity.memberDids');
     expect(json).toContain('SignalType');
   });
 
@@ -1195,10 +1195,10 @@ describe('the workshop’s key', () => {
       does. And every navigation this template makes spells its query in full — an explicit `?`
       drops what the address held — so each one has to carry it or a page switch resets the colours.
     */
-    expect(panel('key')).toContain('routeStore.setParam');
+    expect(panel('key')).toContain('navigation.setParam');
     expect(panel('key')).toContain(`"${LENS_PARAM}"`);
     // The switcher, and the one navigation the calls panel and the start button share.
-    expect(json).toContain(`?call=\${routeStore.params.call ?? ''}${LENS_QUERY}`);
+    expect(json).toContain(`?call=\${navigation.params.call ?? ''}${LENS_QUERY}`);
     expect(json).toContain(`?call=\${''}${LENS_QUERY}`);
     // A result equal to the default is written as nothing, so an ordinary link stays clean.
     expect(JSON.stringify(toggleLens('state'))).toContain("? '' : 'none'");
@@ -1220,7 +1220,7 @@ describe('the workshop’s key', () => {
     expect(canvas).toContain((KIND_CARD_RULES as { $: string }).$);
     expect(canvas).toContain("spaceStore.taskStates.map(s, { when: { 'data.status': s.slug }");
     // The query waits for the space rather than reading every canvas's key while it settles.
-    expect(canvas).toContain('"when":{"$":"spaceStore.currentSpace.id"}');
+    expect(canvas).toContain('"when":{"$":"spaceSettings.currentSpace.id"}');
   });
 
   it('hides a card’s own colour while a lens is on, and never its size', () => {
@@ -1255,10 +1255,10 @@ describe('the workshop’s key', () => {
     expect(entry?.route).toBeUndefined();
 
     const key = panel('key');
-    expect(key).toContain("'canvas' in routeStore.segments");
+    expect(key).toContain("'canvas' in navigation.segments");
     expect(key).toContain('Colours are on the canvas.');
     // The subscriptions stay outside the branch, so crossing back does not refetch them.
-    const body = key.slice(key.indexOf("'canvas' in routeStore.segments"));
+    const body = key.slice(key.indexOf("'canvas' in navigation.segments"));
     expect(body).not.toContain('"entity":"TypeStyle"');
     expect(body).not.toContain('"entity":"Placement"');
   });
@@ -1277,7 +1277,7 @@ describe('the workshop’s key', () => {
     const key = panel('key');
 
     expect(key).toContain('recordStore.setSpaceTypeColor');
-    expect(key).toContain('spaceStore.currentSpace.id');
+    expect(key).toContain('spaceSettings.currentSpace.id');
     expect(key).not.toContain('recordStore.setTypeColor');
     expect(key).toContain('"$invoke":"spaceStore.updateTaskState"');
     expect(key).toContain('"$invoke":"shellStore.openSpaceSettings","args":["vocabulary"]');
@@ -1306,7 +1306,7 @@ describe('the workshop’s key', () => {
     const key = panel('key');
 
     expect(key).toContain('"type":"we-switch"');
-    expect(key).toContain('routeStore.setParam');
+    expect(key).toContain('navigation.setParam');
     // Each list is behind its own lens rather than merely faded.
     expect(key).not.toContain('? 1 : 0.6');
     expect(key).toContain(`"condition":{"$":"${BY_KIND}"},"enterTransition"`);
@@ -1582,7 +1582,7 @@ describe('the workshop’s canvas', () => {
 
     expect(inspector).toContain('"$toggleLocal":"editing"');
     expect(inspector).toContain(
-      '"$invoke":"recordStore.updateRecordField","args":[{"$":"routeStore.params.cardType"},{"$":"routeStore.params.card"},{"$":"field.name"},{"$":"event.detail"}]',
+      '"$invoke":"recordStore.updateRecordField","args":[{"$":"navigation.params.cardType"},{"$":"navigation.params.card"},{"$":"field.name"},{"$":"event.detail"}]',
     );
     expect(inspector).not.toContain('saveRecord');
     /*
@@ -1623,7 +1623,7 @@ describe('the workshop’s canvas', () => {
     */
     const inspector = panel('inspector');
 
-    expect(inspector).toContain('"when":{"$":"routeStore.params.card"}');
+    expect(inspector).toContain('"when":{"$":"navigation.params.card"}');
     /*
       And with nothing selected it is the placeholder that shows, not a heading. "Untitled" stood
       here in heading type for a record with neither a name nor a document, on the argument that a
@@ -1637,7 +1637,7 @@ describe('the workshop’s canvas', () => {
     // arrive anywhere usable. This panel's case for existing is reading a card *without* leaving
     // the arrangement it is in, so the way out was the convenience rather than the feature.
     expect(inspector).not.toContain('Open full record');
-    expect(inspector).not.toContain('/record/${routeStore.params.cardType}');
+    expect(inspector).not.toContain('/record/${navigation.params.cardType}');
   });
 
   it('lists in the key only the kinds on this canvas', () => {
@@ -1688,7 +1688,7 @@ describe('the workshop’s people', () => {
     // Each card says where it came from itself, whichever call that was — the board is the space's.
     expect(kanban).toContain('card.extractedFrom');
     // Pressing a card opens it in the inspector through the same parameters the canvas writes.
-    expect(kanban).toContain('"$invoke":"routeStore.setParam","args":["card",{"$":"card.id"}]');
+    expect(kanban).toContain('"$invoke":"navigation.setParam","args":["card",{"$":"card.id"}]');
     expect(kanban).toContain('Interpreted from the conversation');
   });
 
@@ -1699,12 +1699,12 @@ describe('the workshop’s people', () => {
       A press on the faces or the move menu is a press on the card too, so a card that let go of itself
       on a second press deselected itself behind the menu that press opened. A press only selects.
     */
-    expect(route('/kanban')).not.toContain('"condition":{"$":"card.id == routeStore.params.card"}');
+    expect(route('/kanban')).not.toContain('"condition":{"$":"card.id == navigation.params.card"}');
     expect(route('/kanban')).toContain('{"$setLocal":"pressedCard","value":true}');
     // The page lets go — both parameters, so no type is left behind to be read without its card.
     expect(onClick).toContain('local.pressedCard');
-    expect(onClick).toContain('{"$invoke":"routeStore.setParam","args":["card",null]}');
-    expect(onClick).toContain('{"$invoke":"routeStore.setParam","args":["cardType",null]}');
+    expect(onClick).toContain('{"$invoke":"navigation.setParam","args":["card",null]}');
+    expect(onClick).toContain('{"$invoke":"navigation.setParam","args":["cardType",null]}');
   });
 
   it('lets a member answer an event, reading answers rather than the call’s roster', () => {
@@ -1786,14 +1786,14 @@ describe('the inspector’s connections', () => {
   ];
   const scopeFor = (connections: unknown[], link: unknown[] = []) => ({
     local: { connections, link, relationshipKinds: kinds },
-    routeStore: { params: { card: 'me' } },
+    navigation: { params: { card: 'me' } },
     recordStore: { displays },
   });
 
   it('asks for the card’s connections at either end, with both ends hydrated', () => {
     // Native on AD4M: each arm is a triple pattern on the relation's predicate, the OR a UNION.
     expect(json).toContain(
-      '"where":{"OR":[{"source":{"$":"routeStore.params.card"}},{"target":{"$":"routeStore.params.card"}}]}',
+      '"where":{"OR":[{"source":{"$":"navigation.params.card"}},{"target":{"$":"navigation.params.card"}}]}',
     );
     expect(json).toContain('"include":{"source":true,"target":true}');
   });
@@ -1885,9 +1885,9 @@ describe('the inspector’s connections', () => {
   it('opens a row by writing the address the canvas follows', () => {
     // The panel cannot reach the canvas's locals; the address is the one thing both can see, and the
     // canvas binds `focus` to it — so a row opened here is selected and brought into view there.
-    expect(json).toContain('{"$invoke":"routeStore.setParam","args":["card",{"$":"conn.otherId"}]}');
-    expect(json).toContain('{"$invoke":"routeStore.setParam","args":["cardType","Relationship"]}');
-    expect(JSON.stringify(workshop)).toContain('"focus":{"$":"routeStore.params.card"}');
+    expect(json).toContain('{"$invoke":"navigation.setParam","args":["card",{"$":"conn.otherId"}]}');
+    expect(json).toContain('{"$invoke":"navigation.setParam","args":["cardType","Relationship"]}');
+    expect(JSON.stringify(workshop)).toContain('"focus":{"$":"navigation.params.card"}');
   });
 });
 
@@ -2008,7 +2008,7 @@ describe('putting a kind away from the canvas', () => {
     } as never);
   const next = (hide: string, kind: string) => {
     const action = toggleKindShown('kind') as { args: [string, { $: string }] };
-    return run(action.args[1].$, { kind, routeStore: { params: { hide } } });
+    return run(action.args[1].$, { kind, navigation: { params: { hide } } });
   };
 
   it('adds a kind to the address, and takes it back out, leaving nothing when none is hidden', () => {
@@ -2016,7 +2016,7 @@ describe('putting a kind away from the canvas', () => {
     expect(next('ImageBlock', 'TextBlock')).toBe('ImageBlock,TextBlock');
     expect(next('ImageBlock,TextBlock', 'ImageBlock')).toBe('TextBlock');
     expect(next('TextBlock', 'TextBlock')).toBe('');
-    expect(run(HIDDEN_KINDS, { routeStore: { params: {} } })).toEqual([]);
+    expect(run(HIDDEN_KINDS, { navigation: { params: {} } })).toEqual([]);
   });
 
   it('hands the hidden kinds to the canvas', () => {
@@ -2039,7 +2039,7 @@ describe('folding a card on the canvas', () => {
   /** What the address would hold after the graph reported a press on one card's fold control. */
   const next = (fold: string, recordId: string, folded: boolean) => {
     const action = FOLD_FROM_GRAPH as { args: [string, { $: string }] };
-    return run(action.args[1].$, { event: { recordId, folded }, routeStore: { params: { fold } } });
+    return run(action.args[1].$, { event: { recordId, folded }, navigation: { params: { fold } } });
   };
 
   it('adds the card the graph folded, and takes it back out', () => {
@@ -2062,8 +2062,8 @@ describe('folding a card on the canvas', () => {
   });
 
   it('reads nothing at all as nothing folded', () => {
-    expect(run(FOLDED_CARDS, { routeStore: { params: {} } })).toEqual([]);
-    expect(run(FOLD_COUNT, { routeStore: { params: {} } })).toBe(0);
+    expect(run(FOLDED_CARDS, { navigation: { params: {} } })).toEqual([]);
+    expect(run(FOLD_COUNT, { navigation: { params: {} } })).toBe(0);
   });
 
   it('hands the folded cards to the canvas, and draws the lines a fold leaves behind', () => {
@@ -2089,8 +2089,8 @@ describe('folding a card on the canvas', () => {
 
     // Every path the template navigates to carries it: the page switcher and the call links.
     expect(workshop.split('&fold=').length).toBeGreaterThan(2);
-    expect(run(inner, { routeStore: { params: { fold: 'we://a' } } })).toBe('&fold=we://a');
-    expect(run(inner, { routeStore: { params: {} } })).toBe('');
+    expect(run(inner, { navigation: { params: { fold: 'we://a' } } })).toBe('&fold=we://a');
+    expect(run(inner, { navigation: { params: {} } })).toBe('');
   });
 
   it('lets a fold carry its contents when it is dragged', () => {
@@ -2230,7 +2230,7 @@ describe('the workshop’s tree', () => {
     expect(canvas).toContain(`mode: find(local.treeSignalTypes, { id: (${inForce}) }).mode`);
     expect(canvas).toContain('me: me.did');
     // Muted authors left out, as they are on every other reaction surface here.
-    expect(canvas).toContain('excludeAuthors: spaceStore.mutedDids');
+    expect(canvas).toContain('excludeAuthors: identity.mutedDids');
   });
 
   it('writes a structure where the layout derives the position, and a coordinate where it does not', () => {
@@ -2334,7 +2334,7 @@ describe('the workshop’s tree', () => {
 describe('the workshop’s space-wide views', () => {
   const workshop = showcase.workshopTemplate as Schema & { meta?: { panels?: TemplatePanel[] } };
   const route = (path: string) => JSON.stringify((workshop.routes ?? []).find((entry) => entry.path === path));
-  const SCOPE = 'routeStore.params.scope';
+  const SCOPE = 'navigation.params.scope';
   const RECORD = `(${SCOPE} == 'call' ? (${CALL_EXPR}) : ${SCOPE} == 'space' ? spaceStore.root : ${SCOPE} ? ${SCOPE} : '')`;
   /** The canvas's graph, and an expression on it read against plain objects, as the renderer reads it. */
   const canvasGraph = (): Record<string, unknown> => {
@@ -2367,7 +2367,7 @@ describe('the workshop’s space-wide views', () => {
       JSON.stringify(rule).includes("'data.origin': { not:"),
     ) as { $: string }[];
     const read = (params: Record<string, string>) => {
-      const scope = { routeStore: { params }, spaceStore: { root: 'space-root' }, local: {}, modules: {} };
+      const scope = { navigation: { params }, spaceStore: { root: 'space-root' }, local: {}, modules: {} };
       return { hide: evaluate(hideWhere, scope), dim: dims.flatMap((rule) => evaluate(rule.$, scope) as unknown[]) };
     };
     const rest = { 'data.origin': { not: 'space-root' } };
@@ -2398,8 +2398,8 @@ describe('the workshop’s space-wide views', () => {
 
   it('keeps the scope and its treatment in the address, so a link shows the same view', () => {
     const json = JSON.stringify(workshop);
-    expect(json).toContain("routeStore.params.from ? '&from=' + routeStore.params.from : ''");
-    expect(json).toContain("routeStore.params.scope ? '&scope=' + routeStore.params.scope : ''");
+    expect(json).toContain("navigation.params.from ? '&from=' + navigation.params.from : ''");
+    expect(json).toContain("navigation.params.scope ? '&scope=' + navigation.params.scope : ''");
     // Picking a scope dims the rest to begin with; "All" clears both.
     expect(json).toContain('"args":["from","dim"]');
     expect(json).toContain('"args":["scope",""]');

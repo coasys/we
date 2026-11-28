@@ -42,10 +42,10 @@ export const EXPRESSION_ENVS: Record<string, ExpressionEnvSpec> = {
         policy: 'member',
         root: 'space://root',
         taskStates: [{ id: 'st:1', name: 'Open' }],
-        mutedDids: [],
         offeredInvolvementTypes: [{ id: 'it:1', semantic: 'assignee' }],
-        currentSpace: { id: 'sp:1', name: 'Coasys' },
       },
+      identity: { mutedDids: [] },
+      spaceSettings: { currentSpace: { id: 'sp:1', name: 'Coasys' } },
       recordStore: {
         creatableEntities: [
           {
@@ -60,7 +60,7 @@ export const EXPRESSION_ENVS: Record<string, ExpressionEnvSpec> = {
         ],
         displays: { TaskBlock: { title: 'name', label: 'Task', icon: 'task' } },
       },
-      routeStore: {
+      navigation: {
         params: { view: 'canvas', id: 'we://a-call', cardType: 'SignalType', card: 'sig:1', channel: 'ch:1' },
         templateSegments: ['channels'],
       },

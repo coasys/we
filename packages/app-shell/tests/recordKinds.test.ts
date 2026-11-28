@@ -9,18 +9,13 @@ import { createInMemoryBackendPorts } from '@we/backend-inmemory';
 import type { EntityManifestEntry } from '@we/backend-shared';
 import { getEntity } from '@we/entities';
 import type { ReactivityPort, Setter } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { SpaceShapeView } from '../src/shared/shapes/spaceShapes';
 import { operationRunner } from '../src/shared/stores/records/context';
 import { createRecordKinds, type RecordKinds } from '../src/shared/stores/records/kinds';
-
-const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
+import { reactivityPorts } from './support/engines';
+import { testOperations } from './support/operations';
 
 const flush = async () => {
   for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
@@ -74,7 +69,8 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
             datasets: () => [],
           } as never,
           shapeStore: { spaceShapes: shapes },
-          runOp: operationRunner(sessionStore),
+          operations: testOperations,
+          runOp: operationRunner(sessionStore, testOperations),
         });
       }),
     );

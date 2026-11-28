@@ -124,10 +124,10 @@ describe('placing a module part', () => {
 
   it('points it at another record when the placer names one', () => {
     withModule(() => {
-      const resolved = resolveParts(place({ id: 'demo.feed', subject: { $: 'routeStore.params.call' } }));
+      const resolved = resolveParts(place({ id: 'demo.feed', subject: { $: 'navigation.params.call' } }));
 
       const json = JSON.stringify(resolved);
-      expect(json).toContain('routeStore.params.call');
+      expect(json).toContain('navigation.params.call');
       // Every occurrence, not the first: the feed asks about its subject twice, once to decide
       // whether to render at all and once to scope the query.
       expect(json).not.toContain('modules.demo.collectionId');
@@ -151,16 +151,16 @@ describe('placing a module part', () => {
       const frameOf = (props: Record<string, SchemaProp>) =>
         ((resolveParts(place(props)) as SchemaNode).children as SchemaNode[])[0];
 
-      expect(frameOf({ id: 'demo.watched', subject: { $: 'routeStore.params.id' } }).props).toEqual({
+      expect(frameOf({ id: 'demo.watched', subject: { $: 'navigation.params.id' } }).props).toEqual({
         part: 'demo.watched',
-        subject: { $: 'routeStore.params.id' },
+        subject: { $: 'navigation.params.id' },
       });
       expect(frameOf({ id: 'demo.watched' }).props).toEqual({
         part: 'demo.watched',
         subject: { $: 'modules.demo.collectionId' },
       });
       // A part nobody needs to tell keeps the frame it always had.
-      expect(frameOf({ id: 'demo.feed', subject: { $: 'routeStore.params.id' } }).props).toEqual({ part: 'demo.feed' });
+      expect(frameOf({ id: 'demo.feed', subject: { $: 'navigation.params.id' } }).props).toEqual({ part: 'demo.feed' });
     });
   });
 

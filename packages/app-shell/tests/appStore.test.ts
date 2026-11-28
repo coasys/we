@@ -1,21 +1,14 @@
 /**
  * The embedded applications this agent has installed, and which one is on screen.
  *
- * A plain store test, run once under each reactivity port: Solid's, and the test port that runs a
- * new effect at once where Solid defers it.
+ * A plain store test, run once under each engine (Solid, the test port, Vue).
  */
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { moduleRegistry } from '../src/shared/registries/moduleRegistry';
 import { type AppStore, createAppStore } from '../src/shared/stores/AppStore';
-
-const ports: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
+import { reactivityPorts } from './support/engines';
 
 const host = { backend: 'ad4m', framework: 'solid' };
 const embed = (id: string) => ({
@@ -23,7 +16,7 @@ const embed = (id: string) => ({
   contributes: { embed: { url: `http://localhost/${id}`, allow: '', image: `/${id}.png` } },
 });
 
-describe.each(ports)('appStore, under %s', (_name, makePort) => {
+describe.each(reactivityPorts)('appStore, under %s', (_name, makePort) => {
   let port: ReactivityPort;
   const disposers: (() => void)[] = [];
 

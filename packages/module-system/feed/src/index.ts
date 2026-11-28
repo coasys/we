@@ -56,7 +56,7 @@ export const feedModule = defineModule({
           points it at — a call's own page points it at its `id`. The host hands that call to
           `whileShown`, so only that call is read.
         */
-        subject: 'routeStore.params.call',
+        subject: 'navigation.params.call',
         label: 'Call feed',
         description:
           'Everything said and written in one call — its spoken lines, typed messages and bots — with a box to write into it.',

@@ -7,7 +7,7 @@
  * of solid-js and the store itself. `@we/template-conformance` calls `runNavigationScript`
  * from its `solid` vitest project; nothing here is reachable from the plain node project.
  *
- * The router itself is mocked: `routeStore.navigate` hands its target to whatever function was
+ * The router itself is mocked: `navigation.navigate` hands its target to whatever function was
  * lent through `setNavigateFunction`, so the script's own mirror applies it to `window.history`
  * the way @solidjs/router would (push unless `replace`), then reports the location back through
  * `setCurrentPath` — the same call TemplateLayout's router effect makes.
@@ -28,9 +28,11 @@ import { solidReactivity } from '@we/reactivity-solid';
 import {
   type LocalStateField,
   localWriteMirror,
+  resolveHref,
   resolveLocalInitial,
   type RouteParamsBinding,
 } from '../../../schema-system/shared/src/index.ts';
+import { createBrowserPlatform } from '../../src/shared/platform/browser';
 import { createRouteStore, type RouteStore } from '../../src/shared/stores/RouteStore';
 
 /** One step of a navigation script. `args` are decoded JSON — see the ops below. */
@@ -49,7 +51,10 @@ export interface NavigationExpect {
   depth: number;
   /** Position in that stack, 0-based — where Back would leave from. */
   index: number;
-  /** For `local_read`: the initial value the field's precedence rules resolve. */
+  /**
+   * For `local_read`: the initial value the field's precedence rules resolve. For `link`: the
+   * address a link to `to` is drawn with.
+   */
   resolved?: unknown;
 }
 
@@ -128,7 +133,7 @@ export async function runNavigationScript(script: NavigationScript): Promise<Nav
   // Render mounts once and is left to the test environment's cleanup — same convention as the
   // app-shell suite (each script's store is a fresh mount whose signals stay private).
   render(() => {
-    store = createRouteStore({ reactivity: solidReactivity });
+    store = createRouteStore({ reactivity: solidReactivity, platform: createBrowserPlatform() });
     return null;
   });
   store.setNavigateFunction(((to: string | number, options?: Record<string, unknown>) => {
@@ -198,6 +203,19 @@ export async function runNavigationScript(script: NavigationScript): Promise<Nav
           resolved = resolveLocalInitial(field, args.initial, {
             routeParams,
             storage: window.localStorage,
+          });
+          break;
+        }
+        case 'link': {
+          // A link drawn at this address: the renderer's rule (`resolveHref`), fed only the
+          // navigation profile's members — never the store's own resolution — so the vector pins
+          // that a drawn link and a press on it lead to the same place.
+          const depth = (args.base as { depth?: unknown } | undefined)?.depth;
+          resolved = resolveHref(args.to as string, {
+            currentPath: store.currentPath(),
+            segments: store.segments(),
+            templateSegments: store.templateSegments(),
+            ...(typeof depth === 'number' && { depth }),
           });
           break;
         }

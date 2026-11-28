@@ -6,6 +6,7 @@
 import { type ReactivityPort } from '@we/reactivity';
 
 import { distinctSignal } from '../../distinctSignal';
+import type { PlatformPort } from '../../platform/port';
 import { type ShellStore } from '../ShellStore';
 
 /**
@@ -18,15 +19,18 @@ import { type ShellStore } from '../ShellStore';
  * Anything other than `/` is a destination someone asked for, so the landing page would be in the
  * way rather than a starting point.
  */
-function initialShellView(): string | null {
-  if (typeof window === 'undefined') return 'landing-page';
-  return window.location.pathname === '/' ? 'landing-page' : null;
+function initialShellView(platform: Pick<PlatformPort, 'location'>): string | null {
+  return platform.location().pathname === '/' ? 'landing-page' : null;
 }
 
-export function createShellViews(deps: { reactivity: ReactivityPort }) {
-  const { reactivity } = deps;
+export function createShellViews(deps: {
+  reactivity: ReactivityPort;
+  /** The address the app opened at, and the document a row is scrolled to in. */
+  platform: Pick<PlatformPort, 'location' | 'document'>;
+}) {
+  const { reactivity, platform } = deps;
   const { untrack } = reactivity;
-  const [activeShellView, setActiveShellView] = distinctSignal<string | null>(reactivity, initialShellView());
+  const [activeShellView, setActiveShellView] = distinctSignal<string | null>(reactivity, initialShellView(platform));
   const [pendingPath, setPendingPath] = distinctSignal<string | null>(reactivity, null);
   /**
    * Where each shell view was last standing, so it can be put back after a remount.
@@ -56,11 +60,7 @@ export function createShellViews(deps: { reactivity: ReactivityPort }) {
   let focusSearch: ReturnType<typeof setTimeout> | undefined;
   function scrollWhenDrawn(id: string, tries = 40): void {
     clearTimeout(focusSearch);
-    const element = document.getElementById(id);
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      return;
-    }
+    if (platform.document.reveal(id, { block: 'center' })) return;
     if (tries > 0) focusSearch = setTimeout(() => scrollWhenDrawn(id, tries - 1), 100);
   }
 
@@ -129,7 +129,7 @@ export function createShellViews(deps: { reactivity: ReactivityPort }) {
       if (id) lastShellPath[id] = path;
     },
     scrollToId: (id: string) => {
-      document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      platform.document.reveal(id, { block: 'start' });
     },
   };
   return { members, activeShellView, setActiveShellView };

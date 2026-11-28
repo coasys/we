@@ -13,6 +13,7 @@ import type { TemplateSchema } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
 import { solidLiveTemplates } from '../src/frameworks/solid/stores/liveTemplate';
+import { createVueReactivity } from './support/vueReactivity';
 
 const hosts: [string, () => { reactivity: ReactivityPort; liveTemplates: LiveTemplates }][] = [
   ['Solid', () => ({ reactivity: solidReactivity, liveTemplates: solidLiveTemplates })],
@@ -20,6 +21,13 @@ const hosts: [string, () => { reactivity: ReactivityPort; liveTemplates: LiveTem
     'the plain documents on the test port',
     () => {
       const reactivity = createTestReactivity();
+      return { reactivity, liveTemplates: plainLiveTemplates(reactivity) };
+    },
+  ],
+  [
+    'Vue',
+    () => {
+      const reactivity = createVueReactivity();
       return { reactivity, liveTemplates: plainLiveTemplates(reactivity) };
     },
   ],

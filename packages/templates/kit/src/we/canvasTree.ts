@@ -214,7 +214,7 @@ export const TREE_WEIGH: SchemaProp = {
     ` rangeMin: find(local.treeSignalTypes, { id: ${SIGNAL_IN_FORCE} }).rangeMin,` +
     ` rangeMax: find(local.treeSignalTypes, { id: ${SIGNAL_IN_FORCE} }).rangeMax,` +
     ` step: find(local.treeSignalTypes, { id: ${SIGNAL_IN_FORCE} }).step,` +
-    ` excludeAuthors: spaceStore.mutedDids, me: me.did } : null`,
+    ` excludeAuthors: identity.mutedDids, me: me.did } : null`,
 };
 
 /**
@@ -230,8 +230,7 @@ export const TREE_WEIGHTS: SchemaProp = { $: 'local.voices' };
 export const TREE_VOICE_SUMMARY: SchemaProp = { $setLocal: 'voiceSummary', value: { $: 'event' } };
 
 /** The voices as the list draws them — see the `voices` host function. */
-const VOICES =
-  'voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did })';
+const VOICES = 'voices({ summary: local.voiceSummary, param: local.voices, profiles: identity.profiles, me: me.did })';
 
 /** One of them, by the DID a row of the list is keyed on. */
 const VOICE = `(find(${VOICES}, { did: voiceDid }))`;

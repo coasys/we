@@ -727,7 +727,7 @@ export const createSpaceModal = {
                     // Into the space just made, as joining one does: making it was a step towards using it.
                     onSuccess: [
                       { $invoke: 'shellStore.setCreateSpaceOpen', args: [false] },
-                      { $invoke: 'spaceStore.navigateToSpace', args: [{ $: 'result' }] },
+                      { $invoke: 'navigation.navigateToSpace', args: [{ $: 'result' }] },
                     ],
                     onFinally: [{ $setLocal: 'submitting', value: false }],
                   },

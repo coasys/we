@@ -1778,7 +1778,7 @@
     },
     {
       "id": "render.routes.params",
-      "note": "a route's `:param` is read through routeStore.params",
+      "note": "a route's `:param` is read through navigation.params",
       "template": {
         "type": "Column",
         "children": [
@@ -1805,7 +1805,7 @@
                 "type": "we-text",
                 "children": [
                   {
-                    "$": "'post ' + routeStore.params.postId"
+                    "$": "'post ' + navigation.params.postId"
                   }
                 ]
               }
@@ -1903,7 +1903,7 @@
                     "type": "we-text",
                     "children": [
                       {
-                        "$": "'card ' + routeStore.params.cardId"
+                        "$": "'card ' + navigation.params.cardId"
                       }
                     ]
                   }

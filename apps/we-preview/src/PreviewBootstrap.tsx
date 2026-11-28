@@ -8,7 +8,7 @@ import { useStore } from '../../../packages/app-shell/src/frameworks/solid/store
  * ## Why this is not just a URL
  *
  * `buildRoutes` mounts a template's routes at the **router root**, so the Discord-shaped template
- * owns `/channel/:channelId` outright. But `spaceStore.navigateToSpace` builds
+ * owns `/channel/:channelId` outright. But `navigation.navigateToSpace` builds
  * `/space/<id>/<view>`, and *that* shape only resolves because the default template happens to
  * declare a `/space/:spaceId` route. No showcase template declares one, so none of them can be
  * deep-linked: `/space/x/channel/y` falls through to the catch-all, and `/channel/y` renders the

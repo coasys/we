@@ -122,8 +122,10 @@ against — including \`runtimeStore.trustAgent\` and the settings holding the A
 that merely *painted* could trust an attacker's DID. Put a new member in the narrowest group that
 works. Then decide whether another host should provide it: if so it joins a capability profile
 (\`profiles/profiles.ts\` in \`@we/schema-shared\`, with the same group, and the build regenerates
-\`docs/spec/profiles/\`); if not it is WE-host-only, which the validator reports wherever a template
-uses it. A member whose job a \`$query\`, \`record.*\` or a declared operation already does is not
+\`docs/spec/profiles/\`) and \`PROFILE_HOMES\` in \`templateSurface.ts\` names the store holding it —
+templates then write it under the profile's namespace (\`navigation.params\`), and it leaves its
+store's name in the bag; if not it is WE-host-only, which the validator reports wherever a template
+uses it, under its store's name. A member whose job a \`$query\`, \`record.*\` or a declared operation already does is not
 added at all.
 
 **The graph catalog entry is not bookkeeping.** Props tell an author that \`layout.type\` is a string;

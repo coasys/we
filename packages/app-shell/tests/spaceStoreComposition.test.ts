@@ -1,17 +1,19 @@
 /**
  * The space store composed whole, as `BootController` builds it, under each reactivity port: no part
  * reads a later one while the store is being built, the spaces list is answered by the parts that own
- * its columns, the template and theme stores are lent the spaces, and disposing the root takes back
- * what it lent.
+ * its columns, it returns what it lends the template, theme and app stores rather than reaching into
+ * them, and disposing the root takes back what it lent.
  */
 import { Space } from '@we/entities';
 import type { Setter } from '@we/reactivity';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type { SpaceAppearance } from '../src/shared/spaceAppearance';
-import { createSpaceStore, type SpaceStore } from '../src/shared/stores/SpaceStore';
+import { createSpaceStore, type SpaceStore, type SpaceStoreLends } from '../src/shared/stores/SpaceStore';
 import { createTaskWorkflowLive } from '../src/shared/taskWorkflowLive';
-import { flush, reactivityPorts, type SpaceHarness, spaceHarness } from './support/spaceParts';
+import { reactivityPorts } from './support/engines';
+import { testOperations } from './support/operations';
+import { flush, type SpaceHarness, spaceHarness } from './support/spaceParts';
 
 describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   const disposers: (() => void)[] = [];
@@ -22,7 +24,8 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   interface Built {
     h: SpaceHarness;
     store: SpaceStore;
-    lent: { appearance: SpaceAppearance[]; vocabularies: number; homes: number; saver: number };
+    lent: { appearance: SpaceAppearance[]; vocabularies: number; homes: number };
+    lends: SpaceStoreLends;
     go: Setter<string>;
     dispose: () => void;
   }
@@ -35,20 +38,22 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     await Space.create((await h.datasets.get('ds-a')).handle, { uuid: 'ds-a', name: 'The Allotment' });
     h.datasets.setRoot('ds-root');
     const { reactivity, ctx } = h;
-    const lent = { appearance: [] as SpaceAppearance[], vocabularies: 0, homes: 0, saver: 0 };
+    const lent = { appearance: [] as SpaceAppearance[], vocabularies: 0, homes: 0 };
     let store!: SpaceStore;
+    let lends!: SpaceStoreLends;
     let go!: Setter<string>;
     const dispose = reactivity.root(() => {
       const [path, setPath] = reactivity.signal('/');
       go = setPath;
       const segments = () => path().split('/').filter(Boolean);
-      store = createSpaceStore({
+      ({ store, lends } = createSpaceStore({
+        operations: testOperations,
         reactivity,
+        platform: h.platform,
         toasts: ctx.toasts,
         firstScreen: ctx.firstScreen,
         sessionStore: ctx.sessionStore,
         datasetStore: ctx.datasetStore,
-        appStore: { provideInstalledModules: () => {} },
         profileStore: { profiles: () => [], fetchProfile: () => Promise.resolve(undefined) } as never,
         recordStore: {
           provideVocabularies: () => {
@@ -82,7 +87,6 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
           dockGeometry: () => ({}),
           revealDock: () => {},
           toggleModulePanel: () => {},
-          provideTemplateSaver: () => void (lent.saver += 1),
         } as never,
         templateStore: {
           appTemplate: () => null,
@@ -91,21 +95,17 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
           allTemplates: () => [],
           draftOf: () => undefined,
           defaultTemplateId: () => '',
-          provideSpaceAppearance: (appearance: SpaceAppearance) => void lent.appearance.push(appearance),
-          saveTemplateAs: () => Promise.resolve(undefined),
         } as never,
-        themeStore: {
-          explainSpaceThemeHidden: () => {},
-          provideSpaceAppearance: (appearance: SpaceAppearance) => void lent.appearance.push(appearance),
-        },
         host: {
           signalOrder: { reset: () => {} },
           taskWorkflowLive: createTaskWorkflowLive(reactivity.signal),
         },
-      });
+      }));
+      // As `composeStores` hands it over.
+      lent.appearance.push(lends.appearance);
     });
     disposers.push(dispose);
-    return { h, store, lent, go, dispose };
+    return { h, store, lent, lends, go, dispose };
   }
 
   it('builds whole, with every part’s members on the one store', async () => {
@@ -127,10 +127,15 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     ] as const) {
       expect(store[member], member).toBeTypeOf('function');
     }
-    expect(lent).toMatchObject({ vocabularies: 1, homes: 1, saver: 1 });
-    // The template store and the theme store are each lent the same spaces.
-    expect(lent.appearance).toHaveLength(2);
-    expect(lent.appearance[0]).toBe(lent.appearance[1]);
+    expect(lent).toMatchObject({ vocabularies: 1, homes: 1 });
+  });
+
+  it('returns what it lends the template, theme and app stores, rather than reaching into them', async () => {
+    const { store, lends } = await build();
+    await store.loadSpaces();
+    await flush();
+    expect(lends.appearance.spaces().map((space) => space.uuid)).toEqual(['ds-a']);
+    expect(Array.isArray(lends.installedModules())).toBe(true);
   });
 
   it('answers the spaces list from the parts that own its columns', async () => {

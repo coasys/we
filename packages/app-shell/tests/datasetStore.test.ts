@@ -2,26 +2,19 @@
  * datasetStore: the dataset list, which dataset is on screen, and what a switch publishes — including
  * the switches that must not land, and a re-publish of the space on screen that must wake nobody.
  *
- * Plain store tests, run once under each reactivity port: Solid's, and the test port that runs a new
- * effect at once where Solid defers it.
+ * Plain store tests, run once under each engine (Solid, the test port, Vue).
  */
 import type { DatasetChangeHandlers, DatasetRef } from '@we/backend-shared';
 import { registerEntity } from '@we/entities';
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { provideSeed } from '../src/shared/seedRegistry';
 import { createDatasetStore, type DatasetStore } from '../src/shared/stores/DatasetStore';
 import type { BootState } from '../src/shared/stores/SessionStore';
+import { reactivityPorts } from './support/engines';
 
 provideSeed({ name: 'test', modules: [] } as never);
-
-const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
 
 const flush = async () => {
   for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));

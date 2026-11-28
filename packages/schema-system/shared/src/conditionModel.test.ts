@@ -179,9 +179,9 @@ describe('serializeCondition', () => {
 
 describe('value positions', () => {
   it('parses the expressions that appear in children', () => {
-    expect(parseValue({ $: 'spaceStore.currentSpace.name' })).toEqual({
+    expect(parseValue({ $: 'spaceSettings.currentSpace.name' })).toEqual({
       kind: 'store',
-      path: 'spaceStore.currentSpace.name',
+      path: 'spaceSettings.currentSpace.name',
     });
     expect(parseValue({ $: 'agent.firstName' })).toEqual({ kind: 'context', path: 'agent.firstName' });
     expect(parseValue('Shared')).toEqual({ kind: 'literal', value: 'Shared' });
@@ -199,10 +199,10 @@ describe('value positions', () => {
   });
 
   it('recognises a ternary in a value position', () => {
-    const token = { $: "spaceStore.currentSpace.access == 'shared' ? 'Shared' : 'Personal'" };
+    const token = { $: "spaceSettings.currentSpace.access == 'shared' ? 'Shared' : 'Personal'" };
     const parsed = parseValueIf(token);
     expect(parsed).toEqual({
-      condition: { $: "spaceStore.currentSpace.access == 'shared'" },
+      condition: { $: "spaceSettings.currentSpace.access == 'shared'" },
       then: 'Shared',
       else: 'Personal',
     });
@@ -227,7 +227,7 @@ describe('content shapes', () => {
     ['no children', undefined, 'text'],
     ['empty children', [], 'text'],
     ['a plain string', ['About this space'], 'text'],
-    ['a store binding', [{ $: 'spaceStore.currentSpace.name' }], 'value'],
+    ['a store binding', [{ $: 'spaceSettings.currentSpace.name' }], 'value'],
     ['a context ref', [{ $: 'agent.firstName' }], 'value'],
     ['a ternary', [{ $: "local.x ? 'a' : 'b'" }], 'conditional'],
     ['an interpolation', [{ $: '`${a} ${b}`' }], 'custom'],

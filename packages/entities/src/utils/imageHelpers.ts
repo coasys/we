@@ -8,18 +8,31 @@ export function dataURItoBlob(dataURI: string): Blob {
   return new Blob([ia], { type: mime });
 }
 
-export function blobToDataURL(blob: Blob): Promise<string> {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      const base64 = result.split(',')[1];
-      resolve(base64);
-    };
-    reader.onerror = () => reject(reader.error ?? new Error('Could not read the file'));
-    reader.onabort = () => reject(new Error('Read aborted'));
-    reader.readAsDataURL(blob);
-  });
+/**
+ * A blob's bytes as base64 — the payload of a data URI, without its `data:…;base64,` header.
+ *
+ * Read through `Blob.arrayBuffer` rather than a `FileReader`, which only a browser has: every
+ * runtime that has a `Blob` can read one this way, so storing a file does not need a window.
+ */
+export async function blobToDataURL(blob: Blob): Promise<string> {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  // In chunks: spreading a whole photo into one `fromCharCode` call overflows the argument list.
+  let binary = '';
+  for (let at = 0; at < bytes.length; at += 0x8000) binary += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
+  return btoa(binary);
+}
+
+/**
+ * How an image is scaled down and encoded again before it is stored: drawing and encoding a picture
+ * is the one step of storing one that needs a renderer, so the host supplies it. A browser draws it
+ * on a canvas (`canvasImageCodec`); a host with no renderer can store it as it came.
+ */
+export interface ImageCodec {
+  /**
+   * The image scaled — its longest edge onto `maxSize` when it exceeds it, otherwise by `scale` of
+   * its size — and encoded as PNG.
+   */
+  resize(image: Blob, options: { scale: number; maxSize?: number }): Promise<Blob>;
 }
 
 /**
@@ -31,7 +44,7 @@ export function blobToDataURL(blob: Blob): Promise<string> {
  * changing that default would have shrunk every image block in every post to 80px, so the default
  * now says what the code actually did.
  */
-export function resizeImage(file: Blob, percentage: number, maxSize = Infinity): Promise<Blob> {
+function resizeImage(file: Blob, percentage: number, maxSize = Infinity): Promise<Blob> {
   const reader = new FileReader();
   const image = new Image();
   const canvas = document.createElement('canvas');
@@ -75,6 +88,11 @@ export function resizeImage(file: Blob, percentage: number, maxSize = Infinity):
   });
 }
 
+/** The browser's codec: the image drawn on a canvas at its new size and read back as PNG. */
+export const canvasImageCodec: ImageCodec = {
+  resize: (image, { scale, maxSize }) => resizeImage(image, scale, maxSize),
+};
+
 export interface FileData {
   data_base64: string;
   name: string;
@@ -99,12 +117,19 @@ export function asFileField(data: FileData): string {
 }
 
 /**
- * Compress a browser File to a FileData value object suitable for AD4M's
- * FILE_STORAGE_LANGUAGE. The compression percentage (0.6) and output format
- * (image/png) match the convention used across all image uploads in the app.
+ * Compress an image to a FileData value object for the backend's file storage, through the host's
+ * codec. The scale (0.6) and output format (image/png) match the convention used across all image
+ * uploads in the app. Anything that is not an image is refused here, whatever the codec, so every
+ * host refuses the same files.
  */
-export async function compressImageToFileData(file: File, name: string, maxSize?: number): Promise<FileData> {
-  const blob = await resizeImage(file, 0.6, maxSize);
+export async function compressImageToFileData(
+  codec: ImageCodec,
+  file: Blob,
+  name: string,
+  maxSize?: number,
+): Promise<FileData> {
+  if (!file.type.match(/image.*/)) throw new Error('Not an image');
+  const blob = await codec.resize(file, { scale: 0.6, maxSize });
   return { data_base64: await blobToDataURL(blob), name, file_type: 'image/png' };
 }
 
@@ -124,16 +149,16 @@ export async function compressImageToFileData(file: File, name: string, maxSize?
  * `TypeError: Failed to fetch` under the app's own policy, which is how it reached production: it
  * works everywhere the CSP does not.
  */
-export async function shrinkDataUri(dataUri: string, maxSize: number): Promise<string> {
+export async function shrinkDataUri(codec: ImageCodec, dataUri: string, maxSize: number): Promise<string> {
   const blob = dataURItoBlob(dataUri);
-  // Percentage 1: already inside the ceiling means leave it alone, not shrink it again.
-  const resized = await resizeImage(blob, 1, maxSize);
+  // Scale 1: already inside the ceiling means leave it alone, not shrink it again.
+  const resized = await codec.resize(blob, { scale: 1, maxSize });
   return `data:image/png;base64,${await blobToDataURL(resized)}`;
 }
 
 /**
- * Read any browser File into a FileData value object suitable for AD4M's
- * FILE_STORAGE_LANGUAGE.  Unlike compressImageToFileData, no resizing or
+ * Read any File into a FileData value object for the backend's file storage. Unlike
+ * compressImageToFileData, no resizing or
  * format conversion is applied — the file is stored as-is.
  */
 export async function readFileAsFileData(file: File): Promise<FileData> {

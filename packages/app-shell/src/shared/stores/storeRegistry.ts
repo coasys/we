@@ -8,6 +8,7 @@
  * `{ $: 'spaceStore.x' }`, the store bag (`Stores`) and the template surface list `spaceStore`, and
  * the AI context describes `spaceStore`. One name per store, whichever side reaches for it.
  */
+import type { Operations } from '../invokeOperation';
 import type { AccountStore } from './AccountStore';
 import type { AppStore } from './AppStore';
 import type { BundleStore } from './BundleStore';
@@ -50,6 +51,12 @@ export interface StoreRegistry {
   editTarget: EditTargetPort;
   identityStore: IdentityStore;
   interpretationStore: InterpretationStore;
+  /**
+   * Not a store: how this composition runs declared operations, with its own queues and its own
+   * predictions (`invokeOperation.ts`). Composed with the stores and reached the same way, by the
+   * renderer and the components that invoke one; no template bag is built from this registry.
+   */
+  operations: Operations;
   presenceStore: PresenceStore;
   profileStore: ProfileStore;
   recordStore: RecordStore;

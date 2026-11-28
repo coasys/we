@@ -10,16 +10,14 @@
 import { Ad4mClient } from '@coasys/ad4m';
 import type { BackendPorts } from '@we/backend-shared';
 import {
-  clearPredictions,
+  bindPredictions,
+  createPredictions,
   getEntity,
   getEntityForDataset,
   Involvement,
-  predict,
-  predictionLanded,
   runOperation,
   Signal,
   speculateOperation,
-  withdrawPrediction,
 } from '@we/entities';
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from 'vitest';
 
@@ -51,9 +49,16 @@ beforeAll(async () => {
   opened = { client, ports, agent, id: ref.id, dataset: ref.handle };
 }, 180_000);
 
-afterEach(() => clearPredictions());
+// The host's predictions, bound to the entity stand-ins as a composition binds its own.
+const predictions = createPredictions();
+let unbind: (() => void) | undefined;
+beforeAll(() => {
+  unbind = bindPredictions(predictions);
+});
+afterEach(() => predictions.clear());
 
 afterAll(async () => {
+  unbind?.();
   if (!opened) return;
   await opened.ports.lifecycle.remove(opened.id).catch(() => undefined);
   opened.client.close();
@@ -84,12 +89,12 @@ async function drawnBeforeItLands(
 ) {
   const { dataset, agent } = opened!;
   const invocationId = crypto.randomUUID();
-  const invocation = { dataset, invoker: agent, invocationId, invokedAt: new Date().toISOString() };
+  const invocation = { dataset, invoker: agent, invocationId, invokedAt: new Date().toISOString(), predictions };
   const { writes } = await speculateOperation(operation, args, invocation);
   const created = writes.find((w) => w.kind === 'create') as { id: string } | undefined;
   expect(created, 'the speculation predicts a create').toBeDefined();
   const id = created!.id;
-  predict(dataset, invocationId, writes);
+  predictions.predict(dataset, invocationId, writes);
   // Drawn on the gesture: no round trip between the prediction and the read showing it.
   expect(ids(live)).toEqual([id]);
 
@@ -97,7 +102,7 @@ async function drawnBeforeItLands(
   const watch = setInterval(() => seen.add(ids(live).filter((shown) => shown === id).length), 20);
   try {
     await runOperation(operation, args, invocation);
-    predictionLanded(invocationId);
+    predictions.landed(invocationId);
     // The backend's own answer, with no prediction laid over it, has the row.
     const backend = getEntityForDataset(entity, dataset) as unknown as {
       findAll(d: unknown, q: Record<string, unknown>): Promise<Row[]>;
@@ -109,7 +114,7 @@ async function drawnBeforeItLands(
     clearInterval(watch);
   }
   expect([...seen], 'how many times the row was drawn, at every look').toEqual([1]);
-  withdrawPrediction(invocationId);
+  predictions.withdraw(invocationId);
   await until(() => JSON.stringify(ids(live)) === JSON.stringify([id]), 5_000);
 }
 

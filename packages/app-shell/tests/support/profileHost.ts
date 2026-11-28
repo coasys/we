@@ -1,57 +1,52 @@
 /**
- * Runs one capability-profile vector against WE's real stores: the host's stores composed as
- * BootController composes them, on the in-memory backend, booted for real, with the world the
- * vector describes written into that backend first.
+ * Runs one capability-profile vector against WE's real stores: every store composed by
+ * `composeStores`, as the app composes them, on the in-memory backend, booted for real, with the
+ * world the vector describes written into that backend first.
+ *
+ * The stores run on whatever a {@link ProfileHostKit} supplies: an engine, a platform and the host
+ * state. {@link neutralProfileHost} is the test port and the test platform, with no framework and no
+ * DOM; `profileHostSolid.ts` is the app's own (Solid, the browser platform, jsdom). The same file
+ * passing on both says the profiles are the stores' behaviour, not Solid's or the browser's.
  *
  * Lives in app-shell, not in the conformance package, for the reason `recordNavigation.ts` does: it
- * needs jsdom, the browser build of solid-js and the stores themselves. `@we/template-conformance`
- * calls {@link runProfileCase} from its `solid` vitest project, to record the vectors and to check
- * that they still say what WE does.
+ * needs the stores themselves. `@we/template-conformance` calls {@link runProfileCase}, to record the
+ * vectors and to check that they still say what WE does.
  *
  * What a vector says is only profile members and plain values. Everything that turns those into WE
  * — dataset ids, the Space record's link to its dataset, the router, the presence channel, a module
  * that declares settings — is done here, so none of it is in the file. The rules a second host needs
  * to run the same file are in `docs/spec/profiles/README.md`.
  *
- * The router is a stand-in, as in `recordNavigation.ts`: `navigate` writes `window.history` and
- * reports the location back through `setCurrentPath`, and Back and Forward report it from
- * `popstate`, which is what the app's router does with both.
+ * The router is a stand-in, as in `recordNavigation.ts`: `navigate` writes the platform's history and
+ * reports the location back through `setCurrentPath`, and Back reports it from `popstate`, which is
+ * what the app's router does with both.
  */
 import { createInMemoryBackendPorts } from '@we/backend-inmemory';
-import { toastService } from '@we/components/solid';
 import { getEntity } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
-import { solidReactivity } from '@we/reactivity-solid';
+import type { ReactivityPort } from '@we/reactivity';
+import { createTestReactivity } from '@we/reactivity/testing';
 import { CAPABILITY_PROFILES } from '@we/schema-shared';
-import { createEffect, createRoot, untrack } from 'solid-js';
 
-import { credential } from '../../src/frameworks/solid/credential';
-import { firstScreen } from '../../src/frameworks/solid/firstScreen';
-import { startBoot } from '../../src/frameworks/solid/providers/BootController';
-import { shellHost, spaceHost } from '../../src/frameworks/solid/stores/hostState';
-import { solidLiveTemplates } from '../../src/frameworks/solid/stores/liveTemplate';
-import { clockRegistry } from '../../src/shared/clocks';
+import { composeStores, type StoreCompositionDeps } from '../../src/shared/composeStores';
+import { createCredential } from '../../src/shared/credential';
+import { createFirstScreen, type FirstScreen } from '../../src/shared/firstScreen';
+import { plainLiveTemplates } from '../../src/shared/liveTemplate';
+import { createTestPlatform } from '../../src/shared/platform/testPlatform';
+import type { PlatformAdapter } from '../../src/shared/platform/types';
+import { createAppFrame } from '../../src/shared/registries/appFrame';
+import { DEFAULT_APP_ID } from '../../src/shared/registries/appTemplates';
+import { createLaneFrames } from '../../src/shared/registries/homeLanes';
 import { moduleRegistry } from '../../src/shared/registries/moduleRegistry';
+import { createPanelInstances } from '../../src/shared/registries/panelInstances';
 import { setTemplatePanels } from '../../src/shared/registries/templatePanels';
+import { buildTemplateBag, SPACE_TIER } from '../../src/shared/registries/templateSurface';
 import { provideSeed } from '../../src/shared/seedRegistry';
-import { createAccountStore } from '../../src/shared/stores/AccountStore';
-import { createAppStore } from '../../src/shared/stores/AppStore';
-import { createChatStore } from '../../src/shared/stores/ChatStore';
-import { createClockStore } from '../../src/shared/stores/ClockStore';
-import { createDatasetStore } from '../../src/shared/stores/DatasetStore';
-import { createPresenceStore } from '../../src/shared/stores/PresenceStore';
-import { createProfileStore } from '../../src/shared/stores/ProfileStore';
-import { createRecordStore } from '../../src/shared/stores/RecordStore';
-import { createRouteStore } from '../../src/shared/stores/RouteStore';
-import { createRuntimeStore } from '../../src/shared/stores/RuntimeStore';
-import { createSessionStore } from '../../src/shared/stores/SessionStore';
-import { createShapeStore } from '../../src/shared/stores/ShapeStore';
-import { createShellStore } from '../../src/shared/stores/ShellStore';
-import { createSpaceStore } from '../../src/shared/stores/SpaceStore';
-import { createTemplateStore } from '../../src/shared/stores/TemplateStore';
-import { createThemeStore } from '../../src/shared/stores/ThemeStore';
+import { signalOrder } from '../../src/shared/signalOrder';
+import { createTaskWorkflowLive } from '../../src/shared/taskWorkflowLive';
 
-provideSeed({ name: 'profile-vectors', modules: [] } as never);
+const SEED = { name: 'profile-vectors', modules: [] };
+provideSeed(SEED as never);
 
 /** A record the world holds, in the operations vectors' shape. */
 export interface WorldRecord {
@@ -109,6 +104,12 @@ export interface ProfileWorld {
   modules?: WorldModule[];
   /** The panels the template on screen declares, as its `meta.panels` does. */
   panels?: Record<string, unknown>[];
+  /**
+   * The host shows each space with the template the space names, wherever this person has chosen
+   * none. Without it a host may draw every space its own way first — WE's app does — so a case about
+   * a space's own default template needs a host that follows the space.
+   */
+  followSpaceTemplates?: boolean;
 }
 
 /** A call of a profile action: the member and its arguments, as JSON. */
@@ -201,6 +202,37 @@ function plain(value: unknown): unknown {
   return value;
 }
 
+/**
+ * A template or theme the host brought itself, as the file shows it. Which ones a host brings, what
+ * it calls them and the ids it gives them are its own, so no world can name them for every host.
+ */
+const HOST = { $host: true };
+
+/**
+ * The ids the case's world made — its records' ids, and the ids its templates give themselves. A
+ * template or theme with any other id is one the host brought.
+ */
+let worldMade = new Set<string>();
+
+function madeBy(world: ProfileWorld): Set<string> {
+  const made = new Set<string>();
+  for (const record of [...(world.own ?? []), ...(world.spaces ?? []).flatMap((s) => s.records ?? [])]) {
+    made.add(record.id);
+    const schema = record.entity === 'Template' ? record.fields.schema : undefined;
+    if (typeof schema === 'string') {
+      const id = (JSON.parse(schema) as { id?: unknown }).id;
+      if (typeof id === 'string') made.add(id);
+    }
+  }
+  return made;
+}
+
+/** A switcher row's id is WE's key for the row; what it names is the template, by its own id. */
+const SWITCHER_PREFIX = 'space::';
+const switched = (id: unknown) =>
+  typeof id === 'string' && id.startsWith(SWITCHER_PREFIX) ? id.slice(SWITCHER_PREFIX.length) : id;
+const named = (id: unknown) => (typeof id === 'string' && worldMade.has(id) ? id : HOST);
+
 const pick = (value: unknown, keys: readonly string[]): Record<string, unknown> => {
   const out: Record<string, unknown> = {};
   if (!value || typeof value !== 'object') return out;
@@ -245,43 +277,66 @@ const PROFILE_KEYS = [
  */
 function projected(path: string, value: unknown): unknown {
   switch (path) {
-    case 'presenceStore.peers':
-    case 'presenceStore.online':
-    case 'presenceStore.onlineHere':
+    case 'presence.peers':
+    case 'presence.online':
+    case 'presence.onlineHere':
       return (value as Record<string, unknown>[]).map((peer) => ({
         ...pick(peer, PEER_KEYS),
         focus: { path: (peer.focus as { path?: string } | undefined)?.path ?? '' },
       }));
-    case 'clockStore.clocks':
+    case 'viewState.clocks':
       return Object.fromEntries(
         Object.entries(value as Record<string, unknown>).map(([name, view]) => [name, pick(view, CLOCK_KEYS)]),
       );
-    case 'spaceStore.viewNav':
+    case 'navigation.viewNav':
       // A section's label and icon are the host's names for it; what the profile fixes is which
       // sections there are, in which order, and where each goes.
       return (value as Record<string, unknown>[]).map((row) => pick(row, ['id', 'segment', 'path']));
-    case 'spaceStore.currentSpace': {
+    case 'spaceSettings.currentSpace': {
       if (!value) return null;
       const space = pick(value, SPACE_KEYS);
       // What the host stored for an image is its own encoding of it; that one is set is the fact.
       for (const field of ['avatar', 'coverImage']) if (space[field]) space[field] = IMAGE;
       return space;
     }
-    case 'spaceStore.mySpaces':
+    case 'navigation.mySpaces':
       return (value as Record<string, unknown>[])
         .map((space) => pick(space, ['id', 'name']))
         .sort((a, b) => (String(a.id) < String(b.id) ? -1 : 1));
-    case 'profileStore.ownProfile':
+    case 'identity.ownProfile':
       return value ? pick(value, PROFILE_KEYS) : null;
-    case 'profileStore.profiles':
+    case 'identity.profiles':
       return (value as Record<string, unknown>[])
         .map((profile) => pick(profile, PROFILE_KEYS))
         .sort((a, b) => (String(a.did) < String(b.did) ? -1 : 1));
-    case 'spaceStore.myModuleSettings':
+    case 'spaceSettings.myModuleSettings':
       return (value as Record<string, unknown>[]).map((row) =>
         pick(row, ['group', 'key', 'type', 'value', 'source', 'set', 'locked', 'lockedBy']),
       );
-    case 'shellStore.panelInstances':
+    case 'appearance.switcherGroups':
+      // A group's label is the host's words for it; its rows the world did not make are the host's own.
+      return (value as { items: Record<string, unknown>[] }[]).map((group) => ({
+        items: group.items
+          .filter((item) => named(switched(item.id)) !== HOST)
+          .map((item) => ({ ...pick(item, ['name', 'icon', 'editable']), id: switched(item.id) })),
+      }));
+    case 'appearance.currentSwitcherId':
+      return named(switched(value));
+    case 'appearance.currentThemeId':
+      return named(value);
+    case 'appearance.templateOverrideOptions':
+    case 'appearance.themeOverrideOptions':
+      // The first two options are the host's: following the space and following one's own default.
+      return (value as Record<string, unknown>[])
+        .filter((option) => named(option.value) !== HOST)
+        .map((option) => pick(option, ['label', 'value']));
+    case 'appearance.builtInThemes':
+    case 'appearance.installedThemes':
+    case 'appearance.spaceThemes':
+      return (value as Record<string, unknown>[])
+        .filter((theme) => named(theme.id) !== HOST)
+        .map((theme) => pick(theme, ['id', 'name']));
+    case 'viewState.panelInstances':
       // An instance's id is the host's to mint; a case that needs one reads it (see `decodeArg`).
       return (value as Record<string, unknown>[]).map((instance) => pick(instance, ['panel', 'inputs', 'title']));
     default:
@@ -294,12 +349,12 @@ function projected(path: string, value: unknown): unknown {
  * becomes a File, and a value read from the host's own state (`{ $read: [member, ...path] }`), for an
  * argument only the host can know — the id it gave a panel instance it opened.
  */
-function decodeArg(stores: Stores, value: unknown): unknown {
+function decodeArg(host: Host, value: unknown): unknown {
   if (value && typeof value === 'object' && '$read' in value) {
     const [member, ...path] = (value as { $read: [string, ...(string | number)[]] }).$read;
     return path.reduce<unknown>(
       (at, key) => (at as Record<string | number, unknown> | undefined)?.[key],
-      untrack(() => read(stores, member)),
+      host.untrack(() => read(host.bag, member)),
     );
   }
   if (value && typeof value === 'object' && '$file' in value) {
@@ -313,19 +368,31 @@ function decodeArg(stores: Stores, value: unknown): unknown {
 
 type Stores = Record<string, Record<string, unknown>>;
 
-function read(stores: Stores, path: string): unknown {
-  const [store, member] = path.split('.');
-  const value = stores[store]?.[member];
+/**
+ * The composed stores, the bag a space template renders against over them, and the engine they run
+ * on. Every profile member is read and called through the bag, under the name a template writes, so
+ * a vector pins what a template sees — a member the bag left out, or put under another name, fails
+ * as surely as one that behaves wrongly.
+ */
+interface Host {
+  stores: Stores;
+  bag: Stores;
+  untrack: ReactivityPort['untrack'];
+}
+
+function read(bag: Stores, path: string): unknown {
+  const [namespace, member] = path.split('.');
+  const value = bag[namespace]?.[member];
   if (value === undefined) throw new Error(`${path} is not a member this host provides`);
   return typeof value === 'function' ? (value as () => unknown)() : value;
 }
 
-const snapshot = (stores: Stores, path: string): string =>
+const snapshot = (host: Host, path: string): string =>
   JSON.stringify(
     plain(
       projected(
         path,
-        untrack(() => read(stores, path)),
+        host.untrack(() => read(host.bag, path)),
       ),
     ),
   );
@@ -337,14 +404,14 @@ const tick = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  * A store's write lands on its own time — a backend round trip, a live query pushing — so there is
  * no promise to wait on that means "done", only the state staying where it is.
  */
-async function settle(stores: Stores, quietMs = 400, ceilingMs = 8000): Promise<void> {
-  let last = STATE_MEMBERS.map((path) => snapshot(stores, path)).join('\n');
+async function settle(host: Host, quietMs = 400, ceilingMs = 8000): Promise<void> {
+  let last = STATE_MEMBERS.map((path) => snapshot(host, path)).join('\n');
   let quietSince = Date.now();
   const started = Date.now();
   while (Date.now() - quietSince < quietMs) {
     if (Date.now() - started > ceilingMs) return;
     await tick(25);
-    const now = STATE_MEMBERS.map((path) => snapshot(stores, path)).join('\n');
+    const now = STATE_MEMBERS.map((path) => snapshot(host, path)).join('\n');
     if (now !== last) {
       last = now;
       quietSince = Date.now();
@@ -353,43 +420,54 @@ async function settle(stores: Stores, quietMs = 400, ceilingMs = 8000): Promise<
 }
 
 /**
- * A small PNG, for the canvas jsdom does not have: what an image compressed for storage comes out
- * as. Which bytes it is does not reach the file (see {@link IMAGE}).
+ * What a host runs the stores on for one case: everything `composeStores` takes but the backend,
+ * on a platform already holding the case's history, and how to put the environment back after.
  */
-const TINY_PNG =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+export interface ProfileHostEnvironment extends Omit<StoreCompositionDeps, 'backend'> {
+  firstScreen: FirstScreen;
+  close(): void;
+}
+
+/** A way of hosting the stores: Solid in a browser, or no framework and no DOM. */
+export interface ProfileHostKit {
+  /** The environment for a case whose history is `entries`, the last being where it opens. */
+  open(entries: readonly string[]): ProfileHostEnvironment;
+}
+
+/** The deployment's platform answers the stores read beyond the port. */
+export const asAdapter = <T extends object>(platform: T): PlatformAdapter =>
+  ({ ...platform, isDesktop: false, isDevelopment: true }) as unknown as PlatformAdapter;
 
 /**
- * What jsdom leaves out of the browser and the stores use: an image that loads, a canvas that
- * encodes, and frames that never come — time does not pass in a case, so a playing clock is read
- * before it has moved.
+ * The stores on the test port and the test platform: no framework, no DOM, no window. Toasts are
+ * dropped — no profile member reads them.
+ *
+ * Time does not pass in a case, so a playing clock is read before it has moved: the app's clocks
+ * play on the platform's frames, and nothing here runs the test platform's.
  */
-function provideBrowserGaps(): () => void {
-  const image = window.HTMLImageElement.prototype;
-  const srcDescriptor = Object.getOwnPropertyDescriptor(image, 'src');
-  Object.defineProperty(image, 'src', {
-    configurable: true,
-    set(this: HTMLImageElement, value: string) {
-      this.setAttribute('src', value);
-      queueMicrotask(() => this.onload?.(new Event('load')));
-    },
-    get(this: HTMLImageElement) {
-      return this.getAttribute('src') ?? '';
-    },
-  });
-  const toDataURL = window.HTMLCanvasElement.prototype.toDataURL;
-  const getContext = window.HTMLCanvasElement.prototype.getContext;
-  window.HTMLCanvasElement.prototype.toDataURL = () => TINY_PNG;
-  window.HTMLCanvasElement.prototype.getContext = (() => null) as never;
-  const raf = window.requestAnimationFrame;
-  window.requestAnimationFrame = () => 0;
-  return () => {
-    if (srcDescriptor) Object.defineProperty(image, 'src', srcDescriptor);
-    window.HTMLCanvasElement.prototype.toDataURL = toDataURL;
-    window.HTMLCanvasElement.prototype.getContext = getContext;
-    window.requestAnimationFrame = raf;
-  };
-}
+export const neutralProfileHost: ProfileHostKit = {
+  open(entries) {
+    const reactivity = createTestReactivity();
+    const [first, ...rest] = entries;
+    const platform = createTestPlatform({ url: first });
+    for (const entry of rest) platform.history.push(entry);
+    const { appFrame, appEdgeFrames } = createAppFrame(reactivity);
+    const { laneFrames } = createLaneFrames(reactivity);
+    const { publishPanelInstances } = createPanelInstances(reactivity);
+    const ignore = () => {};
+    return {
+      reactivity,
+      platform: asAdapter(platform),
+      toasts: { info: ignore, success: ignore, warning: ignore, error: ignore },
+      firstScreen: createFirstScreen({ signal: reactivity.signal }),
+      credential: createCredential(reactivity),
+      liveTemplates: plainLiveTemplates(reactivity),
+      shellHost: { appFrame, appEdgeFrames, laneFrames, publishPanelInstances },
+      spaceHost: { signalOrder, taskWorkflowLive: createTaskWorkflowLive(reactivity.signal) },
+      close: () => {},
+    };
+  },
+};
 
 /** Write the world into a fresh in-memory backend. */
 async function backendFor(world: ProfileWorld) {
@@ -450,135 +528,47 @@ async function backendFor(world: ProfileWorld) {
   return ports;
 }
 
-function compose(ports: ReturnType<typeof createInMemoryBackendPorts>): { stores: Stores; dispose: () => void } {
+function compose(
+  env: ProfileHostEnvironment,
+  ports: ReturnType<typeof createInMemoryBackendPorts>,
+): { host: Host; dispose: () => void } {
+  const { reactivity, platform } = env;
   let stores!: Stores;
-  const dispose = createRoot((dispose) => {
-    const platform = { isDesktop: false, isDevelopment: true } as never;
+  let bag!: Stores;
+  let stopListening = () => {};
+  const disposeRoot = reactivity.root(() => {
     const backend = { initialize: () => Promise.resolve({ client: {}, ports }) } as never;
-    const routeStore = createRouteStore({ reactivity: solidReactivity });
-    const report = () => routeStore.setCurrentPath(window.location.pathname, window.location.search);
+    const registry = composeStores({ ...env, backend });
+    const { routeStore } = registry;
+    const report = () => routeStore.setCurrentPath(platform.location().pathname, platform.location().search);
     routeStore.setNavigateFunction((to, options) => {
-      if (typeof to === 'number') return window.history.go(to);
-      if (options?.replace) window.history.replaceState(null, '', to);
-      else window.history.pushState(null, '', to);
+      if (to === -1) return platform.history.back();
+      if (typeof to === 'number') throw new Error(`The vector host goes back one entry at a time, not ${to}`);
+      if (options?.replace) platform.history.replace(to);
+      else platform.history.push(to);
       report();
     });
-    window.addEventListener('popstate', report);
+    stopListening = platform.listen('popstate', report);
     report();
-    const clockStore = createClockStore({ reactivity: solidReactivity });
-    const shellStore = createShellStore({ reactivity: solidReactivity, platform, host: shellHost });
-    const chatStore = createChatStore({ reactivity: solidReactivity, shellStore });
-    const accountStore = createAccountStore({ reactivity: solidReactivity, platform });
-    const sessionStore = createSessionStore({
-      reactivity: solidReactivity,
-      platform,
-      backend,
-      credential,
-      firstScreen,
-      shellStore,
-      chatStore,
-      accountStore,
-    });
-    const runtimeStore = createRuntimeStore({
-      reactivity: solidReactivity,
-      toasts: toastService,
-      platform,
-      sessionStore,
-      shellStore,
-    });
-    const datasetStore = createDatasetStore({
-      reactivity: solidReactivity,
-      firstScreen,
-      toasts: toastService,
-      sessionStore,
-    });
-    const shapeStore = createShapeStore({
-      reactivity: solidReactivity,
-      toasts: toastService,
-      sessionStore,
-      datasetStore,
-    });
-    const recordStore = createRecordStore({
-      reactivity: solidReactivity,
-      toasts: toastService,
-      sessionStore,
-      datasetStore,
-      shapeStore,
-    });
-    const profileStore = createProfileStore({
-      reactivity: solidReactivity,
-      firstScreen,
-      credential,
-      toasts: toastService,
-      sessionStore,
-      runtimeStore,
-      accountStore,
-    });
-    const themeStore = createThemeStore({
-      reactivity: solidReactivity,
-      toasts: toastService,
-      sessionStore,
-      datasetStore,
-    });
-    const templateStore = createTemplateStore({
-      reactivity: solidReactivity,
-      toasts: toastService,
-      liveTemplates: solidLiveTemplates,
-      sessionStore,
-      datasetStore,
-      themeStore,
-      routeStore,
-    });
-    const appStore = createAppStore({ reactivity: solidReactivity });
-    const spaceStore = createSpaceStore({
-      reactivity: solidReactivity,
-      toasts: toastService,
-      firstScreen,
-      host: spaceHost,
-      sessionStore,
-      datasetStore,
-      shapeStore,
-      recordStore,
-      profileStore,
-      routeStore,
-      templateStore,
-      appStore,
-      themeStore,
-      shellStore,
-    });
-    const presenceStore = createPresenceStore({
-      reactivity: solidReactivity,
-      firstScreen,
-      datasetStore,
-      profileStore,
-      routeStore,
-      sessionStore,
-    });
-    startBoot({ sessionStore, datasetStore, profileStore, spaceStore, routeStore });
-    stores = {
-      routeStore,
-      clockStore,
-      shellStore,
-      sessionStore,
-      profileStore,
-      themeStore,
-      spaceStore,
-      presenceStore,
-    } as never;
-    return () => {
-      window.removeEventListener('popstate', report);
-      dispose();
-    };
+    stores = registry as unknown as Stores;
+    // No gesture gate: a case's action stands for the press that would have called it.
+    bag = buildTemplateBag(registry as unknown as Stores, { grants: SPACE_TIER }) as Stores;
   });
-  return { stores, dispose };
+  return {
+    host: { stores, bag, untrack: reactivity.untrack },
+    dispose: () => {
+      stopListening();
+      disposeRoot();
+    },
+  };
 }
 
-async function call(stores: Stores, { action, args }: ProfileCall): Promise<void> {
+async function call(host: Host, { action, args }: ProfileCall): Promise<void> {
   if (!ACTION_SET.has(action)) throw new Error(`${action} is not an action of any profile`);
-  const [store, member] = action.split('.');
-  const fn = stores[store]?.[member];
+  const [namespace, member] = action.split('.');
+  const fn = host.bag[namespace]?.[member];
   if (typeof fn !== 'function') throw new Error(`${action} is not an action this host provides`);
-  await (fn as (...a: unknown[]) => unknown)(...args.map((arg) => decodeArg(stores, arg)));
+  await (fn as (...a: unknown[]) => unknown)(...args.map((arg) => decodeArg(host, arg)));
 }
 
 /**
@@ -586,12 +576,12 @@ async function call(stores: Stores, { action, args }: ProfileCall): Promise<void
  * presence arrives on its own heartbeat, after the host starts listening, so without this a case
  * would read the roster at whatever moment the first beat happened to land.
  */
-async function peersArrived(stores: Stores, input: ProfileCaseInput): Promise<void> {
-  const here = (read(stores, 'spaceStore.spacePath') as string).split('/')[2];
+async function peersArrived(host: Host, input: ProfileCaseInput): Promise<void> {
+  const here = (read(host.bag, 'navigation.spacePath') as string).split('/')[2];
   const expected = (input.world.peers ?? []).filter((peer) => peer.focus.space === here).map((peer) => peer.did);
   const started = Date.now();
   while (Date.now() - started < 4000) {
-    const seen = (untrack(() => read(stores, 'presenceStore.peers')) as { did: string }[]).map((peer) => peer.did);
+    const seen = (host.untrack(() => read(host.bag, 'presence.peers')) as { did: string }[]).map((peer) => peer.did);
     if (expected.every((did) => seen.includes(did))) return;
     await tick(50);
   }
@@ -599,14 +589,13 @@ async function peersArrived(stores: Stores, input: ProfileCaseInput): Promise<vo
 }
 
 /** Run one case: build its world, open the host where it says, act, and report what changed. */
-export async function runProfileCase(input: ProfileCaseInput): Promise<ProfileOutcome> {
+export async function runProfileCase(input: ProfileCaseInput, kit: ProfileHostKit): Promise<ProfileOutcome> {
   for (const path of input.observe) {
     if (!STATE_SET.has(path)) throw new Error(`${input.id}: ${path} is not a state member of any profile`);
   }
-  const restoreGaps = provideBrowserGaps();
-  localStorage.clear();
-  sessionStorage.clear();
-  clockRegistry.dispose();
+  worldMade = madeBy(input.world);
+  // WE's own app, which draws no space its own way: every space then opens with the template it names.
+  provideSeed((input.world.followSpaceTemplates ? { ...SEED, host: { ui: { app: DEFAULT_APP_ID } } } : SEED) as never);
   setTemplatePanels(input.world.panels as never, input.world.panels ? `vectors:${input.id}` : '');
   const registered = (input.world.modules ?? []).map((module) => {
     moduleRegistry.register(
@@ -619,31 +608,28 @@ export async function runProfileCase(input: ProfileCaseInput): Promise<ProfileOu
     return module.id;
   });
 
-  const [first, ...rest] = [...(input.history ?? []), input.address];
-  window.history.replaceState(null, '', first);
-  for (const entry of rest) window.history.pushState(null, '', entry);
-
+  const env = kit.open([...(input.history ?? []), input.address]);
   const ports = await backendFor(input.world);
-  const { stores, dispose } = compose(ports);
+  const { host, dispose } = compose(env, ports);
   try {
-    const session = stores.sessionStore as { bootState: () => string };
+    const session = host.stores.sessionStore as { bootState: () => string };
     const started = Date.now();
     while (session.bootState() !== 'ready') {
       if (Date.now() - started > 8000) throw new Error(`${input.id}: the host never finished booting`);
       await tick(20);
     }
-    firstScreen.answered();
-    firstScreen.drawn();
-    await settle(stores);
-    await peersArrived(stores, input);
-    await settle(stores);
+    env.firstScreen.answered();
+    env.firstScreen.drawn();
+    await settle(host);
+    await peersArrived(host, input);
+    await settle(host);
     for (const step of input.setup ?? []) {
-      await call(stores, step);
-      await settle(stores);
+      await call(host, step);
+      await settle(host);
     }
 
     const observed = () =>
-      Object.fromEntries(input.observe.map((path) => [path, JSON.parse(snapshot(stores, path)) as unknown]));
+      Object.fromEntries(input.observe.map((path) => [path, JSON.parse(snapshot(host, path)) as unknown]));
     const before = observed();
     if (!input.action) return { state: before };
 
@@ -653,20 +639,19 @@ export async function runProfileCase(input: ProfileCaseInput): Promise<ProfileOu
       no template redraws for, so it is not an event, however different it reads afterwards.
     */
     const changed = new Set<string>();
-    const stopWatching = createRoot((stop) => {
+    const stopWatching = env.reactivity.root(() => {
       for (const path of STATE_MEMBERS) {
-        let last = snapshot(stores, path);
-        createEffect(() => {
-          const now = JSON.stringify(plain(projected(path, read(stores, path))));
+        let last = snapshot(host, path);
+        env.reactivity.effect(() => {
+          const now = JSON.stringify(plain(projected(path, read(host.bag, path))));
           if (now !== last) changed.add(path);
           last = now;
         });
       }
-      return stop;
     });
     try {
-      await call(stores, { action: input.action, args: input.args ?? [] });
-      await settle(stores);
+      await call(host, { action: input.action, args: input.args ?? [] });
+      await settle(host);
     } finally {
       stopWatching();
     }
@@ -682,8 +667,8 @@ export async function runProfileCase(input: ProfileCaseInput): Promise<ProfileOu
     dispose();
     for (const id of registered) moduleRegistry.unregister(id);
     setTemplatePanels(undefined);
-    clockRegistry.dispose();
-    restoreGaps();
+    provideSeed(SEED as never);
+    env.close();
     await tick(50);
   }
 }

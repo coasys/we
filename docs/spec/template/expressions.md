@@ -72,8 +72,10 @@ A name nothing answers is no value. A validator MUST report every name it cannot
 template, with its column, unless the expression stands in a fragment judged alone (whose names are
 supplied by whatever composes it). A renderer MUST NOT fail on one.
 
-A name a template binds shadows a store of the same name, as it does at run time: under `$each` with
-`as: "record"`, `record.title` is the row's field.
+A name a template binds shadows a store or a namespace of the same name, as it does at run time:
+under `$each` with `as: "record"`, `record.title` is the row's field. A validator SHOULD warn where a
+bound name hides a namespace whose member is then read under it (`as: "layout"`, then
+`layout.collapsedLanes`), since that read finds the row's field and not the member.
 
 ### Call-time roots
 
@@ -89,8 +91,8 @@ field, which is how a component hands a template something to call later
 
 ### Namespaces
 
-A store and `local` are namespaces: values whose members are read with `.` (or `[ ]`) and which are
-not values themselves. A namespace read as a whole (`spaceStore`, or `local` alone) is no value. A
+A store, a profile's namespace ([Capability profiles](../profiles/README.md)) and `local` are
+namespaces: values whose members are read with `.` (or `[ ]`) and which are not values themselves. A namespace read as a whole (`spaceStore`, or `local` alone) is no value. A
 store member the bag does not grant is no value ([Capability grants](safety.md#capability-grants)),
 exactly as an unknown member is. A store's actions are not readable: `spaceStore.createPost` read in
 an expression is no value, and only `$invoke` calls it.

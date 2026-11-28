@@ -9,24 +9,26 @@
  */
 import { trace } from '@we/backend-shared';
 import { getEntityForDataset, Space, SpaceLandmark } from '@we/entities';
-import type { ResolvedView } from '@we/schema-shared';
 
 import { callParamToWrite } from '../../callOnScreen';
 import { datasetAddressedBy } from '../../datasetIdentity';
-import { distinctSignal, updatingSignal } from '../../distinctSignal';
+import { distinctSignal } from '../../distinctSignal';
 import { followLive } from '../../followLive';
 import { pageOfPart } from '../../partPage';
 import { resolveRecordRef } from '../../recordNavigation';
 import { provideModuleHostServices } from '../../registries/moduleHostServices';
+import { moduleRegistry } from '../../registries/moduleRegistry';
 import { landmarksByName, readSpaceLandmarks, readSpaceRoot, seedSpaceRoot } from '../../spaceLandmarks';
 import { isSpaceSelf, spaceSelfWhere, withFields } from '../../spaceSync';
-import { type AppDataset, canonicalSpaceId } from '../DatasetStore';
+import { canonicalSpaceId } from '../DatasetStore';
 import type { RouteStore } from '../RouteStore';
 import type { ShellStore } from '../ShellStore';
 import type { SpaceStore } from '../SpaceStore';
 import type { TemplateStore } from '../TemplateStore';
 import type { SpaceContext } from './context';
 import { sharedIdOf } from './joining';
+import type { SpaceModules } from './modules';
+import type { SpaceOnScreen } from './onScreen';
 import type { SpaceList } from './spaces';
 import type { SpaceWrites } from './writes';
 
@@ -37,41 +39,54 @@ export interface SpaceNavigationDeps extends SpaceContext {
   spaces: Pick<SpaceList, 'holdSpace' | 'onRemoved'> & {
     members: Pick<SpaceList['members'], 'mySpaces' | 'orderedSidebarItems'>;
   };
-  writes: Pick<SpaceWrites, 'pendingDefaults'>;
-  /**
-   * The sections a space has, from the modules-and-views part composed after this one — read when
-   * somebody goes to a space or to a module's part, never while this part is built.
-   */
-  sections: {
-    routableViews: () => ResolvedView[];
-    spaceViews: () => ResolvedView[];
-    usesSectionsFor: (uuid: string) => boolean;
+  writes: Pick<SpaceWrites, 'pendingSaves'>;
+  /** The space on screen, which this part fills from the live read. */
+  onScreen: Pick<SpaceOnScreen, 'currentSpace' | 'showPushed'>;
+  /** The sections a space has, from the modules-and-views part — read when somebody goes somewhere. */
+  modules: Pick<SpaceModules, 'usesSectionsFor' | 'installedModules'> & {
+    members: Pick<SpaceModules['members'], 'routableViews' | 'spaceViews'>;
   };
-  /** Extraction's hook for a board — see `ModuleHostServices.ensureBoardFor`. */
-  ensureBoardFor: (collectionId: string, dataset?: string) => Promise<string>;
+}
+
+/** The origin an embed's declared address is at, or null for one that has none. */
+function originOf(url: string): string | null {
+  try {
+    const { origin } = new URL(url);
+    return origin && origin !== 'null' ? origin : null;
+  } catch {
+    return null;
+  }
 }
 
 export function createSpaceNavigation(deps: SpaceNavigationDeps) {
-  const { reactivity, datasetStore, routeStore, templateStore, shellStore, spaces, writes, sections, ensureBoardFor } =
-    deps;
+  const {
+    reactivity,
+    platform,
+    datasetStore,
+    routeStore,
+    templateStore,
+    shellStore,
+    spaces,
+    writes,
+    onScreen,
+    modules,
+  } = deps;
   const { memo, effect, untrack, batch, onCleanup } = reactivity;
-  const { pendingDefaults } = writes;
+  const { pendingSaves } = writes;
 
-  const [currentSpace, setCurrentSpace, updateCurrentSpace] = updatingSignal<Space | null>(reactivity, null);
-
-  /**
-   * Space records exactly as the live read delivered them — not a copy made for an optimistic write.
-   * The task states read the state order off a pushed record (the read includes it) rather than
-   * reading the record again; a copy may predate a reorder.
-   */
-  const pushedSpaces = new WeakSet<Space>();
+  const { currentSpace, showPushed } = onScreen;
+  const sections = {
+    routableViews: modules.members.routableViews,
+    spaceViews: modules.members.spaceViews,
+    usesSectionsFor: modules.usesSectionsFor,
+  };
 
   // Subscribe to current space data reactively whenever the dataset changes.
   // include: { location: true } so AboutRoute can access location without a separate query.
   effect(() => {
     const ds = datasetStore.currentDataset();
     if (!ds || !datasetStore.isWeSpace()) {
-      setCurrentSpace(null);
+      showPushed(null);
       return;
     }
     // `taskStates` too: the order of the space's states rides on the same record — see the effect
@@ -82,12 +97,11 @@ export function createSpaceNavigation(deps: SpaceNavigationDeps) {
     });
     const handleResult = (results: Space[]) => {
       const row = results[0] ?? null;
-      // A default still being saved stays shown over the row the record last took, which is the
-      // older choice until the write lands.
-      const pending = row ? pendingDefaults(ds) : {};
+      // An interpretation list still being saved stays shown over the row the record last took,
+      // which is the older list until the write lands.
+      const pending = row ? pendingSaves(ds) : {};
       const space = row && Object.keys(pending).length ? withFields(row, pending) : row;
-      if (space) pushedSpaces.add(space);
-      setCurrentSpace(space);
+      showPushed(space);
     };
     followLive(reactivity, live, {
       store: 'SpaceStore',
@@ -95,7 +109,7 @@ export function createSpaceNavigation(deps: SpaceNavigationDeps) {
       apply: handleResult,
       // Never told after a switch, so the old effect cannot clear the new space.
       settled: (loaded) => {
-        if (!loaded) setCurrentSpace(null);
+        if (!loaded) showPushed(null);
       },
     });
   });
@@ -379,15 +393,20 @@ export function createSpaceNavigation(deps: SpaceNavigationDeps) {
     return navigateToSpace(destination.datasetId, destination.view);
   }
 
+  /**
+   * Tell the embedded apps which space the agent went to, so one showing a space follows (Flux opens
+   * its community for it). Only the apps installed here, each at the origin its registration
+   * declares: an embed in a post is a page from anywhere, and the space somebody is in is not its
+   * business. `NAVIGATE_PERSPECTIVE` is the message's name on the wire, which the apps listen for.
+   */
   function broadcastSpaceNavigation(communityId: string): void {
-    const iframes = document.querySelectorAll<HTMLElement & { postMessage: (data: unknown, origin: string) => void }>(
-      'we-iframe',
-    );
-    iframes.forEach((el) => {
-      if (typeof el.postMessage === 'function') {
-        el.postMessage({ type: 'NAVIGATE_PERSPECTIVE', communityId }, '*');
-      }
-    });
+    const installed = new Set(modules.installedModules());
+    const origins = moduleRegistry
+      .embeds()
+      .filter((embed) => installed.has(embed.id))
+      .map((embed) => originOf(embed.url))
+      .filter((origin): origin is string => origin !== null);
+    if (origins.length) platform.document.postToFrames({ type: 'NAVIGATE_PERSPECTIVE', communityId }, origins);
   }
 
   /**
@@ -552,9 +571,6 @@ export function createSpaceNavigation(deps: SpaceNavigationDeps) {
   */
   onCleanup(
     provideModuleHostServices({
-      // Extraction's hook — see the declaration on `ModuleHostServices`, and `ensureBoardFor` for
-      // why it only fires once the collection holds a task.
-      ensureBoardFor: (collectionId: string, dataset?: string) => ensureBoardFor(collectionId, dataset),
       /*
         The call the address names — published here because this is a store that reads routes and a
         module is not.
@@ -637,17 +653,6 @@ export function createSpaceNavigation(deps: SpaceNavigationDeps) {
   */
   shellStore.provideSpaceGate((datasetId: string) => datasetStore.currentDataset()?.id === datasetId);
 
-  /**
-   * Show fields on the space on screen, when it is that dataset's own record — a switch moves the
-   * dataset ahead of the record, so the record shown may still be the space being left's.
-   */
-  function showOnScreen(ds: AppDataset, fields: Partial<Space>): void {
-    updateCurrentSpace((prev) => (prev && isSpaceSelf(prev, ds) ? withFields(prev, fields) : prev));
-  }
-
-  /** Whether a record is one the live read delivered, rather than a copy made for a write. */
-  const pushedOnScreen = (space: Space): boolean => pushedSpaces.has(space);
-
   const members: Pick<
     SpaceStore,
     | 'currentSpace'
@@ -673,7 +678,7 @@ export function createSpaceNavigation(deps: SpaceNavigationDeps) {
     openRecordRef,
   };
 
-  return { members, showOnScreen, pushedOnScreen, reloadSpaceStructure };
+  return { members, reloadSpaceStructure };
 }
 
 export type SpaceNavigation = ReturnType<typeof createSpaceNavigation>;

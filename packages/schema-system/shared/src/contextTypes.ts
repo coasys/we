@@ -90,6 +90,18 @@ export interface StoreEntry {
    * validator can say so before anybody presses the button.
    */
   needsArgs?: string[];
+  /**
+   * A capability profile's namespace rather than a store: the store that holds each member in this
+   * host, by member. A member listed here is reachable only under the namespace, so the validator can
+   * tell a template naming it under the store where it is written now.
+   */
+  homes?: Record<string, string>;
+  /**
+   * The capability group each member is granted under (`session`, `content`, `runtime-admin`), by
+   * member. Absent on a profile namespace. What the schema CLI sorts a template's WE-host-only uses
+   * by, so the report says which kinds of host state a template leans on.
+   */
+  groups?: Record<string, string>;
 }
 
 /** A token category (e.g. space, color, size) */

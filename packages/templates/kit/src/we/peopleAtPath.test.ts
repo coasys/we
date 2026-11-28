@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 
 import { peopleAtPath } from './peopleAtPath.ts';
 
-const node = peopleAtPath({ path: { $: 'spaceStore.spacePath' }, edge: 'var(--we-role-surface)' });
+const node = peopleAtPath({ path: { $: 'navigation.spacePath' }, edge: 'var(--we-role-surface)' });
 
 /** Every expression string anywhere in the node, since a fragment is a tree of them. */
 function expressions(value: unknown, out: string[] = []): string[] {
@@ -46,8 +46,8 @@ describe('peopleAtPath', () => {
       still reach for by hand.
     */
     const all = expressions(node).join(' ');
-    expect(all).toContain('presenceStore.online');
-    expect(all).not.toContain('presenceStore.peers');
+    expect(all).toContain('presence.online');
+    expect(all).not.toContain('presence.peers');
   });
 
   it('matches the path as a prefix, and leaves this agent out', () => {

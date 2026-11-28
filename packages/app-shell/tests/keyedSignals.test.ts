@@ -4,18 +4,12 @@
  * wakes nobody.
  */
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createKeyedSignals } from '../src/shared/keyedSignals';
+import { reactivityPorts } from './support/engines';
 
-const ports: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
-
-describe.each(ports)('keyed signals, under %s', (_name, makePort) => {
+describe.each(reactivityPorts)('keyed signals, under %s', (_name, makePort) => {
   let port: ReactivityPort;
   const disposers: (() => void)[] = [];
 

@@ -6,8 +6,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { MIN_FLOAT_PX } from '../src/shared/dockGeometry';
+import { createTestPlatform, type TestPlatform } from '../src/shared/platform/testPlatform';
 import { dockRegistry, registerHostDockStore, unregisterHostDockStore } from '../src/shared/registries/dockRegistry';
-import { buildParts, reactivityPorts } from './support/shellPorts';
+import { reactivityPorts } from './support/engines';
+import { buildParts } from './support/shellPorts';
 
 const STORE = 'drag-test';
 const A = `${STORE}:a`;
@@ -15,14 +17,14 @@ const B = `${STORE}:b`;
 
 describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   const disposers: (() => void)[] = [];
+  let platform: TestPlatform;
   const build = () => {
-    const parts = buildParts(makePort());
+    const parts = buildParts(makePort(), platform);
     disposers.push(parts.dispose);
     return parts;
   };
   beforeEach(() => {
-    localStorage.clear();
-    window.history.replaceState({}, '', '/space/test');
+    platform = createTestPlatform({ url: '/space/test' });
     registerHostDockStore(STORE, { edge: () => 'right', float: () => true });
     for (const id of [A, B])
       dockRegistry.register({ id, moduleId: STORE, edge: 'edge', float: 'float', node: { type: 'div' } });
@@ -39,7 +41,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     drag.members.beginDockMove(A, 500, 300);
     expect(drag.members.movingDock()).toBe(A);
     expect(drag.members.dockResizing()).toBe(true);
-    expect(document.documentElement.style.getPropertyValue('--we-chrome-transition')).toBe('0s');
+    expect(platform.drawn.properties.get('--we-chrome-transition')).toBe('0s');
     drag.members.moveDock(A, 2, 1);
     expect(Object.keys(arrangement.placements())).toEqual([]);
 

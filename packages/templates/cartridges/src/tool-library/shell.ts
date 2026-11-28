@@ -47,12 +47,12 @@ export const toolLibraryShell: TemplateSchema & { id: string } = {
                         {
                           type: 'we-text',
                           props: { variant: 'heading-sm', tag: 'h1', uppercase: true, letterSpacing: 'wide' },
-                          children: [{ $: 'spaceStore.currentSpace.name' }],
+                          children: [{ $: 'spaceSettings.currentSpace.name' }],
                         },
                         {
                           type: 'we-text',
                           props: { variant: 'footnote', color: 'text-muted' },
-                          children: [{ $: 'spaceStore.currentSpace.description' }],
+                          children: [{ $: 'spaceSettings.currentSpace.description' }],
                         },
                       ],
                     },
@@ -62,17 +62,17 @@ export const toolLibraryShell: TemplateSchema & { id: string } = {
                       children: [
                         {
                           type: '$each',
-                          props: { items: { $: 'spaceStore.viewNav' }, as: 'view' },
+                          props: { items: { $: 'navigation.viewNav' }, as: 'view' },
                           children: [
                             {
                               type: 'we-button',
                               props: {
                                 variant: {
-                                  $: "contains(routeStore.currentPath, view.segment) ? 'soft' : 'ghost'",
+                                  $: "contains(navigation.currentPath, view.segment) ? 'soft' : 'ghost'",
                                 },
                                 width: '100%',
                                 ax: 'start',
-                                onClick: { $invoke: 'routeStore.navigate', args: [{ $: 'view.path' }] },
+                                onClick: { $invoke: 'navigation.navigate', args: [{ $: 'view.path' }] },
                               },
                               children: [
                                 { type: 'we-icon', props: { name: { $: 'view.icon' } } },

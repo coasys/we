@@ -43,7 +43,7 @@ export function createRecordTree(deps: RecordTreeDeps): RecordTree {
   /** The placements on a canvas, as read for a drop — as the canvas holds them where it does. */
   const placementsOn = async (handle: unknown, canvas: string) => {
     const query = { parent: canvasChildren(canvas) };
-    return (await heldFirst('Placement', handle, query, () =>
+    return (await heldFirst(deps.operations.predictions, 'Placement', handle, query, () =>
       Placement.findAll(handle, query),
     )) as unknown as PlacementRow[];
   };

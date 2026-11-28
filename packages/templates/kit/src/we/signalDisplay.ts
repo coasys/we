@@ -158,7 +158,7 @@ type Resolved = SignalDisplayOptions & { mode: NonNullable<SignalDisplayOptions[
  * filled star all come off one list and cannot disagree.
  */
 const forType = (record: string, as: string) =>
-  `filter(${record}.signals, { signalTypeId: ${as}.id, author: { not: spaceStore.mutedDids } })`;
+  `filter(${record}.signals, { signalTypeId: ${as}.id, author: { not: identity.mutedDids } })`;
 
 /**
  * Giving a reaction, changing it, or — for `null` — taking it back: `core.upsertSignal` or
@@ -184,7 +184,7 @@ export function giveSignal(record: string, type: string, value = 'arg') {
  *
  * A press shows here at once too: the pending reaction is in the record's `signals` like any other.
  */
-const everything = (record: string) => `filter(${record}.signals, { author: { not: spaceStore.mutedDids } })`;
+const everything = (record: string) => `filter(${record}.signals, { author: { not: identity.mutedDids } })`;
 
 /**
  * Whether this agent has reacted with this type. What makes a mark read as "mine".
@@ -202,7 +202,7 @@ const mineOfType = (record: string, as: string) => `count(filter(${forType(recor
  * expression, which is how the overflow door is tested against the states it was once wrong in.
  */
 function typeSet(opts: Resolved): string {
-  const used = `${OFFERED_SIGNAL_TYPES}.filter(t, count(filter(${opts.record}.signals, { signalTypeId: t.id, author: { not: spaceStore.mutedDids } })))`;
+  const used = `${OFFERED_SIGNAL_TYPES}.filter(t, count(filter(${opts.record}.signals, { signalTypeId: t.id, author: { not: identity.mutedDids } })))`;
   return (opts.showUnused ?? opts.mode === 'full') ? OFFERED_SIGNAL_TYPES : used;
 }
 
@@ -219,7 +219,7 @@ function typeSet(opts: Resolved): string {
  * from a row with space for four.
  */
 function typesShown(opts: Resolved, limit?: number): string {
-  return `signalTypesByUse({ of: ${opts.record}.id, types: ${typeSet(opts)}, signals: ${opts.record}.signals, muted: spaceStore.mutedDids${
+  return `signalTypesByUse({ of: ${opts.record}.id, types: ${typeSet(opts)}, signals: ${opts.record}.signals, muted: identity.mutedDids${
     limit === undefined ? '' : `, limit: ${limit}`
   } })`;
 }
@@ -485,7 +485,7 @@ const SEARCH = 'reactorSearch';
 
 /** Who reacted with this type, joined to their faces and names — see the `reactors` host function. */
 const reactorsOf = (record: string, as: string, search?: string) =>
-  `reactors({ signals: ${forType(record, as)}, profiles: profileStore.profiles, me: me.did${
+  `reactors({ signals: ${forType(record, as)}, profiles: identity.profiles, me: me.did${
     search ? `, search: local.${search}` : ''
   } })`;
 
@@ -1064,7 +1064,7 @@ function newType(opts: Resolved, { labelled, under }: { labelled: boolean; under
     {
       type: '$if',
       props: {
-        condition: { $: 'spaceStore.canAdministerCurrentSpace' },
+        condition: { $: 'spaceSettings.canAdministerCurrentSpace' },
         then: {
           type: labelled ? 'Column' : 'we-tooltip',
           ...(labelled ? { props: { width: '100%', gap: '400' } } : { props: { content: 'New reaction type' } }),
@@ -1115,7 +1115,7 @@ function newTypeForm(opts: Resolved): SchemaNode[] {
     {
       type: '$if',
       props: {
-        condition: { $: 'spaceStore.canAdministerCurrentSpace' },
+        condition: { $: 'spaceSettings.canAdministerCurrentSpace' },
         then: createSignalTypeModal({
           open: { $: `local.${opts.newTypeOpen ?? NEW_TYPE_OPEN}` },
           close: { $setLocal: opts.newTypeOpen ?? NEW_TYPE_OPEN, value: false },

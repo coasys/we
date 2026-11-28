@@ -6,24 +6,26 @@
 import type { TemplateSchema } from '@we/schema-shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { createTestPlatform, type TestPlatform } from '../src/shared/platform/testPlatform';
 import { dockRegistry } from '../src/shared/registries/dockRegistry';
 import { setTemplatePanels } from '../src/shared/registries/templatePanels';
-import { buildParts, reactivityPorts } from './support/shellPorts';
+import { reactivityPorts } from './support/engines';
+import { buildParts } from './support/shellPorts';
 
 const SCOPE = 'template-panels-test';
 const panels = [{ id: 'inspector', title: 'Inspector', snap: 'left' as const, node: { type: 'div' } }];
 
 describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   const disposers: (() => void)[] = [];
+  let platform: TestPlatform;
   const build = () => {
-    const parts = buildParts(makePort());
+    const parts = buildParts(makePort(), platform);
     disposers.push(parts.dispose);
     parts.arrangement.members.provideAgentDid(() => 'did:me');
     return parts;
   };
   beforeEach(() => {
-    localStorage.clear();
-    window.history.replaceState({}, '', '/space/test');
+    platform = createTestPlatform({ url: '/space/test' });
     setTemplatePanels(panels, SCOPE);
   });
   afterEach(() => {

@@ -35,6 +35,7 @@ import {
   type PolicyVersion,
   policyView,
   presetOf,
+  SpaceArriving,
   type SpacePolicyView,
   type SpaceStanding,
 } from '../../spacePolicy';
@@ -49,18 +50,18 @@ import {
   rolesView,
   type RoleView,
 } from '../../spaceRoles';
-import { spaceSelfWhere } from '../../spaceSync';
+import { isSpaceSelf, spaceSelfWhere } from '../../spaceSync';
 import { isSystemDataset } from '../../systemDatasets';
 import { deriveSlug } from '../../utils';
 import type { SpaceStore } from '../SpaceStore';
-import type { SpaceContext } from './context';
-import type { SpaceNavigation } from './navigation';
+import type { SpaceContext, SpaceSession } from './context';
+import type { SpaceOnScreen } from './onScreen';
 import type { SpaceList } from './spaces';
 import type { LiveRows } from './types';
 
 export interface SpaceRolesDeps extends SpaceContext {
   spaces: { members: Pick<SpaceList['members'], 'mySpaces'> };
-  navigation: { members: Pick<SpaceNavigation['members'], 'currentSpace'> };
+  onScreen: Pick<SpaceOnScreen, 'currentSpace'>;
 }
 
 /** The grant records as the store holds them. */
@@ -76,11 +77,62 @@ const grantRowsOf = (grants: RoleGrant[]): GrantRow[] =>
 /** Spaces other than the one on screen are remembered this long — see `governedElsewhere`. */
 const GOVERNED_TTL_MS = 5_000;
 
+/** The person a signing key speaks for, through the backend's `PersonPort` — the key itself on a backend with none. */
+const personFor = async (session: Pick<SpaceSession, 'backendPorts'>, did: string): Promise<string> =>
+  (await (session.backendPorts()?.persons ?? SELF_PERSONS).personOf(did)) ?? did;
+
+/*
+  Roles are written here rather than by a declared operation, and that is the format's rule, not a
+  gap: what decides who may write is never written by an operation, so a template cannot reach it
+  through one. They follow the operations' slug rule all the same — derived from the name, refused
+  when the space holds it — and its identity: a role's id derives from its slug as a vocabulary
+  create's does, within the space's own record, so two nodes naming one role at once write one record.
+*/
+async function createRoleRecord(dataset: DatasetProxy, fields: { slug: string; name: string; description?: string }) {
+  const id = await deriveIdentityId('Role', [['slug', fields.slug]], await settledIdentityDomain(dataset));
+  try {
+    await Role.create(dataset, fields, { id });
+  } catch (error) {
+    // Made meanwhile, by another node or another press: the role asked for is there.
+    if (!isRecordExists(error)) throw error;
+  }
+}
+
+/**
+ * The `admin` role, when the space has none yet, and its creator's grant of it — see `Role`. Written
+ * by the space list at the create press, before anything about the space is read, so it needs only
+ * who is signed in: a plain function rather than a member of the roles part.
+ */
+export async function writeAdminGrant(session: Pick<SpaceSession, 'me' | 'backendPorts'>, dataset: DatasetProxy) {
+  const me = session.me()?.did;
+  if (!me) return;
+  const existing = (await Role.findAll(dataset, { where: { slug: ADMIN_ROLE } }).catch(() => [])) as Role[];
+  if (!existing.length) await createRoleRecord(dataset, { ...ADMIN_ROLE_RECORD });
+  await RoleGrant.create(dataset, { role: ADMIN_ROLE, agent: await personFor(session, me) });
+}
+
+/**
+ * The starting policy, written by the space's creator before it is shared — and only by them, as
+ * the admin grant is: a member joining later must never write a first version of their own, which
+ * would compete with the creator's. A starter's `policy` names the preset.
+ *
+ * Without one nothing is written, and the space reads as `open`: what every space did before it had
+ * a policy. `community` is offered in People rather than chosen for everybody, because some shared
+ * work is edited by members who did not make it — a call's interpretation switch, a transcript line
+ * from another participant's device, a suggested change to somebody else's record, a board's
+ * columns — and `community` keeps editing to a record's author and the space's admins.
+ */
+export async function writeStartingPolicy(dataset: DatasetProxy, starter: SpaceStarter | undefined): Promise<void> {
+  const preset = starter?.policy;
+  if (!preset) return;
+  await Policy.create(dataset, { document: POLICY_PRESETS[preset].policy });
+}
+
 export function createSpaceRoles(deps: SpaceRolesDeps) {
-  const { reactivity, toasts, sessionStore: session, datasetStore, spaces, navigation } = deps;
+  const { reactivity, toasts, sessionStore: session, datasetStore, spaces, onScreen } = deps;
   const { memo, effect, untrack, batch, onCleanup } = reactivity;
   const { mySpaces } = spaces.members;
-  const { currentSpace } = navigation.members;
+  const { currentSpace } = onScreen;
 
   // The space on screen's roles, as read.
   const [roleRows, setRoleRows] = reactivity.signal<RoleRow[]>([]);
@@ -144,8 +196,7 @@ export function createSpaceRoles(deps: SpaceRolesDeps) {
     return uuid ? canAdministerSpace(uuid) : false;
   };
 
-  const persons = () => session.backendPorts()?.persons ?? SELF_PERSONS;
-  const personOf = async (did: string): Promise<string> => (await persons().personOf(did)) ?? did;
+  const personOf = (did: string) => personFor(session, did);
 
   effect(() => {
     const did = session.me()?.did;
@@ -179,11 +230,11 @@ export function createSpaceRoles(deps: SpaceRolesDeps) {
       batch(() => {
         applyRoles(roles);
         applyGrants(grants);
+        setRolesLoaded(true);
       });
     } catch (error) {
+      // Not loaded on a failed read: the write check then reads the roles itself, and refuses while it can't.
       console.warn('SpaceStore: could not read the space’s roles', error);
-    } finally {
-      if (datasetStore.currentDataset()?.id === uuid) setRolesLoaded(true);
     }
   }
 
@@ -253,38 +304,12 @@ export function createSpaceRoles(deps: SpaceRolesDeps) {
 
   const myRoles = memo<string[]>(() => rolesOf(roleViews(), mePerson() ?? session.me()?.did));
 
-  /** The `admin` role, when the space has none yet, and its creator's grant of it — see `Role`. */
-  async function writeAdminGrant(dataset: DatasetProxy): Promise<void> {
-    const me = session.me()?.did;
-    if (!me) return;
-    const existing = (await Role.findAll(dataset, { where: { slug: ADMIN_ROLE } }).catch(() => [])) as Role[];
-    if (!existing.length) await createRoleRecord(dataset, { ...ADMIN_ROLE_RECORD });
-    await RoleGrant.create(dataset, { role: ADMIN_ROLE, agent: await personOf(me) });
-  }
-
   /** The open space's dataset, for a change only whoever administers it may make. Throws otherwise. */
   function administeredDataset(what: string): DatasetProxy {
     const p = datasetStore.currentDataset()?.handle;
     if (!p) throw new Error('No space is open');
     if (!canAdministerCurrentSpace()) throw new Error(`Only whoever administers this space can ${what}`);
     return p;
-  }
-
-  /*
-    Roles are written here rather than by a declared operation, and that is the format's rule, not a
-    gap: what decides who may write is never written by an operation, so a template cannot reach it
-    through one. They follow the operations' slug rule all the same — derived from the name, refused
-    when the space holds it — and its identity: a role's id derives from its slug as a vocabulary
-    create's does, within the space's own record, so two nodes naming one role at once write one record.
-  */
-  async function createRoleRecord(dataset: DatasetProxy, fields: { slug: string; name: string; description?: string }) {
-    const id = await deriveIdentityId('Role', [['slug', fields.slug]], await settledIdentityDomain(dataset));
-    try {
-      await Role.create(dataset, fields, { id });
-    } catch (error) {
-      // Made meanwhile, by another node or another press: the role asked for is there.
-      if (!isRecordExists(error)) throw error;
-    }
   }
 
   async function createRole(config: { name: string; description?: string }): Promise<void> {
@@ -476,12 +501,42 @@ export function createSpaceRoles(deps: SpaceRolesDeps) {
   */
   const governedElsewhere = new Map<string, { at: number; space: Promise<GovernedSpace | null> }>();
 
+  /** A dataset this agent already knows is a space: the space on screen, or one it holds a record of. */
+  function knownSpace(ds: { id: string; sharedId?: string }): boolean {
+    if (ds.id === datasetStore.currentDataset()?.id && datasetStore.isWeSpace()) return true;
+    return untrack(mySpaces).some((space) => isSpaceSelf(space, ds));
+  }
+
+  /*
+    A read that fails here throws, and the check refuses the write as `unreadable`, as it does for the
+    policy: no roles means no admins and the creator's word, so a failed read must not count as none.
+    A failed read of the `Space` record refuses too, where the dataset is known to be a space; for any
+    other dataset it cannot be told from one that is not a space, and is not judged, as before. So
+    does a read that answers with no `Space` record for a known space: that is the record still
+    syncing, not a dataset that is not a space, and it is refused as still arriving.
+
+    One space is matched by its local id even once it is shared: the creator's own, in the moment
+    between publishing it and writing its address onto its record. That write is the one that makes
+    the record match by address, so refusing it would leave the space never matching itself. Only
+    the creator's dataset holds a `Space` whose `uuid` is its own id — a joiner's never does, and a
+    listed copy in the discovery space names its creator's dataset — so a joiner still waits.
+  */
   async function readGovernedSpace(ds: { id: string; sharedId?: string; handle: DatasetProxy }) {
-    const [self] = (await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) }).catch(() => [])) as Space[];
-    if (!self) return null;
+    const read = (where: ReturnType<typeof spaceSelfWhere>) =>
+      Space.findAll(ds.handle, { where }).catch((error: unknown) => {
+        if (knownSpace(ds)) throw error;
+        return [];
+      }) as Promise<Space[]>;
+    let selves = await read(spaceSelfWhere(ds));
+    if (!selves.length && ds.sharedId) selves = await read({ uuid: ds.id });
+    const [self] = selves;
+    if (!self) {
+      if (knownSpace(ds)) throw new SpaceArriving();
+      return null;
+    }
     const [roles, grants, versions] = await Promise.all([
-      Role.findAll(ds.handle).catch(() => []) as Promise<Role[]>,
-      RoleGrant.findAll(ds.handle).catch(() => []) as Promise<RoleGrant[]>,
+      Role.findAll(ds.handle) as Promise<Role[]>,
+      RoleGrant.findAll(ds.handle) as Promise<RoleGrant[]>,
       readPolicyVersions(ds.handle),
     ]);
     const grantRows = grantRowsOf(grants);
@@ -534,23 +589,6 @@ export function createSpaceRoles(deps: SpaceRolesDeps) {
   });
   onCleanup(() => registerEntityWriteCheck(null));
 
-  /**
-   * The starting policy, written by the space's creator before it is shared — and only by them, as
-   * the admin grant is: a member joining later must never write a first version of their own, which
-   * would compete with the creator's. A starter's `policy` names the preset.
-   *
-   * Without one nothing is written, and the space reads as `open`: what every space did before it had
-   * a policy. `community` is offered in People rather than chosen for everybody, because some shared
-   * work is edited by members who did not make it — a call's interpretation switch, a transcript line
-   * from another participant's device, a suggested change to somebody else's record, a board's
-   * columns — and `community` keeps editing to a record's author and the space's admins.
-   */
-  async function writeStartingPolicy(dataset: DatasetProxy, starter: SpaceStarter | undefined): Promise<void> {
-    const preset = starter?.policy;
-    if (!preset) return;
-    await Policy.create(dataset, { document: POLICY_PRESETS[preset].policy });
-  }
-
   async function setPolicyPreset(preset: PolicyPreset): Promise<void> {
     const chosen = POLICY_PRESETS[preset];
     if (!chosen) return;
@@ -591,7 +629,7 @@ export function createSpaceRoles(deps: SpaceRolesDeps) {
     setPolicyPreset,
   };
 
-  return { members, writeAdminGrant, writeStartingPolicy };
+  return { members };
 }
 
 export type SpaceRoles = ReturnType<typeof createSpaceRoles>;

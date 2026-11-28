@@ -214,25 +214,25 @@ const weDomain: Record<string, SchemaNode> = {
   peopleFilter: peopleFilter({
     people: 'who',
     show: 'whoMode',
-    faces: { $: 'spaceStore.memberDids' },
+    faces: { $: 'identity.memberDids' },
     matched: { $: 'count(local.who)' },
     total: { $: 'count(spaceStore.members)' },
     noun: 'event',
   }),
   'taskBoard (people)': taskBoard({
-    boardId: { $: 'spaceStore.currentSpace.id' },
+    boardId: { $: 'spaceSettings.currentSpace.id' },
     empty: { type: 'Column' },
     people: true,
   }),
   'taskBoard (social)': taskBoard({
-    boardId: { $: 'spaceStore.currentSpace.id' },
+    boardId: { $: 'spaceSettings.currentSpace.id' },
     empty: { type: 'Column' },
     social: true,
   }),
   'peopleRow (dids)': peopleRow({ items: { $: 'call.participants' }, dids: true }),
   'signalDisplay (full)': signalDisplay({ record: 'row' }),
   discussionSection: discussionSection({ record: 'row' }),
-  'discussionSection (flat)': discussionSection({ record: 'row', fractal: "routeStore.params.threads != 'flat'" }),
+  'discussionSection (flat)': discussionSection({ record: 'row', fractal: "navigation.params.threads != 'flat'" }),
   'signalDisplay (compact)': signalDisplay({ record: 'card', mode: 'compact', as: 'cardSig' }),
   'signalDisplay (total)': signalDisplay({ record: 'card', mode: 'total', as: 'cardTot' }),
   adminSection: adminSection({ title: 'Models', icon: 'sparkle', refresh: 'runtimeStore.loadAiModels', children: [] }),
@@ -759,7 +759,7 @@ describe('contracts call sites depend on', () => {
       const condition = (n.props as { condition?: { $?: string } } | undefined)?.condition?.$;
       if (condition) conditions.push(condition);
     });
-    expect(conditions).toContain("routeStore.params.threads != 'flat'");
+    expect(conditions).toContain("navigation.params.threads != 'flat'");
     /*
       The record's own way in is the INLINE composer at the foot, which writes straight to
       `createPost` rather than opening the modal — so this looks for the write, not for
@@ -1121,7 +1121,7 @@ describe('contracts call sites depend on', () => {
     walk(weDomain['signalDisplay (full)'], (n) => {
       if (n.$invoke === 'ops.core.createSignalType') creates += 1;
       const condition = (n.props as { condition?: { $?: string } } | undefined)?.condition?.$;
-      if (condition === 'spaceStore.canAdministerCurrentSpace') gated = true;
+      if (condition === 'spaceSettings.canAdministerCurrentSpace') gated = true;
     });
     expect(creates, 'no way to define a reaction type from the full row').toBe(1);
     expect(gated, 'anybody could define a reaction type').toBe(true);
@@ -1314,7 +1314,7 @@ describe('handler arrays are never nested', () => {
       openLocal: 'editOpen',
       title: 'Edit',
       saveAction: { $invoke: 'spaceStore.updatePost', args: ['x', { $: 'arg' }] },
-      onClose: [{ $invoke: 'presenceStore.clearActivity', args: ['edit', 'x'] }],
+      onClose: [{ $invoke: 'presence.clearActivity', args: ['edit', 'x'] }],
     });
     expect(nestedHandlerArrays(node)).toEqual([]);
   });
@@ -1537,7 +1537,7 @@ describe('the flows page’s records', () => {
   // choosing another record of the same flow changed nothing on screen.
   it('marks the record chosen as a selection is marked everywhere else', () => {
     const page = JSON.stringify(workflowsPage({}));
-    expect(page).toContain("(rec.record == routeStore.params.card) ? '1px solid accent' : '1px solid border'");
-    expect(page).toContain("(rec.record == routeStore.params.card) ? 'accent-soft' : 'surface'");
+    expect(page).toContain("(rec.record == navigation.params.card) ? '1px solid accent' : '1px solid border'");
+    expect(page).toContain("(rec.record == navigation.params.card) ? 'accent-soft' : 'surface'");
   });
 });

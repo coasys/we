@@ -58,7 +58,7 @@ export function createRecordConnections(deps: RecordConnectionsDeps): RecordConn
     const field = kinds.titleField(end.type);
     if (!field) return end.id;
     try {
-      const row = await heldRecord<Record<string, unknown>>(end.type, handle, end.id, () =>
+      const row = await heldRecord<Record<string, unknown>>(deps.operations.predictions, end.type, handle, end.id, () =>
         kinds.entityClass(end.type, handle).findOne(handle, { where: { id: end.id } } as never),
       );
       const value = row?.[field];

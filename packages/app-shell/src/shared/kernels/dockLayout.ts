@@ -1,92 +1,61 @@
 /**
- * The dock layout: what a second host needs to lay panels out the way WE does — where a panel lands
- * and how big it is, how an edge's lanes and seats divide it, what a fold, a strip, full screen and a
- * drag do to that, and which targets a drop is offered. Data in, data out: a host implements these
- * against the recorded vectors beside this file (`vectors/dockLayout.json`) or runs them as they are.
+ * The dock layout: what a second host needs to lay panels out the way WE does. Data in, data out: a
+ * host implements these against the recorded vectors beside this file (`vectors/dockLayout.json`) or
+ * runs them as they are.
  *
- * The functions live in `../dockGeometry.ts`, beside the reasoning for each; this file is the list of
- * which of them are the contract. The rest of that file is helpers these call, constants, and types.
- * Everything here measures against the app's frame (the bands its chrome holds), which the shell sets
- * with `setGeometryFrame` when the app template changes — so each vector names the frame it was
- * recorded under, and a host replaying one sets it first.
+ * These are the entry points — each answers one whole question the shell asks, about every panel at
+ * once or about one moment of a drag — and not the helpers they are built from. The functions live in
+ * `../dockGeometry.ts`, beside the reasoning for each; the rest of that file (how an edge is grouped
+ * into lanes and seats, one panel's box, a lane's division, the snap origins, the slot lines) is how
+ * WE happens to compute these answers, tested in TypeScript and free to change shape without the
+ * vectors changing. A host that reaches the same answers another way conforms.
+ *
+ * Everything here measures against the app's frame (the bands its chrome holds), which rides on the
+ * viewport each function is given (`Viewport.frame`), so an answer depends on its arguments alone and
+ * a vector names its frame among them.
+ *
+ * The answers are geometry: lengths in pixels as numbers, and which panel paints over which as a
+ * rank (0 at the back). How a renderer draws them is its own — the shell formats them as CSS for its
+ * frames (`stores/shell/dockStyle.ts`).
  *
  * What is not here is what a host reads from its own screen: which panels are registered and what
  * each asks for, how recently each was touched, where a lane's section or a template's outlet is
  * drawn. The shell store reads those and hands them in.
  */
 export {
-  // Where one panel lands, and how big it is.
+  // Where one panel is placed: the reader's disposition, the interface's declaration, the panel's
+  // own bid — fitted to its content where it asks, and written back as a declaration.
   arrangedPanel,
-  canFold,
-  displaces,
-  dockThickness,
-  edgeOfSnap,
   fitPlacement,
-  floorOf,
-  liftedCard,
-  placementFromDeclaration,
-  rectOf,
-  resizedBox,
-  resolveDock,
-  seedPlacement,
-  snapOrigin,
-  thicknessOf,
-  // How an edge is divided: lanes, seats, and who shows.
-  columnLayout,
-  columnMembers,
-  edgeGroups,
-  frontOf,
-  laneable,
-  laneBase,
-  laneSectionsOf,
-  laneShrunk,
-  laneThickness,
-  layerOrder,
-  looseSeats,
-  movedBoundary,
-  roomElsewhere,
-  seatLanes,
-  seatsOf,
-  widestMin,
-  // Every panel at once, and what the content gives up.
+  resolvePlacement,
+  // The seated layout: how every lane divides and who shows, every panel's box, the lanes the host
+  // draws at the edges, what the content gives up and the chrome clears, and how each panel is framed.
   contentInset,
   coveredInset,
-  coveringLanes,
-  displacingLanes,
-  edgeLaneBox,
   edgeLaneLayout,
-  occupiedById,
-  occupiedFor,
+  laneSectionsOf,
   panelFramesOf,
   railBand,
   resolveDocks,
-  stripBox,
+  seatLanes,
   withChromeCovered,
-  // Joining, leaving and following a seat.
-  followSeat,
-  seatOrder,
-  seatSize,
-  unlaned,
-  // Where a drop lands, and the targets it is offered.
+  // During a drag: every panel's box as a rectangle where the host has drawn nothing to measure; the
+  // snap targets free to the carried panel, every slot it is offered, and which of them the pointer
+  // means.
+  dragDropSlots,
+  dragSnapTargets,
+  dragTarget,
+  rectOf,
+  // What a drop writes: the edge or home lane renumbered, a snap taken, another card stacked onto,
+  // the seat-mates that follow the panel that led, and the size a seat gives whoever joins it.
   arrangeDrop,
   arrangeHomeDrop,
-  chooseTarget,
-  columnSlots,
-  edgeDropSlots,
-  edgeSeatOrder,
-  edgeZone,
-  grown,
-  homeDropSlots,
-  homeLaneMembers,
-  insertionSlots,
-  nearEdge,
-  overlapArea,
-  snapBeatsSlot,
-  snapCandidate,
-  snapTargetRects,
-  snapTargetSize,
-  stackCandidates,
-  stackDropSlots,
-  takenSnaps,
-  takenSnapsOf,
+  followSeat,
+  seatSize,
+  snapDrop,
+  stackDrop,
+  // Gestures: a resize, the boundary between two seats, a panel pulled off what it was attached to.
+  liftedCard,
+  movedBoundary,
+  resizedBox,
 } from '../dockGeometry';

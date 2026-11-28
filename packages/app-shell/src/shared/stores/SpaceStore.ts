@@ -5,11 +5,11 @@
  *
  * Several jobs over one surface. Each is a part of its own under `space/`, a factory over the
  * reactivity port; this file is the surface they are composed into — which the generated context and
- * the template surface read every `*Store` interface from — and the composition, built once at
- * `BootController`.
+ * the template surface read every `*Store` interface from — and the composition, built once by
+ * `composeStores`.
  */
 import type { AgentProfileSummary } from '@we/backend-shared';
-import type { InvolvementSemantic, MutedAgent, Space } from '@we/entities';
+import type { FileData, InvolvementSemantic, MutedAgent, Space } from '@we/entities';
 import type { Accessor, ReactivityPort } from '@we/reactivity';
 import type { ResolvedView } from '@we/schema-shared';
 
@@ -26,15 +26,15 @@ import type { LocationData } from '../spaceSync';
 import type { TaskWorkflowLive } from '../taskWorkflowLive';
 import type { Toasts } from '../toasts';
 import type { AppDataset } from './DatasetStore';
-import type { ShellStore } from './ShellStore';
 import { createCallExports } from './space/callExports';
 import { createSpaceContent, type SpaceContentDeps } from './space/content';
-import { createSpaceContext, type SpaceDatasets, type SpaceSession } from './space/context';
+import { createSpaceContext, type SpaceContext, type SpaceDatasets, type SpaceSession } from './space/context';
 import { createSpaceDetails, type SpaceDetailsDeps } from './space/details';
 import { createSpaceExtraction, type SpaceExtractionDeps } from './space/extraction';
 import { createSpaceInvolvements } from './space/involvements';
 import { createSpaceModules, type SpaceModulesDeps } from './space/modules';
 import { createSpaceNavigation, type SpaceNavigationDeps } from './space/navigation';
+import { createSpaceOnScreen } from './space/onScreen';
 import { createSpaceRoles } from './space/roles';
 import { createSpaceList, type SpaceListDeps } from './space/spaces';
 import { createSpaceTaskStates, type SpaceTaskStatesDeps } from './space/taskStates';
@@ -48,8 +48,6 @@ import type {
 } from './space/types';
 import { createSpaceUnread } from './space/unread';
 import { createSpaceWrites } from './space/writes';
-import type { TemplateStore } from './TemplateStore';
-import type { ThemeStore } from './ThemeStore';
 
 export interface SpaceStore {
   // State
@@ -296,7 +294,7 @@ export interface SpaceStore {
   /**
    * DIDs this agent has muted, everywhere. Private, held in the root dataset.
    *
-   * A feed filters on this before rendering — `{ $: '!(post.author in spaceStore.mutedDids)' }`. Hiding on
+   * A feed filters on this before rendering — `{ $: '!(post.author in identity.mutedDids)' }`. Hiding on
    * this agent's screen only: a shared space is writable by every member, so nothing here
    * removes anything for anyone else.
    */
@@ -361,11 +359,13 @@ export interface SpaceStore {
    * action named for somebody else's noun or duplicate it.
    */
   deleteCollection: (collectionId: string) => Promise<void>;
+  /**
+   * What the space's record stores for a picture the person chose, sized for the field; for
+   * `ops.core.setSpaceImage` to write. Stores nothing itself.
+   */
+  prepareSpaceImage: (field: 'avatar' | 'coverImage', image: File) => Promise<FileData>;
   /** Every space-scoped write takes an optional target uuid; omitted means the space on screen. */
-  updateSpaceImage: (field: 'avatar' | 'coverImage', imageFile: File, spaceUuid?: string) => Promise<void>;
   updateSpaceMeta: (updates: SpaceMetaUpdate, spaceUuid?: string) => Promise<void>;
-  setSpaceDefaultTemplate: (templateId: string, spaceUuid?: string) => Promise<void>;
-  setSpaceDefaultTheme: (themeId: string, spaceUuid?: string) => Promise<void>;
   setModuleEnabled: (moduleId: string, enabled: boolean, spaceUuid?: string) => Promise<void>;
   /**
    * What each capability that declares settings is currently set to **for this community**, as rows
@@ -626,24 +626,39 @@ export interface SpaceHostState {
 /** What the space store is built from: the port, and what it reads and lends of the stores before it. */
 export interface SpaceStoreDeps {
   reactivity: ReactivityPort;
+  platform: SpaceContext['platform'];
   toasts: Toasts;
   firstScreen: Pick<FirstScreen, 'open' | 'whenOpen'>;
   sessionStore: SpaceSession;
   datasetStore: SpaceDatasets;
-  appStore: SpaceModulesDeps['appStore'];
+  /** How the composition runs declared operations, and the predictions its reads hold. */
+  operations: SpaceContext['operations'];
   profileStore: SpaceDetailsDeps['profileStore'];
   recordStore: SpaceTaskStatesDeps['recordStore'] & SpaceContentDeps['recordStore'];
   routeStore: SpaceListDeps['routeStore'] & SpaceNavigationDeps['routeStore'];
   shapeStore: SpaceListDeps['shapeStore'] & SpaceExtractionDeps['shapeStore'];
-  shellStore: SpaceNavigationDeps['shellStore'] &
-    SpaceModulesDeps['shellStore'] &
-    Pick<ShellStore, 'provideTemplateSaver'>;
+  shellStore: SpaceNavigationDeps['shellStore'] & SpaceModulesDeps['shellStore'];
   templateStore: SpaceListDeps['templateStore'] &
     SpaceNavigationDeps['templateStore'] &
-    SpaceModulesDeps['templateStore'] &
-    Pick<TemplateStore, 'provideSpaceAppearance' | 'saveTemplateAs'>;
-  themeStore: SpaceDetailsDeps['themeStore'] & Pick<ThemeStore, 'provideSpaceAppearance'>;
+    SpaceModulesDeps['templateStore'];
   host: SpaceHostState;
+}
+
+/**
+ * What the space store lends stores composed before it, which cannot read it: handed over by
+ * `composeStores`, so every late binding between stores is written in that one file.
+ */
+export interface SpaceStoreLends {
+  /** The spaces' records and this agent's overrides, for the template and theme stores. */
+  appearance: SpaceAppearance;
+  /** The modules this agent has installed, for the app store's switcher. */
+  installedModules: Accessor<string[]>;
+}
+
+/** The space store, and what it lends. */
+export interface SpaceStoreWithLends {
+  store: SpaceStore;
+  lends: SpaceStoreLends;
 }
 
 /*
@@ -654,60 +669,58 @@ export interface SpaceStoreDeps {
   store is built — never while it is being built, so no part reads one that does not exist yet,
   whichever port runs the effects.
 */
-export function createSpaceStore(deps: SpaceStoreDeps): SpaceStore {
+export function createSpaceStore(deps: SpaceStoreDeps): SpaceStoreWithLends {
   const {
     reactivity,
+    platform,
     toasts,
     firstScreen,
     sessionStore: session,
     datasetStore,
-    appStore,
     profileStore,
     recordStore,
     routeStore,
     shapeStore,
     shellStore,
     templateStore,
-    themeStore,
     host,
   } = deps;
-  const ctx = createSpaceContext({ reactivity, toasts, firstScreen, sessionStore: session, datasetStore });
-
-  /*
-    The spaces this agent holds. Built first: every other part reads the records it holds. What a new
-    space is given by the later jobs — a section, its first admin, its starting policy — is reached
-    through them when a space is made, by which time all of them are built.
-  */
-  const spaces = createSpaceList({
-    ...ctx,
-    routeStore,
-    templateStore,
-    shapeStore,
-    newSpace: {
-      enableView: (viewId, spaceId) => modules.members.setViewEnabled(viewId, true, spaceId),
-      writeAdminGrant: (dataset) => roles.writeAdminGrant(dataset),
-      writeStartingPolicy: (dataset, starter) => roles.writeStartingPolicy(dataset, starter),
-    },
+  const ctx = createSpaceContext({
+    reactivity,
+    platform,
+    toasts,
+    firstScreen,
+    sessionStore: session,
+    datasetStore,
+    operations: deps.operations,
   });
 
   /*
-    How a setting on a space record is written and shown. Before the navigation part, which shows a
-    setting still being saved over the live read; the space on screen is reached only when a write is
-    made, by which time the navigation part is built.
+    The parts are built in the order they read each other, each taking the narrowest slice of the
+    parts before it, so nothing reaches a part that does not exist yet. Two needs point backwards —
+    the spaces list turning on a new space's sections (the modules part's switch), and the task
+    states adding a board column for a state just named (the content part's boards) — and each is
+    lent explicitly with a `provide*` call once the later part is built.
   */
-  const writes = createSpaceWrites({
-    ...ctx,
-    spaces,
-    onScreen: {
-      current: () => navigation.members.currentSpace(),
-      show: (ds, fields) => navigation.showOnScreen(ds, fields),
-    },
-  });
 
-  /*
-    Where the agent is. The sections a space has are the modules-and-views part's, and its boards the
-    content part's, both composed after this one and read only when somebody goes somewhere.
-  */
+  // The spaces this agent holds. First: every other part reads the records it holds.
+  const spaces = createSpaceList({ ...ctx, routeStore, templateStore, shapeStore });
+
+  // The space on screen, which navigation fills from the live read and most parts only read.
+  const onScreen = createSpaceOnScreen(reactivity);
+
+  // How a setting on a space record is written and shown, over the live read while it is saving.
+  const writes = createSpaceWrites({ ...ctx, spaces, onScreen });
+
+  // What each space runs and shows, and this agent's own choices about each.
+  const modules = createSpaceModules({ ...ctx, templateStore, shellStore, spaces, onScreen, writes });
+  spaces.provideSectionSwitch((viewId, spaceId) => modules.members.setViewEnabled(viewId, true, spaceId));
+
+  // Who stands where in each space and what its rules allow, and the write check that holds them.
+  const roles = createSpaceRoles({ ...ctx, spaces, onScreen });
+  const { canAdministerSpace, canAdministerCurrentSpace } = roles.members;
+
+  // Where the agent is, and the sections and structure of the space it is in.
   const navigation = createSpaceNavigation({
     ...ctx,
     routeStore,
@@ -715,20 +728,9 @@ export function createSpaceStore(deps: SpaceStoreDeps): SpaceStore {
     shellStore,
     spaces,
     writes,
-    sections: {
-      routableViews: () => modules.members.routableViews(),
-      spaceViews: () => modules.members.spaceViews(),
-      usesSectionsFor: (uuid) => modules.usesSectionsFor(uuid),
-    },
-    ensureBoardFor: (collectionId, dataset) => content.members.ensureBoardFor(collectionId, dataset),
+    onScreen,
+    modules,
   });
-
-  // Who stands where in each space and what its rules allow, and the write check that holds them.
-  const roles = createSpaceRoles({ ...ctx, spaces, navigation });
-  const { canAdministerSpace, canAdministerCurrentSpace } = roles.members;
-
-  // What each space runs and shows, and this agent's own choices about each.
-  const modules = createSpaceModules({ ...ctx, templateStore, appStore, shellStore, spaces, navigation, writes });
 
   // What each space extracts, and the extraction runtime modules reach.
   const extraction = createSpaceExtraction({
@@ -744,11 +746,10 @@ export function createSpaceStore(deps: SpaceStoreDeps): SpaceStore {
   const taskStates = createSpaceTaskStates({
     ...ctx,
     recordStore,
-    navigation,
+    onScreen,
     writes,
     canAdministerCurrentSpace,
     taskWorkflowLive: host.taskWorkflowLive,
-    addStateToSpaceBoard: (slug, name) => content.members.addStateToSpaceBoard(slug, name),
   });
 
   // Who is on what in each space, and what each person gave.
@@ -767,9 +768,10 @@ export function createSpaceStore(deps: SpaceStoreDeps): SpaceStore {
     navigation,
     taskStates,
   });
+  taskStates.provideSpaceBoard(content.members.addStateToSpaceBoard);
 
   // Each space's own record — its picture, name and place, defaults, thread mode — and its members.
-  const details = createSpaceDetails({ ...ctx, profileStore, themeStore, spaces, navigation, writes });
+  const details = createSpaceDetails({ ...ctx, profileStore, spaces, onScreen, writes });
 
   /*
     The spaces list: one row per joined dataset the agent can act on, its columns answered by each
@@ -788,9 +790,10 @@ export function createSpaceStore(deps: SpaceStoreDeps): SpaceStore {
   );
 
   /*
-    The template and theme stores are composed before this one and cannot read it — lend them the
+    The template and theme stores are composed before this one and cannot read it — they are lent the
     spaces' records and this agent's overrides, which they resolve which template and theme apply
     from (see `spaceAppearance.ts`). The overrides are this agent's own, written to the root dataset.
+    Returned, and handed over by `composeStores`.
   */
   const appearance: SpaceAppearance = {
     spaces: spaces.members.mySpaces,
@@ -801,9 +804,6 @@ export function createSpaceStore(deps: SpaceStoreDeps): SpaceStore {
         ? modules.writeSpacePreference('setSpaceTemplateOverride', uuid, { template: id })
         : modules.writeSpacePreference('setSpaceThemeOverride', uuid, { theme: id }),
   };
-  templateStore.provideSpaceAppearance(appearance);
-  themeStore.provideSpaceAppearance(appearance);
-
   // A call's transcript and its interpretation log, read for the dataset each export names.
   const callExports = createCallExports({
     toasts,
@@ -813,16 +813,7 @@ export function createSpaceStore(deps: SpaceStoreDeps): SpaceStore {
     exportMeta: extraction.collectionInterpretationFor,
   });
 
-  /*
-    The other thing the shell cannot see for itself: the template on screen and a library to save
-    into, for "save this arrangement as a template".
-  */
-  shellStore.provideTemplateSaver({
-    current: () => templateStore.currentTemplate,
-    save: (schema) => templateStore.saveTemplateAs(schema, 'root'),
-  });
-
-  return {
+  const store: SpaceStore = {
     ...spaces.members,
     ...navigation.members,
     ...modules.members,
@@ -838,4 +829,5 @@ export function createSpaceStore(deps: SpaceStoreDeps): SpaceStore {
     exportCallTranscript: callExports.exportCallTranscript,
     exportInterpretationLog: callExports.exportInterpretationLog,
   };
+  return { store, lends: { appearance, installedModules: modules.installedModules } };
 }

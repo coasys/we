@@ -22,6 +22,7 @@ import { PanelHost, PanelSlot } from '../src/frameworks/solid/components/PanelHo
 import { shellHost } from '../src/frameworks/solid/stores/hostState';
 import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
 import { activePanels } from '../src/shared/panelScope';
+import { createBrowserPlatform } from '../src/shared/platform/browser';
 import { provideTemplateBag } from '../src/shared/registries/templateBag';
 import { setTemplatePanels } from '../src/shared/registries/templatePanels';
 import { buildTemplateBag, SPACE_TIER } from '../src/shared/registries/templateSurface';
@@ -86,14 +87,18 @@ afterEach(() => {
 function mount() {
   let store!: ShellStore;
   /** The space tier's bag — what a synced template's calls go through. */
-  let bag!: { shellStore: ShellStore };
+  let bag!: { viewState: Pick<ShellStore, 'openPanel'> };
   const { container } = render(() => {
-    store = createShellStore({ reactivity: solidReactivity, host: shellHost });
+    store = createShellStore({ reactivity: solidReactivity, platform: createBrowserPlatform(), host: shellHost });
     store.provideAgentDid(() => 'did:test:me');
-    bag = buildTemplateBag({ shellStore: store } as never, { grants: SPACE_TIER });
+    bag = buildTemplateBag({ shellStore: store } as never, { grants: SPACE_TIER }) as never;
     // `TemplatePanelBody` renders with the interface's own grants — this bag, in the test.
     release.push(provideTemplateBag(bag as never));
-    const chatStore = createChatStore({ reactivity: solidReactivity, shellStore: store });
+    const chatStore = createChatStore({
+      reactivity: solidReactivity,
+      platform: createBrowserPlatform(),
+      shellStore: store,
+    });
     return (
       <StoreRegistryContext.Provider value={{ ...stores, shellStore: store, chatStore }}>
         {/* Every open instance's body, the way a frame's own PanelSlot draws it. */}
@@ -112,7 +117,7 @@ describe("a template's openPanel aimed at the app's chat panels", () => {
     const { store, bag, container } = mount();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    const id = bag.shellStore.openPanel('chat-global', { prefill: 'x' });
+    const id = bag.viewState.openPanel('chat-global', { prefill: 'x' });
 
     expect(id).toBe('');
     expect(store.panelInstances()).toHaveLength(0);
@@ -126,7 +131,7 @@ describe("a template's openPanel aimed at the app's chat panels", () => {
     const { store, bag, container } = mount();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    const id = bag.shellStore.openPanel('chat-space', {
+    const id = bag.viewState.openPanel('chat-space', {
       datasetId: 'a1a2a3a4-b1b2-c3c4-d5d6-e7e8e9f0a1b2',
       prefill: 'x',
     });
@@ -155,7 +160,7 @@ describe("a template's openPanel aimed at the app's chat panels", () => {
       ),
       'a-synced-space-template',
     );
-    expect(bag.shellStore.openPanel('inspector', {})).not.toBe('');
+    expect(bag.viewState.openPanel('inspector', {})).not.toBe('');
     expect(store.panelInstances()).toHaveLength(1);
 
     // And the host's own path in — `chatStore.openChat`'s, unmarked — still opens the chat.

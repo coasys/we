@@ -87,7 +87,7 @@ Pinned by: the panel vectors (`panels.json`: `panels.active.*`, `panels.placemen
 and the rest; [Conformance](conformance.md#running-each-family)),
 [`dockGeometry.test.ts`](../../../packages/app-shell/tests/dockGeometry.test.ts), and the
 dock layout's recorded vectors ([`dockLayout.json`](../../../packages/app-shell/src/shared/kernels/vectors/dockLayout.json),
-the functions named in [`kernels/dockLayout.ts`](../../../packages/app-shell/src/shared/kernels/dockLayout.ts)).
+scenarios over the entry points named in [`kernels/dockLayout.ts`](../../../packages/app-shell/src/shared/kernels/dockLayout.ts)).
 
 ## Home lanes
 

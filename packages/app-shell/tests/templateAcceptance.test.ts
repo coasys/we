@@ -134,17 +134,17 @@ describe('finding the references at all', () => {
   });
 
   it('judges a deep path by its store and member, as the bag does', () => {
-    // `spaceStore.currentSpace.name` — the bag filters members, and everything under one travels
+    // `spaceSettings.currentSpace.name` — the bag filters members, and everything under one travels
     // with it, so only the first two segments can decide.
-    const schema = wellFormed([{ type: 'we-text', props: { text: { $: 'spaceStore.currentSpace.name' } } }]);
+    const schema = wellFormed([{ type: 'we-text', props: { text: { $: 'spaceSettings.currentSpace.name' } } }]);
 
     expect(inspectTemplateSurface(schema, SPACE_TIER).blocked).toEqual([]);
   });
 
   it('reports the groups a template actually uses, for an install prompt', () => {
     const schema = wellFormed([
-      { type: 'we-text', props: { text: { $: 'spaceStore.currentSpace.name' } } },
-      { type: 'we-button', props: { onClick: { $invoke: 'routeStore.navigate', args: ['/'] } } },
+      { type: 'we-text', props: { text: { $: 'spaceSettings.currentSpace.name' } } },
+      { type: 'we-button', props: { onClick: { $invoke: 'navigation.navigate', args: ['/'] } } },
     ]);
 
     expect(inspectTemplateSurface(schema, SPACE_TIER).groups.sort()).toEqual(['content', 'navigation']);
@@ -200,5 +200,33 @@ describe('the one line a refused template is listed with', () => {
 
     expect(accepted.schema).toBeNull();
     expect(describeRefusal(accepted)).toBe('Unrecognized key: "onSuccess" (at …children.0.props.onClick)');
+  });
+});
+
+describe('a template declaring a module this deployment does not have', () => {
+  const needing = (modules: string[]) => ({
+    type: 'Column',
+    meta: { ...meta, name: 'Calls', requires: { modules } },
+    children: [],
+  });
+  const has = (id: string) => id === 'call';
+
+  it('is refused at install, naming the module', () => {
+    const accepted = acceptTemplate(needing(['call', 'polls']), { origin: 'the marketplace', hasModule: has });
+    expect(accepted.schema).toBeNull();
+    expect(describeRefusal(accepted)).toBe('"Calls" needs the "polls" module, which this deployment does not have');
+  });
+
+  it('is accepted when every declared module is here', () => {
+    expect(acceptTemplate(needing(['call']), { origin: 'the marketplace', hasModule: has }).schema).not.toBeNull();
+  });
+
+  it('is accepted where nobody is installing it, which draws it with the module reported missing', () => {
+    expect(acceptTemplate(needing(['polls']), { origin: 'a space' }).schema).not.toBeNull();
+  });
+
+  it('is accepted when it only names the module without declaring it', () => {
+    const naming = wellFormed([{ type: 'we-text', children: [{ $: 'modules.polls.open' }] }]);
+    expect(acceptTemplate(naming, { origin: 'the marketplace', hasModule: has }).schema).not.toBeNull();
   });
 });

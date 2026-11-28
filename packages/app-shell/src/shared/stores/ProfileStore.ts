@@ -14,6 +14,7 @@ import type { Credential } from '../credential';
 import { distinctSignal } from '../distinctSignal';
 import type { FirstScreen } from '../firstScreen';
 import { createKeyedSignals } from '../keyedSignals';
+import type { PlatformPort } from '../platform/port';
 import { provideModuleHostServices } from '../registries/moduleHostServices';
 import type { Toasts } from '../toasts';
 import { uploadOf } from '../uploadOf';
@@ -142,6 +143,8 @@ export interface ProfileStoreDeps {
   sessionStore: Pick<SessionStore, 'me' | 'backendPorts' | 'bootState' | 'createAgent' | 'finishSetup'>;
   runtimeStore: Pick<RuntimeStore, 'openAiStep'>;
   accountStore: Pick<AccountStore, 'syncDisplay'>;
+  /** How a picture is scaled down and encoded before it is stored. */
+  platform: Pick<PlatformPort, 'images'>;
 }
 
 export function createProfileStore(deps: ProfileStoreDeps): ProfileStore {
@@ -150,6 +153,7 @@ export function createProfileStore(deps: ProfileStoreDeps): ProfileStore {
   const session = deps.sessionStore;
   const runtime = deps.runtimeStore;
   const accounts = deps.accountStore;
+  const { images } = deps.platform;
 
   const [rawProfiles, setRawProfiles] = signal<AgentProfileSummary[]>([]);
   const [pendingAvatar, setPendingAvatarSignal] = distinctSignal(reactivity, '');
@@ -175,7 +179,7 @@ export function createProfileStore(deps: ProfileStoreDeps): ProfileStore {
    * and a name that is present on most rows is worse than one that is absent from all of them.
    *
    * This is the single decoration point for everything downstream: `spaceStore.members` and
-   * `presenceStore.peers` are both built by mapping over this accessor, and `$identities` — which
+   * `presence.peers` are both built by mapping over this accessor, and `$identities` — which
    * backs the `$agent` block and the feature-module identity port — is bound to it too. So one
    * derived field reaches every list of people in the app, and no template has to spell a name out
    * of its parts again.
@@ -369,6 +373,7 @@ export function createProfileStore(deps: ProfileStoreDeps): ProfileStore {
     if (!myDid || !profilePort) return;
 
     const fileData = await compressImageToFileData(
+      images,
       imageFile,
       field === 'avatar' ? 'profile-image' : 'cover-image',
       field === 'avatar' ? PROFILE_AVATAR_PX : undefined,
@@ -514,7 +519,7 @@ export function createProfileStore(deps: ProfileStoreDeps): ProfileStore {
   }
 
   async function setPendingAvatar(file: File): Promise<void> {
-    const fileData = await compressImageToFileData(file, 'profile-image', PROFILE_AVATAR_PX);
+    const fileData = await compressImageToFileData(images, file, 'profile-image', PROFILE_AVATAR_PX);
     setPendingAvatarSignal(`data:${fileData.file_type};base64,${fileData.data_base64}`);
   }
 
@@ -589,7 +594,7 @@ export function createProfileStore(deps: ProfileStoreDeps): ProfileStore {
    */
   async function cacheAvatarOnAccount(dataUri: string): Promise<void> {
     try {
-      await accounts.syncDisplay({ avatar: await shrinkDataUri(dataUri, ACCOUNT_AVATAR_PX) });
+      await accounts.syncDisplay({ avatar: await shrinkDataUri(images, dataUri, ACCOUNT_AVATAR_PX) });
     } catch (err) {
       console.error('ProfileStore: could not cache the avatar on the account', err);
     }

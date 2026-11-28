@@ -151,7 +151,7 @@ describe('which call the panel is about', () => {
       copy drifted, never gaining the coverage readout or the capture status.
     */
     expect(feedJson).toContain(SUBJECT_EXPR);
-    expect(SUBJECT_EXPR).toContain('routeStore.params.call');
+    expect(SUBJECT_EXPR).toContain('navigation.params.call');
     expect(SUBJECT_EXPR).toContain('modules.transcribe.collectionId');
   });
 
@@ -491,7 +491,7 @@ describe('what belongs to the live microphone only', () => {
   it('keeps the meter, the coverage readout and the status notes off a call being read back', () => {
     // All three are about the microphone this agent is running now, which says nothing about a
     // meeting somebody opened from a link. A bar moving beside it would measure the wrong thing.
-    const live = '{"$":"!routeStore.params.call || routeStore.params.call == modules.transcribe.callId"}';
+    const live = '{"$":"!navigation.params.call || navigation.params.call == modules.transcribe.callId"}';
     // Placed as parts, so a template arranging the panel keeps them the module's — found by the ids
     // they are placed under.
     const meter = panelJson.indexOf('"transcribe.captureMeter"');
@@ -639,7 +639,7 @@ describe('what belongs to the live microphone only', () => {
       it by hand, and nothing would have said so if it had been forgotten.
     */
     expect(JSON.stringify(pendingUtterance)).toContain(
-      'modules.transcribe.pending && (!routeStore.params.call || routeStore.params.call == modules.transcribe.callId)',
+      'modules.transcribe.pending && (!navigation.params.call || navigation.params.call == modules.transcribe.callId)',
     );
   });
 
@@ -687,7 +687,7 @@ describe('what belongs to the live microphone only', () => {
     expect(panelJson).not.toContain('modules.call.continueCall');
     // The three-action chain it replaced, still gone. Adoption happens on its own now.
     expect(panelJson).not.toContain('modules.transcribe.resume');
-    expect(panelJson).not.toContain('{"$invoke":"routeStore.setParam","args":["call",null]}');
+    expect(panelJson).not.toContain('{"$invoke":"navigation.setParam","args":["call",null]}');
   });
 
   it('still says in words what a past call can be picked back up', () => {
@@ -715,7 +715,7 @@ describe('which call is live', () => {
     // `callId` rather than `collectionId`: the collection appears on the first utterance, so the
     // panel would call a joined-but-silent call a past one until somebody spoke.
     expect(VIEWING_LIVE_EXPR).toContain('modules.transcribe.callId');
-    expect(VIEWING_LIVE_EXPR).toContain('!routeStore.params.call');
+    expect(VIEWING_LIVE_EXPR).toContain('!navigation.params.call');
     // The test it used to make, which is true of a live call the address happens to name.
     expect(VIEWING_LIVE_EXPR).not.toContain('? false : true');
   });
@@ -726,7 +726,7 @@ describe('which call is live', () => {
       to land in five places or in none. They read the shared expression now.
     */
     for (const json of [panelJson, JSON.stringify(pendingUtterance), JSON.stringify(interpretationActivity)]) {
-      expect(json).not.toContain("!routeStore.params.call'");
+      expect(json).not.toContain("!navigation.params.call'");
     }
     expect(panelJson).toContain(VIEWING_LIVE_EXPR);
   });
@@ -828,7 +828,7 @@ describe('the feed', () => {
       here would unmount and rebuild every row the moment a call ended.
     */
     expect(linesJson).toContain(
-      '"relative":{"$":"!routeStore.params.call || routeStore.params.call == modules.transcribe.callId"}',
+      '"relative":{"$":"!navigation.params.call || navigation.params.call == modules.transcribe.callId"}',
     );
     expect(linesJson).toContain('"timeStyle":"short"');
   });
@@ -1043,7 +1043,7 @@ describe('the interpretation panel', () => {
       earlier than that, because choosing what a meeting will look for — before the meeting — is
       exactly when somebody wants to.
     */
-    expect(INTERPRETATION_SUBJECT_EXPR).toContain('routeStore.params.call');
+    expect(INTERPRETATION_SUBJECT_EXPR).toContain('navigation.params.call');
     expect(INTERPRETATION_SUBJECT_EXPR).toContain('modules.transcribe.callId');
     expect(INTERPRETATION_SUBJECT_EXPR).not.toContain('collectionId');
     // And outside any call, the space's own collection — the messages typed there — so the panel is
@@ -1075,7 +1075,7 @@ describe('the interpretation panel', () => {
     expect(json).toContain(
       `"onChange":{"$invoke":"modules.transcribe.toggleAutoInterpret","args":[{"$":"${INTERPRETATION_SUBJECT_EXPR}"}]}`,
     );
-    expect(json).toContain('!spaceStore.canAdministerCurrentSpace');
+    expect(json).toContain('!spaceSettings.canAdministerCurrentSpace');
     expect(json).toContain('Set by whoever administers this space');
   });
 
@@ -1628,7 +1628,7 @@ describe('the panel’s reads reach the store', () => {
           )
         : undefined,
     ),
-    routeStore: namespace((member) => (member === 'params' ? markReactive(() => ({ call: CALL })) : undefined)),
+    navigation: namespace((member) => (member === 'params' ? markReactive(() => ({ call: CALL })) : undefined)),
   });
 
   // `markReactive` is the host's own — the tag is a unique symbol, so a hand-rolled stand-in with
@@ -1687,13 +1687,10 @@ describe('the panel’s reads reach the store', () => {
             )
           : undefined,
       ),
-      routeStore: namespace((member) => (member === 'params' ? markReactive(() => ({})) : undefined)),
-      spaceStore: namespace((member) =>
-        member === 'root'
-          ? markReactive(() => 'the-space-collection')
-          : member === 'canAdministerCurrentSpace'
-            ? markReactive(() => admin)
-            : undefined,
+      navigation: namespace((member) => (member === 'params' ? markReactive(() => ({})) : undefined)),
+      spaceStore: namespace((member) => (member === 'root' ? markReactive(() => 'the-space-collection') : undefined)),
+      spaceSettings: namespace((member) =>
+        member === 'canAdministerCurrentSpace' ? markReactive(() => admin) : undefined,
       ),
     });
 
@@ -1786,7 +1783,7 @@ describe('the panel’s reads reach the store', () => {
             ? {}
             : undefined,
       ),
-      routeStore: namespace((member) =>
+      navigation: namespace((member) =>
         member === 'params' ? markReactive(() => ({ call: over.address ?? '' })) : undefined,
       ),
     });
@@ -1990,7 +1987,7 @@ describe('the history of what was read', () => {
       same rows again a few hundred pixels higher with no heading to tell them apart.
     */
     expect(JSON.stringify(interpretationActivity)).toContain(
-      'interpretationStore.runningCount && (!routeStore.params.call || routeStore.params.call == modules.transcribe.callId)',
+      'interpretationStore.runningCount && (!navigation.params.call || navigation.params.call == modules.transcribe.callId)',
     );
   });
 
@@ -2235,7 +2232,7 @@ describe('the composer', () => {
       (n) => n.type === '$if' && String((n.props as { condition?: { $?: string } })?.condition?.$).includes('callId'),
     ) as { props: { condition: { $: string } } } | undefined;
     const condition = gate?.props.condition.$ ?? '';
-    expect(condition).toContain('routeStore.params.call');
+    expect(condition).toContain('navigation.params.call');
     expect(condition).toContain('modules.transcribe.callId');
     expect(condition).not.toContain('spaceStore.root');
     const send = (composer?.props.onSubmit as { $if: { then: Record<string, unknown>[] } }).$if.then;
@@ -2287,7 +2284,7 @@ describe('the composer', () => {
     expect(branch.then.$invoke).toBe('modules.transcribe.reply');
     expect(branch.else.$invoke).toBe('modules.transcribe.addMessage');
     expect(branch.else.args).toEqual([
-      { $: 'routeStore.params.call ? routeStore.params.call : modules.transcribe.callId' },
+      { $: 'navigation.params.call ? navigation.params.call : modules.transcribe.callId' },
       { $: 'event.text' },
       { $: 'event.marks' },
     ]);

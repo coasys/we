@@ -365,7 +365,7 @@ function ctaCard(card: (typeof CTA_CARDS)[0], imageLeft: boolean) {
           variant: 'outline',
           // gradient: true,
           // size: 'sm',
-          onClick: { $invoke: 'shellStore.scrollToId', args: [card.id] },
+          onClick: { $invoke: 'viewState.scrollToId', args: [card.id] },
         },
       },
     ],

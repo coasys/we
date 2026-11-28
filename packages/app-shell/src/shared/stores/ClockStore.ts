@@ -22,6 +22,7 @@
  */
 import {
   type Clock,
+  type ClockRegistry,
   type ClockSettings,
   type ClockState,
   type ClockTick,
@@ -32,8 +33,6 @@ import {
   toTime,
 } from '@we/clock';
 import type { Accessor, ReactivityPort } from '@we/reactivity';
-
-import { clockRegistry } from '../clocks';
 
 /** One clock, ready to render. */
 export interface ClockView {
@@ -117,7 +116,14 @@ function view(clock: Clock, state: ClockState): ClockView {
  * The app's clock store, built where the host composes its stores. Its subscriptions to the clocks
  * go when the owner it is built under is disposed.
  */
-export function createClockStore({ reactivity }: { reactivity: ReactivityPort }): ClockStore {
+export function createClockStore({
+  reactivity,
+  clocks: clockRegistry,
+}: {
+  reactivity: ReactivityPort;
+  /** The app's clocks by name — `createAppClocks`, made where the stores are composed. */
+  clocks: ClockRegistry;
+}): ClockStore {
   const { signal, untrack, onCleanup } = reactivity;
   const [clocks, setClocks] = signal<Record<string, ClockView>>({});
   // The port's setter takes a value, so one clock's view is written over what the others hold now.

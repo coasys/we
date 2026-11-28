@@ -4,22 +4,23 @@
 import { createLiveQuery, type LivePage } from '@we/backend-shared';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { defineEntity } from '../src/entityProxy';
+import { registerEntity, unregisterEntity } from '../src/entityRegistry';
 import {
   applyPredictions,
-  clearPredictions,
-  predict,
+  createPredictions,
   type Prediction,
-  predictionLanded,
   readShapeOf,
-  withdrawPrediction,
   withPredictedPages,
   withPredictions,
 } from '../src/predictions';
+import { bindPredictions, boundPredictions } from '../src/predictions';
 
 const DS = { uuid: 'ds-1' };
+const predictions = createPredictions();
 const at = (writes: Prediction['writes']): Prediction => ({ invocationId: 'i', writes, landed: false });
 
-afterEach(() => clearPredictions());
+afterEach(() => predictions.clear());
 
 describe('a prediction laid over rows', () => {
   const posts = [
@@ -120,11 +121,16 @@ describe('a live read with predictions', () => {
 
   it('draws a prediction at once, and hands it over to the real row of the same id', async () => {
     const data = source([]);
-    const live = withPredictedPages(data.live, DS, readShapeOf(['Involvement'], { where: { node: 'n1' } }));
+    const live = withPredictedPages(
+      predictions,
+      data.live,
+      DS,
+      readShapeOf(['Involvement'], { where: { node: 'n1' } }),
+    );
     await live.first;
-    predict(DS, 'inv-1', create('v1'));
+    predictions.predict(DS, 'inv-1', create('v1'));
     expect(ids(live)).toEqual(['v1']);
-    predictionLanded('inv-1');
+    predictions.landed('inv-1');
     data.set([{ id: 'v1', node: 'n1', author: 'did:me' }]);
     await settle();
     expect(live.getSnapshot().data?.results).toEqual([{ id: 'v1', node: 'n1', author: 'did:me' }]);
@@ -136,22 +142,22 @@ describe('a live read with predictions', () => {
 
   it('stops drawing a failed prediction', async () => {
     const data = source([]);
-    const live = withPredictedPages(data.live, DS, readShapeOf(['Involvement'], {}));
+    const live = withPredictedPages(predictions, data.live, DS, readShapeOf(['Involvement'], {}));
     await live.first;
-    predict(DS, 'inv-1', create('v1'));
+    predictions.predict(DS, 'inv-1', create('v1'));
     expect(ids(live)).toEqual(['v1']);
-    withdrawPrediction('inv-1');
+    predictions.withdraw('inv-1');
     expect(ids(live)).toEqual([]);
   });
 
   it('keeps drawing a landed prediction until the data moves, and yields to a concurrent write', async () => {
     const data = source([{ id: 'c1', arranges: ['a', 'b'] }]);
-    const live = withPredictedPages(data.live, DS, readShapeOf(['CollectionBlock'], {}));
+    const live = withPredictedPages(predictions, data.live, DS, readShapeOf(['CollectionBlock'], {}));
     await live.first;
-    predict(DS, 'inv-1', [
+    predictions.predict(DS, 'inv-1', [
       { kind: 'set', entity: 'CollectionBlock', id: 'c1', relation: 'arranges', targets: ['b', 'a'] },
     ]);
-    predictionLanded('inv-1');
+    predictions.landed('inv-1');
     const order = () => live.getSnapshot().data?.results[0].arranges;
     expect(order()).toEqual(['b', 'a']);
     // Somebody else's order arrives first: the real rows win.
@@ -162,14 +168,14 @@ describe('a live read with predictions', () => {
 
   it('retires on, off, on one by one, never showing an older answer', async () => {
     const data = source([]);
-    const live = withPredictedPages(data.live, DS, readShapeOf(['Involvement'], {}));
+    const live = withPredictedPages(predictions, data.live, DS, readShapeOf(['Involvement'], {}));
     await live.first;
-    predict(DS, 'on', create('v1'));
-    predict(DS, 'off', [{ kind: 'delete', entity: 'Involvement', id: 'v1' }]);
-    predict(DS, 'again', create('v2'));
+    predictions.predict(DS, 'on', create('v1'));
+    predictions.predict(DS, 'off', [{ kind: 'delete', entity: 'Involvement', id: 'v1' }]);
+    predictions.predict(DS, 'again', create('v2'));
     expect(ids(live)).toEqual(['v2']);
     // The first press's echo arrives while the third is still going.
-    predictionLanded('on');
+    predictions.landed('on');
     data.set([{ id: 'v1', node: 'n1' }]);
     await settle();
     expect(ids(live)).toEqual(['v2']);
@@ -181,12 +187,59 @@ describe('a live read with predictions', () => {
       findOne: async (_dataset?: unknown) => ({ id: 'c1', arranges: ['a'] }),
       other: () => 'untouched',
     };
-    const wrapped = withPredictions(cls, ['CollectionBlock']);
-    predict(DS, 'inv-1', [{ kind: 'add', entity: 'CollectionBlock', id: 'c1', relation: 'arranges', target: 'b' }]);
+    const wrapped = withPredictions(predictions, cls, ['CollectionBlock']);
+    predictions.predict(DS, 'inv-1', [
+      { kind: 'add', entity: 'CollectionBlock', id: 'c1', relation: 'arranges', target: 'b' },
+    ]);
     expect(await wrapped.findAll(DS)).toEqual([{ id: 'c1', arranges: ['a', 'b'] }]);
     expect(await wrapped.findOne(DS)).toEqual({ id: 'c1', arranges: ['a', 'b'] });
     expect(wrapped.other()).toBe('untouched');
-    predictionLanded('inv-1');
+    predictions.landed('inv-1');
     expect(await wrapped.findAll(DS)).toEqual([{ id: 'c1', arranges: ['a'] }]);
+  });
+});
+
+describe('predictions per composition', () => {
+  const add = (target: string) => [
+    { kind: 'add' as const, entity: 'CollectionBlock', id: 'c1', relation: 'arranges', target },
+  ];
+  const board = () => ({ findAll: async (_dataset?: unknown) => [{ id: 'c1', arranges: ['a'] }] });
+
+  it('keeps two sets of predictions apart: neither draws what the other predicted', async () => {
+    const mine = createPredictions();
+    const theirs = createPredictions();
+    mine.predict(DS, 'inv-mine', add('b'));
+    expect(mine.for(DS)).toHaveLength(1);
+    expect(theirs.for(DS)).toEqual([]);
+    expect(theirs.any()).toBe(false);
+    expect(await withPredictions(mine, board(), ['CollectionBlock']).findAll(DS)).toEqual([
+      { id: 'c1', arranges: ['a', 'b'] },
+    ]);
+    expect(await withPredictions(theirs, board(), ['CollectionBlock']).findAll(DS)).toEqual([
+      { id: 'c1', arranges: ['a'] },
+    ]);
+    // Clearing one leaves the other's.
+    theirs.clear();
+    expect(mine.for(DS)).toHaveLength(1);
+    mine.clear();
+  });
+
+  it('has the entity stand-ins draw the predictions bound to them, and the rows alone once unbound', async () => {
+    registerEntity('PredictedProbe', board() as never);
+    const Probe = defineEntity('PredictedProbe') as unknown as ReturnType<typeof board>;
+    const bound = createPredictions();
+    const other = createPredictions();
+    other.predict(DS, 'inv-other', add('x'));
+    const unbind = bindPredictions(bound);
+    try {
+      bound.predict(DS, 'inv-bound', add('b'));
+      expect(await Probe.findAll(DS)).toEqual([{ id: 'c1', arranges: ['a', 'b'] }]);
+    } finally {
+      unbind();
+      unregisterEntity('PredictedProbe');
+    }
+    expect(boundPredictions()).toBeNull();
+    bound.clear();
+    other.clear();
   });
 });

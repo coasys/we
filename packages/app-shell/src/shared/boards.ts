@@ -31,13 +31,15 @@
 import { CollectionBlock, type DatasetProxy, getEntityForDataset, type TaskBlock } from '@we/entities';
 
 import { heldRecord } from './heldFirst';
-import { invokeOperation } from './invokeOperation';
+import type { Operations } from './invokeOperation';
 import { spliceSubsetOrder } from './shapes/subsetOrder';
 import { readSpaceLandmarks, readSpaceRoot } from './spaceLandmarks';
 import type { TaskMoveOutcome } from './taskWorkflow';
 
 /** What the board actions need from the app around them. */
 export interface BoardDeps {
+  /** How the composition runs declared operations, and the predictions its reads hold. */
+  operations: Operations;
   /**
    * The dataset a write means: the one named, or the space on screen.
    *
@@ -125,7 +127,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
   ): Promise<T> {
     const invoker = deps.invoker();
     if (!invoker) throw new Error(`${name}: nobody is signed in`);
-    return (await invokeOperation(name, args, { dataset: p, invoker, ...(before ? { before } : {}) })) as T;
+    return (await deps.operations.invoke(name, args, { dataset: p, invoker, ...(before ? { before } : {}) })) as T;
   }
 
   /** The states a new board gets a column for: the community's order, each slug once. */
@@ -317,17 +319,17 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
           is a hint the board already ignores.
         */
         fromColumnId
-          ? heldRecord<CollectionBlock>('CollectionBlock', p, fromColumnId, () =>
+          ? heldRecord<CollectionBlock>(deps.operations.predictions, 'CollectionBlock', p, fromColumnId, () =>
               CollectionBlock.findOne(p, { where: { id: fromColumnId } }).catch(() => null),
             )
           : Promise.resolve(null),
-        heldRecord<CollectionBlock>('CollectionBlock', p, toColumnId, () =>
+        heldRecord<CollectionBlock>(deps.operations.predictions, 'CollectionBlock', p, toColumnId, () =>
           CollectionBlock.findOne(p, { where: { id: toColumnId } }),
         ),
       ]);
       if (!to) return;
       const task = to.slug
-        ? await heldRecord<TaskBlock>('TaskBlock', p, cardId, async () =>
+        ? await heldRecord<TaskBlock>(deps.operations.predictions, 'TaskBlock', p, cardId, async () =>
             taskEntity(p)?.findOne(p, { where: { id: cardId } }),
           )
         : null;

@@ -233,6 +233,46 @@ export const NAVIGATION_CASES: NavigationScriptCase[] = [
     '/space/abc/board',
     [{ op: 'navigate', args: { to: '~/wall', options: { replace: true } } }, { op: 'back' }],
   ),
+  /* links: an href is drawn where a press on it goes, from the navigation profile alone */
+  S(
+    'nav.link-relative',
+    "a link to './cards' in a route three segments deep is drawn as the page below that route, and a press goes there",
+    '/space/abc/board',
+    [
+      { op: 'link', args: { to: './cards', base: { depth: 3 } } },
+      { op: 'navigate', args: { to: './cards', options: { base: { depth: 3 } } } },
+    ],
+  ),
+  S(
+    'nav.link-chrome',
+    'a link outside every route resolves from the template root: the segments on screen less the template’s own',
+    '/space/abc/board/cards',
+    [
+      { op: 'link', args: { to: '.' } },
+      { op: 'link', args: { to: '../../x' } },
+      { op: 'link', args: { to: '~/wall' } },
+    ],
+  ),
+  S('nav.link-query-only', "a link to '?sort=new' is the page on screen with that query", '/space/abc/board?sort=top', [
+    { op: 'link', args: { to: '?sort=new', base: { depth: 3 } } },
+  ]),
+  S('nav.link-up-past-root', "'..' in a link stops at the template root", '/space/abc/board', [
+    { op: 'link', args: { to: '../../..', base: { depth: 3 } } },
+  ]),
+  S('nav.link-absolute', 'an absolute href or a URL is drawn as written', '/space/abc/board', [
+    { op: 'link', args: { to: '/settings/ai', base: { depth: 3 } } },
+    { op: 'link', args: { to: 'https://example.org/x', base: { depth: 3 } } },
+  ]),
+  S(
+    'nav.link-outside-space',
+    'outside a space the template root is the address’s own root, so ~/ is /',
+    '/settings/ai',
+    [
+      { op: 'link', args: { to: '..', base: { depth: 2 } } },
+      { op: 'link', args: { to: '~/profile' } },
+    ],
+  ),
+
   S('nav.open-deep-link', 'open lands on a deep link; .. then climbs from it within the root', '/space/abc/board', [
     { op: 'open', args: { href: '/space/abc/people?tab=all' } },
     { op: 'navigate', args: { to: '..' } },

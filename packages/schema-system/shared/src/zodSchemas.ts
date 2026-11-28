@@ -517,8 +517,11 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
     segment: z.string().optional(),
     /** A view that stays mounted across sibling navigation. See `TemplateMeta.keepAlive`. */
     keepAlive: z.boolean().optional(),
-    /** The modules this interface reaches by name. See `TemplateMeta.requires`. */
-    requires: z.object({ modules: z.array(z.string()).optional() }).optional(),
+    /** The profiles and modules this interface names. See `TemplateMeta.requires`. */
+    requires: z
+      .object({ profiles: z.array(z.string()).optional(), modules: z.array(z.string()).optional() })
+      .strict()
+      .optional(),
     /** Fixed chrome this shell paints, for floating panels to clear. See `TemplateMeta.chromeReserve`. */
     chromeReserve: z
       .object({

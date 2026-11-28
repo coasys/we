@@ -202,7 +202,7 @@ defineFunction({
   category: 'list',
   params: ['items'],
   doc: 'How many entries a list has. Anything that is not a list counts as 0.',
-  example: 'count(spaceStore.memberDids)',
+  example: 'count(identity.memberDids)',
   impl: ([items]) => asList(items).length,
 });
 
@@ -328,7 +328,7 @@ defineFunction({
   category: 'list',
   params: ['text', 'separator?'],
   doc: "The text cut into a list at each `separator` (default ','), each piece trimmed, empty pieces left out — so an empty string is an empty list. The inverse of `join`, for a list held in one string, such as a URL parameter.",
-  example: 'split(routeStore.params.hide).filter(k, k != kind)',
+  example: 'split(navigation.params.hide).filter(k, k != kind)',
   impl: ([text, separator]) =>
     asText(text)
       .split(separator === undefined ? ',' : asText(separator))
@@ -451,7 +451,7 @@ defineFunction({
   category: 'text',
   params: ['count', 'one', 'other'],
   doc: '`one` when count is exactly 1, otherwise `other`.',
-  example: "plural(count(spaceStore.memberDids), 'Member', 'Members')",
+  example: "plural(count(identity.memberDids), 'Member', 'Members')",
   impl: ([n, one, other]) => (Number(n) === 1 ? one : other),
 });
 
@@ -582,7 +582,7 @@ defineFunction({
   category: 'object',
   params: ['object', 'keys'],
   doc: 'A new object holding only the named keys of `object`. Anything that is not an object gives `{}`.',
-  example: "pick(profileStore.ownProfile, ['handle', 'avatar'])",
+  example: "pick(identity.ownProfile, ['handle', 'avatar'])",
   impl: ([object, keys]) => {
     if (!isRecord(object)) return {};
     const out: Record<string, unknown> = {};

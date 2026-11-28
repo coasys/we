@@ -6,6 +6,7 @@ import { relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import type { ContextData } from '../contextTypes.js';
+import { hostOnlyUses as hostOnlyUsesOf } from '../profiles/index.js';
 import {
   asHostChrome,
   buildValidationContext,
@@ -176,6 +177,29 @@ function isHostChrome(filePath: string): boolean {
   return rel.startsWith('packages/templates/shell/') || rel.startsWith('packages/app-shell/src/shared/schemas/');
 }
 
+/**
+ * Which kind of template a schema is, for the host-only figure. WE's own chrome — the shell's
+ * templates and fragments (settings, the boot screen, the sidebar) and the app shell's schemas — is
+ * `app`, whatever its `meta.role`: it is drawn by WE for WE, as an app-role template is. A module's
+ * own panels are `module chrome`. Anything else is its `meta.role` (absent means shell), or, with no
+ * `meta`, a `template fragment`, drawn inside whichever template uses it.
+ */
+function roleOf(schema: unknown, filePath: string, own: string | undefined): string {
+  if (isHostChrome(filePath)) return 'app';
+  if (own) return 'module chrome';
+  const meta = (schema as { meta?: { role?: unknown } } | null)?.meta;
+  if (meta) return typeof meta.role === 'string' ? meta.role : 'shell';
+  return 'template fragment';
+}
+
+/** By member, the capability group the host grants it under: `spaceStore.policy` → `content`. */
+const memberGroups = new Map<string, string>();
+for (const store of contextData.storeEntries)
+  for (const [member, group] of Object.entries(store.groups ?? {})) memberGroups.set(`${store.name}.${member}`, group);
+
+/** WE-host-only uses, by role and then by capability group. */
+const hostOnlyByRole = new Map<string, { uses: number; schemas: number; groups: Map<string, number> }>();
+
 // Validate each file
 let totalErrors = 0;
 let totalWarnings = 0;
@@ -204,6 +228,19 @@ for (const filePath of files) {
     const judged = own ? withOwnModule(validationContext, own) : validationContext;
     // A module's own panels and the host's shell render as chrome — see `asHostChrome`.
     const semantic = validateSemantic(result.schema, own || isHostChrome(filePath) ? asHostChrome(judged) : judged);
+
+    const uses = hostOnlyUsesOf(result.schema, judged.storeMembers);
+    if (uses.length) {
+      const role = roleOf(result.schema, filePath, own);
+      const tally = hostOnlyByRole.get(role) ?? { uses: 0, schemas: 0, groups: new Map<string, number>() };
+      tally.schemas++;
+      for (const use of uses) {
+        tally.uses += use.count;
+        const group = memberGroups.get(use.member) ?? 'unclassified';
+        tally.groups.set(group, (tally.groups.get(group) ?? 0) + use.count);
+      }
+      hostOnlyByRole.set(role, tally);
+    }
 
     const allErrors = [...structural.errors, ...semantic.errors];
     const notes = allErrors.filter((e) => e.severity === 'info');
@@ -261,6 +298,28 @@ if (hostOnlyFiles.size > 0)
   console.log(
     `${blue}ℹ${reset} ${hostOnlyUses} WE-host-only store use${hostOnlyUses === 1 ? '' : 's'} in ${hostOnlyFiles.size} file${hostOnlyFiles.size === 1 ? '' : 's'}: members outside every capability profile, which work only in WE`,
   );
+
+/*
+  The same figure by kind of template, then by the capability group of the members used. A space
+  shell or a view is what a community shares, so its host-only uses are the ones that keep a shared
+  template from running on another host; an app is WE's own chrome and is expected to have many.
+  Re-run with `pnpm validate:schemas`; the numbers are the baseline portable templates are measured
+  against.
+*/
+if (hostOnlyByRole.size > 0) {
+  const ROLE_ORDER = ['shell', 'view', 'page', 'template fragment', 'app', 'module chrome'];
+  const rank = (role: string) => (ROLE_ORDER.includes(role) ? ROLE_ORDER.indexOf(role) : ROLE_ORDER.length);
+  console.log(`${blue}ℹ${reset} WE-host-only uses by template role, then by capability group:`);
+  for (const [role, tally] of [...hostOnlyByRole].sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))) {
+    const groups = [...tally.groups]
+      .sort(([a, x], [b, y]) => y - x || a.localeCompare(b))
+      .map(([group, count]) => `${group} ${count}`)
+      .join(', ');
+    console.log(
+      `  ${bold}${role}${reset} ${tally.uses} in ${tally.schemas} schema${tally.schemas === 1 ? '' : 's'}${dim} — ${groups}${reset}`,
+    );
+  }
+}
 
 // Exit non-zero on errors (warnings are ok)
 if (totalErrors > 0) {

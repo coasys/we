@@ -5,7 +5,7 @@ import { viewBar } from './bar.ts';
 import { groupPath } from './paths.ts';
 
 /** The person on screen: the one the address names. */
-const DID = 'routeStore.params.did';
+const DID = 'navigation.params.did';
 
 /**
  * A member, as the view: their profile, the same page WE's own profile is (the kit's `profilePage`),
@@ -25,7 +25,7 @@ export const personRoute: RouteSchema = {
       children: [
         viewBar(
           [
-            { label: 'People', onClick: { $invoke: 'routeStore.navigate', args: [{ $: groupPath('people') }] } },
+            { label: 'People', onClick: { $invoke: 'navigation.navigate', args: [{ $: groupPath('people') }] } },
             { label: { $: "person.name ? person.name : 'Member'" } },
           ],
           'user',

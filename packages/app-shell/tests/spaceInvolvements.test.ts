@@ -5,17 +5,19 @@
  *
  * Run once under each reactivity port, against the in-memory backend.
  */
-import { clearPredictions, CollectionBlock, predict, predictionsFor } from '@we/entities';
+import { CollectionBlock, Involvement, SignalType } from '@we/entities';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createSpaceInvolvements, type SpaceInvolvements } from '../src/shared/stores/space/involvements';
-import { flush, ME, reactivityPorts, type SpaceHarness, spaceHarness } from './support/spaceParts';
+import { reactivityPorts } from './support/engines';
+import { testPredictions } from './support/operations';
+import { flush, ME, type SpaceHarness, spaceHarness } from './support/spaceParts';
 
 describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   const disposers: (() => void)[] = [];
   afterEach(() => {
     for (const dispose of disposers.splice(0)) dispose();
-    clearPredictions();
+    testPredictions.clear();
   });
 
   interface Built {
@@ -66,10 +68,10 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     await flush();
     const resetsInA = orderResets.count;
     const handle = (await h.datasets.get('ds-a')).handle;
-    predict(handle, 'press', [{ kind: 'delete', entity: 'Signal', id: 's1' }]);
+    testPredictions.predict(handle, 'press', [{ kind: 'delete', entity: 'Signal', id: 's1' }]);
     h.datasets.show('ds-b');
     await flush();
-    expect(predictionsFor(handle)).toEqual([]);
+    expect(testPredictions.for(handle)).toEqual([]);
     expect(orderResets.count).toBeGreaterThan(resetsInA);
     expect(involvements.members.involvementTypesLoaded()).toBe(true);
   });
@@ -84,5 +86,60 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     expect((await CollectionBlock.findOne(handle, { where: { id: event.id } }))?.participants).toEqual([ME]);
     await involvements.members.setAttending(event.id, false);
     expect((await CollectionBlock.findOne(handle, { where: { id: event.id } }))?.participants ?? []).toEqual([]);
+  });
+
+  it('puts somebody on a record under a kind, and takes them off', async () => {
+    const { h, involvements } = await build();
+    h.datasets.show('ds-a');
+    await flush();
+    const handle = (await h.datasets.get('ds-a')).handle;
+    await involvements.members.createInvolvementType({ name: 'Shepherd', semantic: 'responsible' });
+    const task = await CollectionBlock.create(handle, { kind: 'post' });
+    const rows = async () =>
+      ((await Involvement.findAll(handle, {})) as Involvement[]).map((row) => [row.agent, row.kind]);
+    await involvements.members.setInvolvement(task.id, 'did:key:z6MkAnna', 'shepherd', true);
+    expect(await rows()).toEqual([['did:key:z6MkAnna', 'shepherd']]);
+    await involvements.members.setInvolvement(task.id, 'did:key:z6MkAnna', 'shepherd', false);
+    expect(await rows()).toEqual([]);
+    expect(h.toasts.said).toEqual([]);
+  });
+
+  it('changes a kind it has and keeps its slug, and refuses a second of one name', async () => {
+    const { h, involvements } = await build();
+    h.datasets.show('ds-a');
+    await flush();
+    await involvements.members.createInvolvementType({ name: 'Shepherd', semantic: 'responsible' });
+    await involvements.members.updateInvolvementType('shepherd', {
+      name: 'Steward',
+      semantic: 'reviewing',
+      appliesTo: 'TaskBlock, EventBlock',
+    });
+    expect(involvements.members.involvementTypes()).toMatchObject([
+      { slug: 'shepherd', name: 'Steward', semantic: 'reviewing' },
+    ]);
+    await involvements.members.createInvolvementType({ name: 'Shepherd' });
+    expect(h.toasts.said).toHaveLength(1);
+    expect(involvements.members.involvementTypes()).toHaveLength(1);
+  });
+
+  it('retires a reaction type and brings it back, leaving it readable throughout', async () => {
+    const { h, involvements } = await build();
+    h.datasets.show('ds-a');
+    await flush();
+    const handle = (await h.datasets.get('ds-a')).handle;
+    const like = await SignalType.create(handle, { slug: 'like', name: 'Like' });
+    const retired = async () => (await SignalType.findOne(handle, { where: { id: like.id } }))?.retired;
+    await involvements.members.setSignalTypeRetired(like.id, true);
+    expect(await retired()).toBe(true);
+    await involvements.members.setSignalTypeRetired(like.id, false);
+    expect(await retired()).toBe(false);
+  });
+
+  it('leaves the roster alone for a record that is not there', async () => {
+    const { h, involvements } = await build();
+    h.datasets.show('ds-a');
+    await flush();
+    await involvements.members.setAttending('nothing-here', true);
+    expect(h.toasts.said).toEqual([]);
   });
 });

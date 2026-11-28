@@ -136,7 +136,7 @@ express, and two of the built-ins (`channels`, `timeline`) exist to find out how
 
 A whole space interface as a JSON node tree: chrome, arrangement, route table. `meta.role` absent
 means shell. Mark where sections go with `{ path: '$views' }` rather than hardcoding routes, and
-read `spaceStore.viewNav` rather than writing a nav strip from a literal array — the two lists drift
+read `navigation.viewNav` rather than writing a nav strip from a literal array — the two lists drift
 otherwise, and have.
 
 - **Lives in** `packages/templates/showcase/src/` (or `templates/default/` for the built-in space experience)
@@ -169,7 +169,7 @@ never knows fragments exist — what ships is JSON indistinguishable from JSON w
 is what lets a template outlive the kit it was built from.
 
 Portable means **it may not name a store.** `kit.test.ts` reads the source to enforce this. A
-fragment naming `spaceStore.memberDids` resolves to nothing on a deployment without that store —
+fragment naming `identity.memberDids` resolves to nothing on a deployment without that store —
 silently — and `package.json` cannot say so.
 
 - **Lives in** `packages/schema-system/kit/src/`
@@ -272,7 +272,7 @@ context, and known to the validator from there.
 ### Stores
 
 State and actions the app shell holds — and, because every member is reachable from a template via
-an expression (`{ $: 'spaceStore.memberDids' }`) or `$invoke`, **schema-facing public API**. Name members for template authors rather than for
+an expression (`{ $: 'identity.memberDids' }`) or `$invoke`, **schema-facing public API**. Name members for template authors rather than for
 the code that calls them, and treat a removal as breaking.
 
 This surface has the strictest registration on the page, and both halves fail the build rather than

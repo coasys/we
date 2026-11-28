@@ -8,8 +8,6 @@
 import { createInMemoryBackendPorts } from '@we/backend-inmemory';
 import { getEntity } from '@we/entities';
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createRecordCanvas, type RecordCanvas } from '../src/shared/stores/records/canvas';
@@ -17,11 +15,8 @@ import { createRecordConnections } from '../src/shared/stores/records/connection
 import { canvasChildren, operationRunner } from '../src/shared/stores/records/context';
 import { createRecordKinds } from '../src/shared/stores/records/kinds';
 import { createRecordTree, type RecordTree } from '../src/shared/stores/records/tree';
-
-const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
+import { reactivityPorts } from './support/engines';
+import { testOperations } from './support/operations';
 
 const CANVAS = 'canvas-1';
 const SPINE = 'kind-1';
@@ -58,7 +53,8 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
             currentDatasetEntities: () => [],
             datasets: () => [],
           } as never,
-          runOp: operationRunner(sessionStore),
+          operations: testOperations,
+          runOp: operationRunner(sessionStore, testOperations),
         };
         const shapeStore = { spaceShapes: () => [] };
         const kinds = createRecordKinds({ ...context, shapeStore });

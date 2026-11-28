@@ -11,17 +11,11 @@ import { createInMemoryBackendPorts } from '@we/backend-inmemory';
 import type { AgentProfileSummary, EphemeralPort } from '@we/backend-shared';
 import type { DatasetProxy } from '@we/entities';
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createFirstScreen, type FirstScreen } from '../src/shared/firstScreen';
 import { createPresenceStore, type PresenceStore } from '../src/shared/stores/PresenceStore';
-
-const ports: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
+import { reactivityPorts } from './support/engines';
 
 const ME = 'did:test:me';
 const ADA = 'did:test:ada';
@@ -30,7 +24,7 @@ const PORCH = 'inmemory://porch';
 
 type Dataset = { id: string; sharedUri?: string; handle: DatasetProxy };
 
-describe.each(ports)('presenceStore, under %s', (_name, makePort) => {
+describe.each(reactivityPorts)('presenceStore, under %s', (_name, makePort) => {
   let port: ReactivityPort;
   const disposers: (() => void)[] = [];
 

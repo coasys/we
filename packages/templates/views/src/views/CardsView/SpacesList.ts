@@ -74,7 +74,7 @@ export const spacesList: SchemaNode = cardList({
             {
               type: '$if',
               props: {
-                condition: { $: 'spaceStore.currentSpace.author == me.did' },
+                condition: { $: 'spaceSettings.currentSpace.author == me.did' },
                 then: {
                   type: 'Row',
                   props: { gap: '100' },
@@ -189,7 +189,7 @@ export const spacesList: SchemaNode = cardList({
                     text: 'Enter Space',
                     variant: 'solid',
                     size: 'sm',
-                    onClick: { $invoke: 'spaceStore.navigateToSpace', args: [{ $: 'space.url' }] },
+                    onClick: { $invoke: 'navigation.navigateToSpace', args: [{ $: 'space.url' }] },
                   },
                 },
                 else: {
@@ -206,7 +206,7 @@ export const spacesList: SchemaNode = cardList({
                       {
                         $invoke: 'spaceStore.joinSpace',
                         args: [{ $: 'space.url' }],
-                        onSuccess: [{ $invoke: 'spaceStore.navigateToSpace', args: [{ $: 'space.url' }] }],
+                        onSuccess: [{ $invoke: 'navigation.navigateToSpace', args: [{ $: 'space.url' }] }],
                         onError: [{ $setLocal: 'joining', value: false }],
                       },
                     ],

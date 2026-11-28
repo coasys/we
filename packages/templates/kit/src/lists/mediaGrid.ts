@@ -51,7 +51,7 @@ export function mediaGrid(opts: MediaGridOptions): SchemaNode {
         // The mute filter, as unconditional here as in `collectionFeed` — a grid is a feed with a
         // different arrangement, and a block list that works in one view and not the other is
         // worse than none.
-        not: { $: 'spaceStore.mutedDids' },
+        not: { $: 'identity.mutedDids' },
         ...(opts.author !== undefined && { eq: opts.author }),
       },
     },

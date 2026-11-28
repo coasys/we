@@ -165,7 +165,7 @@ export type TemplatePanel = {
    * Whether to open the panel as well as place it. Absent means yes.
    *
    * For a panel the template supplies (`node`), `false` starts it closed: it opens when the template
-   * calls `shellStore.openTemplatePanel(id)` — an inspector, opened when something is chosen.
+   * calls `viewState.openTemplatePanel(id)` — an inspector, opened when something is chosen.
    *
    * Opening a module's panel means invoking the action its launcher declares, and that action is not
    * always "open a panel": the call module's is `goToCall`, which **joins a call** when there is not
@@ -321,9 +321,16 @@ export type TemplateMeta = {
    * expression naming a module store and a part naming a module are invisible to that walk. So a
    * template that leans on one says so, and a deployment omitting the module sees the reason instead
    * of a blank panel. Reported through `spaceStore.missingModules`, and checked by the validator
-   * against the deployment's module list.
+   * against the deployment's module list. Once `requires` is written, every module the template names
+   * must be in it — the validator errs on one left out — and an install refuses a template whose list
+   * names a module the deployment does not have.
+   *
+   * `profiles` names the capability profiles it reaches, by id (`navigation`, `view-state`), and
+   * writing it is what declares the template portable: it runs on any host providing those profiles
+   * and modules. The validator errs on a profile namespace the template names but does not list, and
+   * warns on every WE-host-only member it uses. Absent, the template is written for WE's host.
    */
-  requires?: { modules?: string[] };
+  requires?: { profiles?: string[]; modules?: string[] };
   stores?: string[] | StoreDeclaration;
   components?: string[];
 };

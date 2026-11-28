@@ -73,6 +73,13 @@ describeBackendConformance('AD4M', {
     // to-do column's id every time (0 of 20 local runs right). Delete this with the entry above.
     'operations.forEach-keys':
       'a link onto an ordered relation writes no order entry, so two columns linked in one transaction read back in store order, not the order written (coasys/ad4m#1304, fixed by coasys/ad4m#1936)',
+    // Not AD4M's: the live executor starts with no bootstrap languages, so it has no file-storage
+    // language, and a file-format field cannot be written. A node with its bootstrap languages
+    // stores the picture. Delete these once the live executor installs the file-storage language.
+    'operations.core-set-space-image':
+      'the live executor has no bootstrap languages, so a file-format field (Space.avatar) has no file-storage language to write through ("Language not found")',
+    'operations.core-clear-space-image':
+      'the live executor has no bootstrap languages, so the picture the case starts from (Space.coverImage) cannot be written ("Language not found")',
   },
   knownIntermittent: {
     // Seen in 3 of 10 runs, only ever on the first post in a fresh perspective: the first two

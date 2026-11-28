@@ -5,7 +5,7 @@
  * geometry (its `viewport` reads this), the content viewport's offsets, and the CSS variables that
  * chrome outside the shell's arithmetic reads (`--we-sidebar-width`, `--we-chrome-rail-width`).
  */
-import { type AppFrame, DEFAULT_APP_FRAME, setGeometryFrame } from '@shared/dockGeometry';
+import { type AppFrame, DEFAULT_APP_FRAME } from '@shared/dockGeometry';
 import type { ReactivityPort } from '@we/reactivity';
 import type { PanelFrame, TemplateMeta } from '@we/schema-shared';
 
@@ -28,7 +28,6 @@ export function createAppFrame({ signal, untrack }: Pick<ReactivityPort, 'signal
     const now = untrack(frame);
     if (now.left === next.left && now.right === next.right && now.top === next.top && now.bottom === next.bottom)
       return;
-    setGeometryFrame(next);
     setFrame(next);
   }
 

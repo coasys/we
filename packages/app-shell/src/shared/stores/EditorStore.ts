@@ -35,6 +35,7 @@ import {
 } from '../editorChats';
 import { isEditorChord, pressEditorChord } from '../editorChord';
 import type { FirstScreen } from '../firstScreen';
+import type { PlatformPort } from '../platform/port';
 import { registerHostDockStore, unregisterHostDockStore } from '../registries/dockRegistry';
 import { EDITOR_STORE_ID } from '../registries/editorDocks';
 import { sameTemplateContent } from '../templateSync';
@@ -238,6 +239,8 @@ const starterTemplate: SchemaNode = {
 
 export interface EditorStoreDeps {
   reactivity: ReactivityPort;
+  /** The window's keys: undo and redo while editing, and the chord that opens the editor. */
+  platform: Pick<PlatformPort, 'listen'>;
   toasts: Toasts;
   /** Model reads wait for it: nobody can have opened the chat before the first screen is up. */
   firstScreen: Pick<FirstScreen, 'open'>;
@@ -267,7 +270,7 @@ export interface EditorStoreDeps {
 }
 
 export function createEditorStore(deps: EditorStoreDeps): EditorStore {
-  const { reactivity, toasts, firstScreen } = deps;
+  const { reactivity, toasts, firstScreen, platform } = deps;
   const { memo, effect, untrack, batch, onCleanup } = reactivity;
   /** A signal whose write is skipped when it holds that value already. */
   const flag = <T>(initial: T) => distinctSignal(reactivity, initial);
@@ -777,7 +780,6 @@ export function createEditorStore(deps: EditorStoreDeps): EditorStore {
    */
   effect(() => {
     if (!isEditingTemplate() && !isEditingTheme()) return;
-    if (typeof document === 'undefined') return;
 
     const handler = (event: KeyboardEvent) => {
       if (!event.ctrlKey && !event.metaKey) return;
@@ -789,8 +791,7 @@ export function createEditorStore(deps: EditorStoreDeps): EditorStore {
       else void undo();
     };
 
-    document.addEventListener('keydown', handler);
-    onCleanup(() => document.removeEventListener('keydown', handler));
+    onCleanup(platform.listen('keydown', handler));
   });
 
   // ----------------------------------------------------------------
@@ -1248,21 +1249,18 @@ export function createEditorStore(deps: EditorStoreDeps): EditorStore {
     instead. Listened for on the window in capture, ahead of anything a template's nodes do, so no
     template can swallow it. It toggles: a second press leaves editing.
   */
-  if (typeof window !== 'undefined') {
-    const onEditorChord = (event: KeyboardEvent) => {
-      if (!isEditorChord(event)) return;
-      event.preventDefault();
-      event.stopPropagation();
-      pressEditorChord({
-        editing: isEditingTemplate,
-        exit: exitTemplateEditing,
-        enter: () => enterTemplateEditing('edit'),
-        toVisual: () => setContentMode('visual'),
-      });
-    };
-    window.addEventListener('keydown', onEditorChord, true);
-    onCleanup(() => window.removeEventListener('keydown', onEditorChord, true));
-  }
+  const onEditorChord = (event: KeyboardEvent) => {
+    if (!isEditorChord(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    pressEditorChord({
+      editing: isEditingTemplate,
+      exit: exitTemplateEditing,
+      enter: () => enterTemplateEditing('edit'),
+      toVisual: () => setContentMode('visual'),
+    });
+  };
+  onCleanup(platform.listen('keydown', onEditorChord, { capture: true }));
 
   /*
     The three effects below are keyed on which template, and each compares with what it last saw:

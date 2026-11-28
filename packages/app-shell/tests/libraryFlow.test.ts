@@ -7,10 +7,9 @@
  * that every step says what it is doing through the one loading signal.
  */
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { createTestPlatform } from '../src/shared/platform/testPlatform';
 import {
   createLibraryFlow,
   type InstallDestination,
@@ -18,11 +17,7 @@ import {
   type LibraryFlow,
   type LibraryRecord,
 } from '../src/shared/stores/libraryFlow';
-
-const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
+import { reactivityPorts } from './support/engines';
 
 const ME = 'did:test:me';
 
@@ -89,6 +84,7 @@ describe.each(reactivityPorts)('the library flow under %s', (_name, makePort) =>
       reactivity.root(() => {
         flow = createLibraryFlow<Held, Judged>({
           reactivity,
+          images: createTestPlatform().images,
           toasts: {
             info: (m) => told.push(m),
             success: (m) => told.push(m),

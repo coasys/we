@@ -9,8 +9,7 @@
  *
  * SessionStore is faked rather than booted: RuntimeStore reads little from it (`backendPorts`, and
  * what the AI step asks), so driving that directly is both the smaller harness and the more direct
- * test. Every case runs once under each reactivity port: Solid's, and the test port that runs a new
- * effect at once where Solid defers it.
+ * test. Every case runs once under each engine (Solid, the test port, Vue).
  */
 import type { ExecutorHost, ExecutorSettings } from '@we/app-shell/shared';
 import type {
@@ -31,8 +30,6 @@ import type {
   RuntimeAdminPort,
 } from '@we/backend-shared';
 import type { Accessor, ReactivityPort, Setter } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 let ports: Partial<BackendPorts> | null = null;
@@ -59,10 +56,6 @@ const sessionStub = {
   },
 };
 
-const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
 let reactivity: ReactivityPort;
 const disposers: (() => void)[] = [];
 
@@ -82,6 +75,7 @@ import {
   parsePeerInfos,
   type RuntimeStore,
 } from '../src/shared/stores/RuntimeStore';
+import { reactivityPorts } from './support/engines';
 
 const build = (): RuntimeStore =>
   createRuntimeStore({
